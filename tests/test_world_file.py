@@ -220,22 +220,6 @@ def test_a_store_is_made_with_a_rule_and_nothing_else_and_is_never_overwritten(t
     assert not (tmp_path / "bad.sqlite").exists()  # a rule that cannot be leaves no file behind
 
 
-def test_a_world_made_in_the_same_moment_is_never_removed_by_the_call_that_fails(tmp_path, monkeypatch):
-    """Two calls that make a world at one path both look, find no file, and go on; one is first. The other must fail with the refusal and leave the first one's file alone: it used to
-    remove it, as the unfinished file that it took for its own."""
-    path = tmp_path / "w.sqlite"
-    first = small()
-    Store.import_journal(path, first)  # the call that was first
-    before = path.read_bytes()
-    monkeypatch.setattr(Path, "exists", lambda self: False)  # the other call looked a moment too soon: it saw no file
-    for make in (lambda: Store.import_journal(path, small()), lambda: Store.create(path)):
-        with pytest.raises(Refusal, match="is there already; a world is not overwritten") as why:
-            make()
-        assert why.value.code == "world_exists"
-    monkeypatch.undo()
-    assert path.read_bytes() == before and text_of(Store(path).journal()) == text_of(first)
-
-
 def test_a_world_is_not_made_through_a_link_that_leads_nowhere(tmp_path):
     """A name that is a link to a file that is not there is a name that is taken: making the world would make the file behind the link."""
     behind, path = tmp_path / "behind.sqlite", tmp_path / "w.sqlite"
@@ -538,7 +522,7 @@ def test_a_failed_import_leaves_no_file_behind(tmp_path, monkeypatch):
     monkeypatch.setattr(Store, "_insert", staticmethod(boom))
     with pytest.raises(RuntimeError, match="disk is full"):
         Store.import_journal(path, j)
-    assert not path.exists()
+    assert not path.exists() and list(tmp_path.iterdir()) == []  # not the world, and not the file it was built in
 
 
 def test_a_file_is_not_written_over_the_world_it_comes_from_even_where_no_file_is_there_yet(tmp_path):

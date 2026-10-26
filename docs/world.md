@@ -334,13 +334,15 @@ exporting it again gives the same bytes, and so does exporting a store and impor
 that appends while another reads waits for the read and never gives it half a world. A store made elsewhere is not trusted: every cell has its type checked before it is decoded
 (`cell_wrong_type`), and a row that is not JSON, has a number of too many digits or is nested too deeply is `row_not_json`; whatever a cell holds, the result is a world or a `WorldFileError`.
 
-**The home folder** is `$BIBLIOPOLIS_HOME`, else `~/Bibliopolis`; it is made on first use and printed. The world of a command without `--world` is `world.sqlite` in it. A world is never
-overwritten: `world new` and `world import` refuse a file that is there, even one that appears while they work (the file is made exclusively, so of two commands for one path one is refused,
-and a command that fails removes only a file it made itself), and `world export` and `world fold` write a new file and never replace one: the text goes to a file of its own in the folder (made
-exclusively, under a random name, with the permissions any file of the user gets) and is published to the name by a hard link, which fails when the name is taken, so a file that appears
-meanwhile is not written over either (`output_exists`); a look before the world is read says what is there: the world itself under any name (`output_is_the_world`) or a SQLite database
-(`output_is_a_database`). On a file system with no hard links the name is made with `O_EXCL` and the finished file is copied into it. Only `build` and `picture` replace their output, which is made
-again whenever it is wanted; they use a file of their own with a random name too, so an input that is called what a temporary file used to be called is never opened for writing.
+**The home folder** is `$BIBLIOPOLIS_HOME`, else `~/Bibliopolis`; it is made on first use and printed. The world of a command without `--world` is `world.sqlite` in it.
+
+**A file is never written over by a command that makes a new one.** `world new` and `world import` build the world in a file of its own in the folder of the world (made by
+`tempfile.mkstemp`: exclusively, under a random name, so never a file that was there) and publish it to the path by a hard link, which fails when the path is taken: the path has the world only
+when it is whole, a world that another command put there meanwhile is refused (`world_exists`) and not written over, and a command that fails removes its own file and never the path, which may
+by then be another command's world. `world export` and `world fold` do the same with their text (`output_exists`); a look before the world is read says what is there: the world itself under any
+name (`output_is_the_world`) or a SQLite database (`output_is_a_database`). On a file system with no hard links the path is made with `O_EXCL` and the finished file is copied into it (a reader can
+see part of it; a failed copy removes the path only while it is still the file that was made). Only `build` and `picture` replace their output, which is made again whenever it is wanted; they use a
+file of their own with a random name too, so an input that is called what a temporary file used to be called is never opened for writing.
 
 ## In Python
 

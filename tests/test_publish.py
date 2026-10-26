@@ -1,7 +1,7 @@
-"""Publishing a file without ever replacing one that is there (bibliopolis.store.publish_text): the text of `world export` and `world fold`. It is finished in a file of its own in the folder of
-the target, made exclusively under a random name, and published to the target by a hard link, which fails when the target is there. A file system that has no hard links gets a fallback (the
-target made with `O_EXCL` and the finished file copied into it), so every test of this module runs on both. The interleavings are controlled: the other party's file appears at a chosen moment
-of the call, by a patch of the call itself, and no test sleeps."""
+"""Publishing a file without ever replacing one that is there (bibliopolis.store.publish_text, Store.import_journal): the text of `world export` and `world fold`, and the SQLite file of
+`world new` and `world import`. Both are finished in a file of their own in the folder of the target, made exclusively under a random name, and published to the target by a hard link, which
+fails when the target is there. A file system that has no hard links gets a fallback (the target made with `O_EXCL` and the finished file copied into it), so every test of this module runs on
+both. The interleavings are controlled: the other party's file appears at a chosen moment of the call, by a patch of the call itself, and no test sleeps."""
 
 import errno
 import os
@@ -10,9 +10,12 @@ import stat
 from pathlib import Path
 
 import pytest
+from hand_support import play
+
 from bibliopolis import store
 from bibliopolis.events import Refusal
-from bibliopolis.store import publish_text
+from bibliopolis.journal import dumps_world, world_document
+from bibliopolis.store import Store, publish_text
 
 
 @pytest.fixture(params=["hard links", "no hard links"])
@@ -155,3 +158,103 @@ def test_a_hard_link_that_fails_for_another_reason_than_a_taken_name_is_the_fall
     with pytest.raises(Refusal, match="is there already"):
         publish_text(tmp_path / "out.json", "the text")
     assert calls == [("link", "out.json")] and (tmp_path / "out.json").read_text(encoding="utf-8") == "the other party's file" and names(tmp_path) == ["out.json"]
+
+
+# ------------------------------------------------------------------------------------------- a world ----
+def small_world():
+    return play(2, steps=40)
+
+
+def test_a_world_is_built_in_a_file_of_its_own_and_the_path_has_it_only_when_it_is_whole(files, tmp_path, monkeypatch):
+    path, journal, seen = tmp_path / "w.sqlite", small_world(), []
+    insert = Store._insert
+
+    def watching(db, event):
+        if event["seq"] == 5:
+            seen.append((path.exists(), [n for n in names(tmp_path) if n.endswith(".part")]))
+        insert(db, event)
+
+    monkeypatch.setattr(Store, "_insert", staticmethod(watching))
+    Store.import_journal(path, journal)
+    assert len(seen) == 1 and seen[0][0] is False and len(seen[0][1]) == 1 and seen[0][1][0].startswith(".w.sqlite.")  # nothing under the name while it is built
+    assert names(tmp_path) == ["w.sqlite"] and dumps_world(world_document(Store(path).journal())) == dumps_world(world_document(journal))
+
+
+def other_world(tmp_path):
+    """A world of another party, as a file to be put in place at the path of the world that is being made."""
+    other = tmp_path / "other-party.sqlite"
+    Store.import_journal(other, play(5, steps=40))
+    return other, other.read_bytes()
+
+
+def another_party_takes_the_path(monkeypatch, where, path, other, fail_at=None):
+    """Patch the call so that at `where` ("before the world is built": when the database is connected to; "while the world is built": at the third event) the file `other` takes the
+    path of the world, as another call's world would, and, with `fail_at`, so that the call fails at that event."""
+    insert, connect, state = Store._insert, store._connect, {"taken": False}
+
+    def takes_the_path():
+        if not state["taken"]:
+            state["taken"] = True
+            os.replace(other, path)
+
+    def watching(db, event):
+        if event["seq"] == 3 and where == "while the world is built":
+            takes_the_path()
+        if event["seq"] == fail_at:
+            raise RuntimeError("the disk is full")
+        insert(db, event)
+
+    def connecting(where_to):
+        if where == "before the world is built":
+            takes_the_path()
+        return connect(where_to)
+
+    monkeypatch.setattr(Store, "_insert", staticmethod(watching))
+    monkeypatch.setattr(store, "_connect", connecting)
+
+
+@pytest.mark.parametrize("where", ["before the world is built", "while the world is built"])
+def test_a_world_that_takes_the_path_while_another_is_built_is_never_removed_when_the_call_fails(files, where, tmp_path, monkeypatch):
+    """The call used to make the file at the path first and to remove it on any failure: whatever world stood there by then went with it."""
+    path = tmp_path / "w.sqlite"
+    other, bytes_of_other = other_world(tmp_path)
+    another_party_takes_the_path(monkeypatch, where, path, other, fail_at=5)
+    with pytest.raises(RuntimeError, match="disk is full"):
+        Store.import_journal(path, small_world())
+    monkeypatch.undo()
+    assert path.read_bytes() == bytes_of_other and names(tmp_path) == ["w.sqlite"]  # the other party's world, and no temporary file
+
+
+@pytest.mark.parametrize("where", ["before the world is built", "while the world is built"])
+def test_a_world_that_takes_the_path_while_another_is_built_is_never_written_over_when_the_call_goes_on(files, where, tmp_path, monkeypatch):
+    path = tmp_path / "w.sqlite"
+    other, bytes_of_other = other_world(tmp_path)
+    another_party_takes_the_path(monkeypatch, where, path, other)
+    with pytest.raises(Refusal) as why:
+        Store.import_journal(path, small_world())
+    monkeypatch.undo()
+    assert (why.value.code, why.value.params) == ("world_exists", {"path": str(path)})
+    assert path.read_bytes() == bytes_of_other and names(tmp_path) == ["w.sqlite"]
+
+
+def test_a_world_that_is_there_is_refused_before_anything_is_built(files, tmp_path, monkeypatch):
+    """The refusal at the end is the guard; a quick look first spares the work (and says so at once)."""
+    path = tmp_path / "w.sqlite"
+    Store.create(path)
+    before, built = path.read_bytes(), []
+    insert = Store._insert
+    monkeypatch.setattr(Store, "_insert", staticmethod(lambda db, event: (built.append(event["seq"]), insert(db, event))))
+    with pytest.raises(Refusal, match="is there already"):
+        Store.import_journal(path, small_world())
+    assert built == [] and path.read_bytes() == before and names(tmp_path) == ["w.sqlite"]
+
+
+def test_the_world_made_is_the_world_given_and_has_the_permissions_of_the_user(files, tmp_path):
+    journal, path = small_world(), tmp_path / "w.sqlite"
+    before = os.umask(0o027)
+    try:
+        Store.import_journal(path, journal)
+    finally:
+        os.umask(before)
+    assert stat.S_IMODE(path.stat().st_mode) == 0o640 and path.stat().st_nlink == 1 and names(tmp_path) == ["w.sqlite"]
+    assert dumps_world(world_document(Store(path).journal())) == dumps_world(world_document(journal))

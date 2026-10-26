@@ -1,7 +1,7 @@
 """Where a hand-built world lives on disk: the home folder, a SQLite file, and the world file (bibliopolis.journal) that moves a world between stores.
 
     home() -> (folder, created)     the folder of the player's worlds: $BIBLIOPOLIS_HOME, else ~/Bibliopolis, made on first use
-    Store.create(path, rule)        a new SQLite world; Store.import_journal(path, journal) makes one from a journal
+    Store.create(path, rule)        a new SQLite world; Store.import_journal(path, journal) makes one from a journal; neither ever writes over a file
     Store(path).journal()           the journal of the world in the file (every event appended again, under the rules of `append`)
     Store(path).append(event)       one more event, one transaction
     Store(path).export_text()       the world file text of the world in the file
@@ -211,26 +211,29 @@ class Store:
     def import_journal(cls, path: str | Path, journal: Journal) -> "Store":
         """A new file with the world of `journal`, all or nothing: the file is not left behind when something goes wrong. `Refusal` when the file is there already.
 
-        The file is made exclusively (`O_CREAT | O_EXCL`, which also refuses a name that is a link, to a file or to nothing): of two calls for one path only one gets it, the other
-        is refused, and a call removes after a failure only the file that it made itself."""
+        The world is built in a file of its own in the folder of `path` (`temp_file`) and published to `path` by `_publish`, which never writes over a file: of two calls for one path
+        only one gets it, the other is refused (also when its world was finished second), a name that is a link to a file or to nothing is a taken name, and `path` has the world only
+        when it is whole. A failure removes the file of its own and nothing else: the path is never removed, since by then it may be another call's world."""
         store = cls(path)
+        if os.path.lexists(store.path):  # a quick look, to spare the work and say so at once; the publishing is the guard
+            raise Refusal(f"{store.path} is there already; a world is not overwritten (choose another file with --world, or move that one away)", "world_exists", path=str(store.path))
         store.path.parent.mkdir(parents=True, exist_ok=True)
+        fd, temp = temp_file(store.path.parent, store.path.name, 0o644)
+        os.close(fd)
         try:
-            os.close(os.open(store.path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644))
-        except FileExistsError:
-            raise Refusal(f"{store.path} is there already; a world is not overwritten (choose another file with --world, or move that one away)", "world_exists", path=str(store.path)) from None
-        try:
-            with closing(_connect(store.path)) as db:
-                db.execute("BEGIN")  # one transaction for the tables and the rows: a reader sees an empty file, then the whole world
+            with closing(_connect(temp)) as db:
+                db.execute("BEGIN")  # one transaction for the tables and the rows
                 for statement in SCHEMA:
                     db.execute(statement)
                 db.execute("INSERT INTO world (id, format, version, rule) VALUES (1, ?, ?, ?)", (FORMAT, VERSION, dumps(journal.rule)))
                 for e in journal.events:
                     cls._insert(db, e)
                 db.commit()
-        except BaseException:
-            store.path.unlink(missing_ok=True)  # (this call made the file, so it is this call's to remove)
-            raise
+            _publish(temp, store.path)
+        except FileExistsError:
+            raise Refusal(f"{store.path} is there already; a world is not overwritten (choose another file with --world, or move that one away)", "world_exists", path=str(store.path)) from None
+        finally:
+            temp.unlink(missing_ok=True)
         return store
 
     @staticmethod
