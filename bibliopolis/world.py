@@ -61,7 +61,7 @@ import math
 from dataclasses import dataclass, field
 
 from . import layout as lay
-from .plan import MIRROR, MODES, check_districts
+from .plan import HAND, MIRROR, MODES, check_districts
 from .tree import TreeView, major_tag
 
 WORLD_VERSION = "world/1"
@@ -123,8 +123,8 @@ class PlanView:
         self.districts: dict = plan["params"]["districts"]
         check_districts(self.districts)
         self.mode: str = plan.get("mode", "grow")
-        if self.mode not in MODES:
-            raise ValueError(f"the plan has a mode {self.mode!r}; the engine knows {MODES}")
+        if self.mode not in (*MODES, HAND):
+            raise ValueError(f"the plan has a mode {self.mode!r}; the engine knows {(*MODES, HAND)}")
         self.roads: list[str] = list(plan.get("roads", []))  # mirror: the topics that are roads from the start
         self._wedge: dict[str, tuple[int, int]] = {}
 

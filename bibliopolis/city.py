@@ -71,28 +71,41 @@ _DAY = re.compile(r"\d{4}-\d\d-\d\d")
 
 def chronicle_lines(doc: dict, limit: int | None = None) -> list[str]:
     """The chronicle of a city document as sentences, oldest first, one per entry (the first `limit` of them if given): the house whose arrival caused it, the
-    day it was added, and what happened. Every number comes from the entry or from the rule of the document."""
+    day it was added, and what happened. Every number comes from the entry or from the rule of the document. (In a world built by hand an entry says the event
+    that wrote it, and there are entries for a house filed, a road renamed or moved, an undo and a change of rule.)"""
     places = doc["places"]
     rule = doc["world"]["districts"]
 
-    def name(pid: str) -> str:  # the subject of a sentence: the root zone, or a road by the last word of its address
+    def name(pid: str, lead: bool = True) -> str:  # the root zone, the town hall, or a road by the last word of its address (`lead`: the first word of a sentence)
         place = places.get(pid)
         if place is None:
             return pid
-        if place.get("underground"):
-            return "The root zone"
+        if place.get("underground") or place.get("kind") == "plaza":
+            words = "the root zone" if place.get("underground") else "the town hall"
+            return words.capitalize() if lead else words
         return (place.get("address") or [pid])[-1]
 
     lines = []
     for e in doc["world"]["chronicle"][:limit]:
         at = e.get("at")
-        when = f"house {e['seq']}"
+        when = f"house {e['seq']}" if e.get("event_id") is None else f"event {e['event_id']}"
         if isinstance(at, str) and at:
             when += ", " + (at[:10] if _DAY.match(at) else at)  # the day, when `at` starts with one
         if "from" in e:
             lines.append(f"{when}: {name(e['from'])} held {e['count_before']} houses. {e['label']} opens as a road with {len(e['houses'])} of them; "
                          f"{e['count_after']} stay.")
-        else:
+        elif "over" in e:
             lines.append(f"{when}: {name(e['over'])} holds {e['count']} houses, more than {rule['max']}, and no group of {rule['min']} or more can open a road. "
                          f"It is marked over.")
+        elif "filed" in e:
+            lines.append(f"{when}: the house {e['filed']} moves from {name(e['left'], False)} to {name(e['joined'], False)}.")
+        elif "renamed" in e:
+            lines.append(f"{when}: {e['was']} is renamed {e['label']}.")
+        elif "moved" in e:
+            lines.append(f"{when}: {name(e['moved'])} moves from below {name(e['was_below'], False)} to below {name(e['below'], False)}, with {len(e['houses'])} houses.")
+        elif "undone" in e:
+            lines.append(f"{when}: event {e['undone']} ({e['of']}) is undone.")
+        else:
+            r = e["rule"]
+            lines.append(f"{when}: the rule is now {r['max']} houses at most and {r['min']} at least for a new road, auto {'on' if r.get('auto') else 'off'}.")
     return lines

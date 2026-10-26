@@ -377,6 +377,9 @@ def _check_coast(problems: _Problems, name: str, coast) -> None:
             problems.add(f"{name}.coast.polygons[{i}]", "must be a list of at least three [x, z] corners")
 
 
+HAND_ENTRIES = ("filed", "renamed", "moved", "undone", "rule")  # the keys that tell the entries of a world built by hand from a split and an over
+
+
 def _check_world(problems: _Problems, name: str, world: dict) -> None:
     where = f"{name}.world"
     rule = world.get("districts")
@@ -391,7 +394,9 @@ def _check_world(problems: _Problems, name: str, world: dict) -> None:
         if not isinstance(e, dict):
             problems.add(here, "must be an object")
             continue
-        _typed(problems, here, e, "seq", lambda v: _whole(v) and v >= 1, "a whole number, 1 or more (the arrival that caused it)")
+        by_hand = any(k in e for k in HAND_ENTRIES)  # (an entry of a world built by hand may come before the first house)
+        _typed(problems, here, e, "seq", lambda v: _whole(v) and v >= (0 if by_hand else 1),
+               "a whole number, 0 or more (the arrivals so far)" if by_hand else "a whole number, 1 or more (the arrival that caused it)")
         if "from" in e:  # a split
             _typed(problems, here, e, "from", _is_text, "a place id (a string)")
             _typed(problems, here, e, "label", _is_text, "the name of the new road (a string)")
@@ -401,8 +406,27 @@ def _check_world(problems: _Problems, name: str, world: dict) -> None:
         elif "over" in e:  # a road that became over
             _typed(problems, here, e, "over", _is_text, "a place id (a string)")
             _typed(problems, here, e, "count", _whole, "a whole number")
+        elif "filed" in e:  # a house filed onto a road
+            _typed(problems, here, e, "filed", _is_text, "the id of the house (a string)")
+            _typed(problems, here, e, "left", _is_text, "the place it left (a string)")
+            _typed(problems, here, e, "joined", _is_text, "the place it joined (a string)")
+        elif "renamed" in e:  # a road renamed
+            _typed(problems, here, e, "renamed", _is_text, "a place id (a string)")
+            _typed(problems, here, e, "was", _is_text, "the old name (a string)")
+            _typed(problems, here, e, "label", _is_text, "the new name (a string)")
+        elif "moved" in e:  # a road moved with the roads and houses below it
+            _typed(problems, here, e, "moved", _is_text, "a place id (a string)")
+            _typed(problems, here, e, "below", _is_text, "the place it stands below now (a string)")
+            _typed(problems, here, e, "was_below", _is_text, "the place it stood below (a string)")
+            _typed(problems, here, e, "houses", lambda v: isinstance(v, list), "the list of the houses that were put again")
+        elif "undone" in e:  # an event taken back
+            _typed(problems, here, e, "undone", lambda v: _whole(v) and v >= 1, "the number of the event (a whole number, 1 or more)")
+            _typed(problems, here, e, "of", _is_text, "the kind of that event (a string)")
+        elif "rule" in e:  # the district rule changed
+            _typed(problems, here, e, "rule", lambda v: isinstance(v, dict) and _whole(v.get("max")) and _whole(v.get("min")), "an object with whole numbers max and min")
         else:
-            problems.add(here, "must be a split (from, label, houses, count_before, count_after) or an over (over, count)")
+            problems.add(here, "must be a split (from, label, houses, count_before, count_after) or an over (over, count), or one of the entries of a world "
+                               f"built by hand ({', '.join(HAND_ENTRIES)})")
 
 
 def _check_links(problems: _Problems, name: str, doc: dict) -> None:

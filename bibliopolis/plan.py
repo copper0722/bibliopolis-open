@@ -31,7 +31,8 @@ from .tree import TreeView
 ZONING_VERSION = "districts-1"
 SCHEMA_VERSION = "1"
 GROW, MIRROR = "grow", "mirror"
-MODES = (GROW, MIRROR)
+MODES = (GROW, MIRROR)  # the modes `build` knows
+HAND = "hand"  # the mode of a world built by hand (bibliopolis.hand): no library to plan from, so it is not one of the modes of `build`
 MAX_HOUSES, MIN_HOUSES = 40, 10  # a road holds 10 to 40 houses
 DISTRICT_EXTRACT, DISTRICT_COUNT = "largest", "direct"  # the only rules the engine knows: the largest group is opened, the houses on the road itself are counted
 

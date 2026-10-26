@@ -65,6 +65,13 @@ NOTES_DISTRICTS = {
     "street.underground": "the root zone (根區): the street under the town hall; it has no road, no rib and nothing on the surface",
     "lot.underground": "the house stands in the root zone: its cell is on a compact grid under the plaza, outside the coast, the roads and the surface measures",
 }
+NOTES_HAND = {
+    "world.mode": "hand: the world is the fold of a log of events that the player appended (docs/world.md); a road is a category the player opened, and nothing "
+                  "splits or is marked over by itself",
+    "world.chronicle": "every road opened, house filed, road renamed or moved, undo and change of rule, in the order of the log (`event_id` is the number of the event, "
+                       "`seq` the arrivals so far, `at` the `at` of the event)",
+}
+HAND_INPUT = "a log of events (docs/world.md), folded in order into a world of roads and houses"
 LOT_KEYS = ("kind", "article", "parent", "order", "slot", "position", "facing")
 RESERVED_KEYS = ("kind", "parent", "slot", "end", "position", "facing")
 RIB_KEYS = ("trunk", "band", "side", "x0", "x1", "s", "slots")
@@ -175,13 +182,15 @@ def world_layout(doc: dict, *, with_reserved: bool = False, with_coast: bool = T
     for p in out.values():
         kinds[p["kind"]] = kinds.get(p["kind"], 0) + 1
     c = doc["composition"]
+    by_hand = doc.get("mode") == "hand"
     world = {"format": doc["schema_version"], "zoning_version": doc.get("zoning_version"), "mode": doc.get("mode"), "seq": doc.get("seq", 0),
              "houses": n_lots, "unbuilt": sum(1 for p in places.values() if p["kind"] == "reserved"),
-             "districts": dict(doc["districts"]), "chronicle": [dict(e) for e in doc["chronicle"]], "notes": {**NOTES, **NOTES_DISTRICTS}}
+             "districts": dict(doc["districts"]), "chronicle": [dict(e) for e in doc["chronicle"]],
+             "notes": {**NOTES, **NOTES_DISTRICTS, **(NOTES_HAND if by_hand else {})}}
     layout = {
         "schema_version": lay.SCHEMA_VERSION, "layout_version": lay.LAYOUT_VERSION,
         "centre": dict(doc["centre"]),
-        "generator": dict(GENERATOR),
+        "generator": {**GENERATOR, **({"input": HAND_INPUT} if by_hand else {})},
         "composition": {
             "home_max": c.get("home_max", lay.HOME_MAX), "trunk_min": c.get("trunk_min", lay.TRUNK_MIN),
             "articles": n_lots, "buildings": n_lots, "reserved_lots": n_reserved,
