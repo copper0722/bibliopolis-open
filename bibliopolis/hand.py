@@ -30,7 +30,8 @@ from . import document
 from . import layout as lay
 from . import plan as plan_mod
 from . import world as zw
-from .events import Refusal, standing
+from .events import AUTO_PREFIX, Refusal, standing
+from .suggest import largest_group
 
 ZONING_VERSION = "hand-1"
 FULL = 360 * lay.UNIT
@@ -288,7 +289,24 @@ class State:
         self.effects[e["seq"]] = {"houses": touched, "roads": opened}
 
     def settle(self, w: HandWorld, e: dict, touched: list[str], opened: list[str]) -> None:
-        """After an arrival: what the rule `auto` does (bibliopolis.suggest). Nothing without it."""
+        """After an arrival, under the rule `auto`: while the root zone holds more than `max` houses and some group of `min` or more of them shares an OpenAlex topic, a road is
+        opened for the largest group (`bibliopolis.suggest.largest_group`: the most specific level that gives one) and named after its topic, with the mechanics of `open_road`:
+        the houses that stay keep their lots. The road is `auto:<seq>` (`auto:<seq>.2` for a second one in the same event), a road like any other afterwards. When no group
+        reaches `min`, or the first ring has no direction left, nothing happens and the root zone stays crowded (`bibliopolis.suggest.crowded` says so). Nothing without `auto`."""
+        n = 0
+        while self.rule["auto"] and self.count(None) > self.rule["max"]:
+            group = largest_group({h: self.items[h]["openalex"] for h in self.houses_at(None)}, self.rule["min"])
+            if group is None:
+                return
+            try:
+                wedge = self.next_wedge()
+            except Refusal:
+                return
+            n += 1
+            key = f"{AUTO_PREFIX}{e['seq']}" + (f".{n}" if n > 1 else "")
+            self.open(w, key, group.name, None, group.houses, "add_item", wedge)
+            touched.extend(group.houses)
+            opened.append(key)
 
     def do_open_road(self, e: dict, p: dict) -> None:
         key, name, parent, ids = p["road"], p["name"], p["parent"], p["houses"]

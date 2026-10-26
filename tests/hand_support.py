@@ -292,7 +292,8 @@ def moved_by(event: dict, before: State) -> set[str]:
 def stability_violations(events: list[dict], rule: dict) -> list[str]:
     """Replay the log one event at a time: after each event that is not an undo, every house that the event did not move has the lot it had before it. An undo is
     excepted (it may re-place what came after the event it takes back): the world is folded again, and the replay goes on from there.
-    Also: the roads of the houses change exactly as the event says, except under `auto`, where an arrival may move the houses of a new road."""
+    Also: the roads of the houses change exactly as the event says. The one event that moves houses the payload does not name is an arrival under the rule `auto`: it
+    may open roads of its own for groups of the root zone, and then those houses (and no others) are moved, from the root zone onto roads that the rule opened."""
     bad = []
     state, seen = State(rule), []
     for e in events:
@@ -300,7 +301,7 @@ def stability_violations(events: list[dict], rule: dict) -> list[str]:
         if e["kind"] == "undo":
             state = fold(seen, rule)
             continue
-        before_lots, before_roads = lot_snapshot(state), dict(state.road_of)
+        before_lots, before_roads, auto = lot_snapshot(state), dict(state.road_of), state.rule["auto"]
         expected = moved_by(e, state)
         try:
             state.apply(e)
@@ -308,14 +309,17 @@ def stability_violations(events: list[dict], rule: dict) -> list[str]:
             bad.append(f"event {e['seq']} ({e['kind']}) was refused: {why}")
             return bad
         after_lots = lot_snapshot(state)
+        changed = {h for h, road in before_roads.items() if state.road_of[h] != road}
+        if e["kind"] == "add_item" and auto:
+            if any(before_roads[h] is not None or not state.road_of[h].startswith("auto:") for h in changed):
+                bad.append(f"event {e['seq']} (add_item) moved houses other than those of the root zone onto roads that the rule opened: {sorted(changed)[:5]}")
+            expected = expected | changed
+        elif e["kind"] in ("open_road", "file"):
+            if changed != expected:
+                bad.append(f"event {e['seq']} ({e['kind']}) changed the road of {sorted(changed ^ expected)}, which it should not")
+        elif changed:
+            bad.append(f"event {e['seq']} ({e['kind']}) changed the road of {sorted(changed)}")
         for h, lot in before_lots.items():
             if h not in expected and after_lots[h] != lot:
                 bad.append(f"event {e['seq']} ({e['kind']}) moved the house {h}, which it did not move: {lot['parent']}/{lot['slot']} -> {after_lots[h]['parent']}/{after_lots[h]['slot']}")
-        changed = {h for h, road in before_roads.items() if state.road_of[h] != road}
-        if e["kind"] in ("open_road", "file") and changed != expected:
-            bad.append(f"event {e['seq']} ({e['kind']}) changed the road of {sorted(changed ^ expected)}, which it should not")
-        if e["kind"] in ("rename_road", "set_rule", "move_road") and changed:
-            bad.append(f"event {e['seq']} ({e['kind']}) changed the road of {sorted(changed)}")
-        if e["kind"] == "add_item" and not state.rule["auto"] and changed:
-            bad.append(f"event {e['seq']} (add_item) changed the road of {sorted(changed)} with the rule `auto` off")
     return bad
