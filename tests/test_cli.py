@@ -211,7 +211,8 @@ def test_chronicle_says_so_when_it_is_empty_and_refuses_what_it_cannot_read(file
     assert run_main(capsys, "build", "--library", str(lib), "--tree", str(t), "--mode", "mirror", "--out", str(mirror))[0] == 0
     assert cli.main(["chronicle", "--city", str(mirror)]) == 0
     shown = capsys.readouterr()
-    assert shown.out == "" and "the chronicle is empty" in shown.err
+    assert shown.out == "" and shown.err.strip() == "the chronicle is empty: it has no split and no over entry"  # it says nothing about roads:
+    assert bibliopolis.summary(json.loads(mirror.read_text(encoding="utf-8")))["roads"] > 0  # this city has some, and no crowded one
     code, err = run_main(capsys, "chronicle", "--city", str(lib))
     assert code == 2 and "not a city document" in err
     code, err = run_main(capsys, "chronicle", "--city", str(city_file), "--limit", "0")

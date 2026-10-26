@@ -93,7 +93,7 @@ def chronicle_command(args: argparse.Namespace) -> int:
     city = inputs.read_city(inputs.load_json(args.city))
     lines = chronicle_lines(city, args.limit)
     if not lines:
-        print("the chronicle is empty: no road has opened and none is over", file=sys.stderr)
+        print("the chronicle is empty: it has no split and no over entry", file=sys.stderr)
     for line in lines:
         print(line)
     return 0

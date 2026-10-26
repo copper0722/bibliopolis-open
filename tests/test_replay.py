@@ -138,7 +138,7 @@ def test_a_topic_an_item_is_filed_under_while_its_house_stands_elsewhere_is_a_ro
     library = {"items": [art(1, ["x", "y"])] + [art(k, ["x"]) for k in range(2, 6)]}  # the first item is filed under both; its house stands at x (the lower id)
     full = bibliopolis.build_city(library, tree, mode="mirror")
     assert full["places"]["place:tag:y"]["lots"] == 0 and "place:tag:x" in full["places"]  # y is a road with no house, made by the last step
-    for n in range(0, 5):
+    for n in range(5):
         assert "place:tag:y" not in bibliopolis.build_city(library, tree, mode="mirror", first=n)["places"], n
     assert bibliopolis.build_city(library, tree, mode="mirror", first=5) == full and bibliopolis.build_city(library, tree, mode="mirror", first=99) == full
 
