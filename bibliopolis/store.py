@@ -83,7 +83,10 @@ def check_output(path: str | Path, world: str | Path) -> None:
     out, source = Path(path), Path(world)
     if _same_file(out, source):
         raise Refusal(f"{out} is the world that is being read ({source}); a world is not written over (choose another file)", "output_is_the_world", path=str(out), world=str(source))
-    found = _open_regular(out)
+    try:
+        found = _open_regular(out)
+    except PermissionError:  # a file that cannot be read is not looked into, and is a taken name all the same
+        found = None
     if found is not None:
         with found:
             if found.read(len(SQLITE_MAGIC)) == SQLITE_MAGIC:

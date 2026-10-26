@@ -241,6 +241,36 @@ def test_a_command_never_writes_over_a_file_that_is_there_whatever_it_holds(comm
 
 
 @pytest.mark.parametrize("command", list(WRITERS))
+def test_a_name_that_is_a_named_pipe_or_a_file_that_cannot_be_read_is_a_taken_name_and_is_not_waited_on(command, tmp_path, capsys):
+    import signal
+
+    world = a_world(tmp_path)
+    taken = []
+    if hasattr(os, "mkfifo") and hasattr(signal, "alarm"):
+        os.mkfifo(tmp_path / "pipe")
+        taken.append(tmp_path / "pipe")
+    if hasattr(os, "geteuid") and os.geteuid() != 0:
+        (tmp_path / "unreadable").write_text("not for reading", encoding="utf-8")
+        (tmp_path / "unreadable").chmod(0)
+        taken.append(tmp_path / "unreadable")
+    if not taken:
+        pytest.skip("this system has no named pipes, and the user can read any file")
+    signal.signal(signal.SIGALRM, lambda *args: (_ for _ in ()).throw(TimeoutError("the command waited")))
+    try:
+        for name in taken:
+            signal.alarm(20)
+            try:
+                code, err, _ = run_main(capsys, *WRITERS[command](name, world))
+            finally:
+                signal.alarm(0)
+            assert code == 2 and f"{name} is there already" in err, (name, err)
+    finally:
+        if (tmp_path / "unreadable").exists():
+            (tmp_path / "unreadable").chmod(0o600)
+    assert sorted(p.name for p in tmp_path.iterdir()) == sorted(["w.sqlite", *(n.name for n in taken)])  # nothing made, no temporary file left
+
+
+@pytest.mark.parametrize("command", list(WRITERS))
 @pytest.mark.parametrize("appears", ["a world", "a file of text"])
 def test_a_file_that_appears_between_the_check_and_the_write_is_never_written_over(command, appears, tmp_path, capsys, monkeypatch):
     """The check that the output is not a database passes, the world is read, and the other party makes the file in the meantime: the write was an `os.replace`, which replaced it."""
