@@ -7,8 +7,10 @@ A world built by hand is an append-only log of events, and its city and its chro
 `seq` runs 1, 2, 3, ... in log order. Log order is arrival order: the fold reads `at` from the event and never the clock, and `at` does not have to grow.
 
   add_item     {item}                         an item (its metadata, and its OpenAlex topics when they are known) becomes a house in the root zone, under the town hall
-  open_road    {road, name, parent, houses}   the player opens a road, a named category, below a road or (parent null) the root zone, and moves the chosen houses onto it;
-                                              the place it opens from holds at least `min` houses directly and at least `min` of them are chosen
+  open_road    {road, name, parent, houses, topic}
+                                              the player opens a road, a named category, below a road or (parent null) the root zone, and moves the chosen houses onto it;
+                                              the place it opens from holds at least `min` houses directly and at least `min` of them are chosen. `topic` is the OpenAlex
+                                              node the road stands for, `{id, level, name}` (a suggestion carries one), or null for a category the player named; it may be left out
   file         {house, road}                  a house moves, from the root zone or another road, onto a road
   rename_road  {road, name}
   move_road    {road, parent}                 a road, with the roads and houses below it, stands again below another road
@@ -27,7 +29,7 @@ from .plan import MAX_HOUSES, MIN_HOUSES
 
 KINDS = ("add_item", "open_road", "file", "rename_road", "move_road", "undo", "set_rule")
 ORDER = ("domain", "field", "subfield", "topic")  # the four levels of an OpenAlex topic, the widest first (the order the keys are written in)
-LEVELS = ORDER[::-1]  # ... and the most specific first (the order a suggestion tries them in)
+LEVELS = ORDER[::-1]  # ... and the most specific first (the order a filing suggestion scores them in)
 MAX_TOPICS = 3  # the primary topic of an item and up to two more
 RULE_KEYS = ("max", "min", "auto")
 DEFAULT_RULE = {"max": MAX_HOUSES, "min": MIN_HOUSES, "auto": False}
@@ -36,8 +38,10 @@ AUTO_PREFIX = "auto:"  # the ids of the roads that the rule opens by itself; a p
 ITEM_KEYS = ("id", "title", "authors", "year", "doi", "type", "openalex")
 ITEM_REQUIRED = ("id", "title", "authors", "year", "type")
 YEAR_LIMIT = 10**6
-PAYLOAD_KEYS = {"add_item": ("item",), "open_road": ("road", "name", "parent", "houses"), "file": ("house", "road"), "rename_road": ("road", "name"),
+PAYLOAD_KEYS = {"add_item": ("item",), "open_road": ("road", "name", "parent", "houses", "topic"), "file": ("house", "road"), "rename_road": ("road", "name"),
                 "move_road": ("road", "parent"), "undo": ("seq",), "set_rule": RULE_KEYS}
+OPTIONAL_KEYS = {"open_road": ("topic",)}  # left out, they are null (the event is kept with every key, in the order of PAYLOAD_KEYS)
+NODE_KEYS = ("id", "level", "name")  # the OpenAlex node a road carries: the id of the node, its level (one of ORDER) and its name
 
 # The ids of every refusal, problem of shape and error of a world file, with the names of their params: the one list (docs/world.md, "Refusals" says when each comes).
 # A page translates from the id and the params. A place is a road id, or None for the root zone; a `got` is the name of a type or a short text of the value.
@@ -53,6 +57,8 @@ CODES = {
     "too_few_here": ("road", "held", "least"),
     "too_few_chosen": ("chosen", "least"),
     "house_elsewhere": ("house", "road", "on"),
+    "node_taken": ("level", "topic", "road"),
+    "house_not_under_node": ("house", "level", "topic"),
     "already_there": ("house", "road"),
     "same_name": ("road", "name"),
     "move_into_itself": ("road", "parent"),
@@ -93,6 +99,8 @@ CODES = {
     "undo_seq_bad": ("got",),
     "houses_empty": (),
     "house_chosen_twice": ("house",),
+    "node_not_an_object": ("got",),
+    "node_level_bad": ("got", "levels"),
     "event_seq_bad": ("got",),
     "date_bad": ("at",),
     "kind_unknown": ("kind", "kinds"),
@@ -277,6 +285,24 @@ def check_rule(rule, where: str, problems: Problems) -> dict | None:
 
 
 # ----------------------------------------------------------------------------------------------------- events ----
+def check_node(value, where: str, problems: Problems) -> tuple[bool, dict | None]:
+    """The OpenAlex node that a road carries: null (a category the player named) or `{id, level, name}`, the level one of ORDER. Returns (whether it is right, the node with its
+    keys in that order, or None). Whether the houses of the road are under the node, and whether another road carries it already, is for the world to say."""
+    if value is None:
+        return True, None
+    if not isinstance(value, dict):
+        problems.add(where, f"must be null or an object {{id, level, name}}, got {type(value).__name__}", "node_not_an_object", got=type(value).__name__)
+        return False, None
+    start = _count(problems)
+    if not _keys(problems, where, value, NODE_KEYS, NODE_KEYS):
+        return False, None
+    text(problems, f"{where}.id", value["id"], plain=True)
+    text(problems, f"{where}.name", value["name"], plain=True)
+    if value["level"] not in ORDER:
+        problems.add(f"{where}.level", f"must be one of {', '.join(ORDER)}, got {_shown(value['level'])}", "node_level_bad", got=_shown(value["level"]), levels=list(ORDER))
+    return _count(problems) == start, {k: value[k] for k in NODE_KEYS}
+
+
 def _road_id(problems: Problems, where: str, value, *, new: bool = False) -> bool:
     """A road id: text without control characters. A new road may not look like the id of a continuation rib (lane:<id>:<n>) nor start with `auto:`."""
     if not text(problems, where, value, plain=True):
@@ -295,8 +321,9 @@ def _payload(kind: str, payload, where: str, problems: Problems) -> dict | None:
         problems.add(where, f"must be an object, got {type(payload).__name__}", "not_an_object", got=type(payload).__name__)
         return None
     keys = PAYLOAD_KEYS[kind]
+    required = tuple(k for k in keys if k not in OPTIONAL_KEYS.get(kind, ()))
     start = _count(problems)
-    if not _keys(problems, where, payload, keys, keys):
+    if not _keys(problems, where, payload, required, keys):
         return None
     if kind == "add_item":
         item = check_item(payload["item"], f"{where}.item", problems)
@@ -318,6 +345,7 @@ def _payload(kind: str, payload, where: str, problems: Problems) -> dict | None:
             for j, h in enumerate(houses):
                 if text(problems, f"{where}.houses[{j}]", h, plain=True) and h in houses[:j]:
                     problems.add(f"{where}.houses[{j}]", f"{h!r} is chosen twice", "house_chosen_twice", house=h)
+        _, node = check_node(payload.get("topic"), f"{where}.topic", problems)
     elif kind == "file":
         text(problems, f"{where}.house", payload["house"], plain=True)
         _road_id(problems, f"{where}.road", payload["road"])
@@ -327,7 +355,12 @@ def _payload(kind: str, payload, where: str, problems: Problems) -> dict | None:
     elif kind == "move_road":
         _road_id(problems, f"{where}.road", payload["road"])
         _road_id(problems, f"{where}.parent", payload["parent"])
-    return {k: payload[k] for k in keys} if _count(problems) == start else None
+    if _count(problems) != start:
+        return None
+    out = {k: payload.get(k) for k in keys}
+    if kind == "open_road":
+        out["topic"] = node
+    return out
 
 
 def check_event(event, where: str, problems: Problems) -> dict | None:

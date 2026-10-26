@@ -87,8 +87,9 @@ def test_a_rule_is_two_whole_numbers_and_a_boolean():
 
 
 # ---------------------------------------------------------------------------------------------------- events ----
-GOOD = [("add_item", {"item": item(1)}), ("open_road", {"road": "r1", "name": "Road one", "parent": None, "houses": [hid(1), hid(2)]}),
-        ("open_road", {"road": "r2", "name": "Road two", "parent": "r1", "houses": [hid(3)]}), ("file", {"house": hid(1), "road": "r1"}),
+NODE = {"id": "ex:d1", "level": "domain", "name": "Domain 1"}
+GOOD = [("add_item", {"item": item(1)}), ("open_road", {"road": "r1", "name": "Road one", "parent": None, "houses": [hid(1), hid(2)], "topic": None}),
+        ("open_road", {"road": "r2", "name": "Road two", "parent": "r1", "houses": [hid(3)], "topic": NODE}), ("file", {"house": hid(1), "road": "r1"}),
         ("rename_road", {"road": "r1", "name": "New"}), ("move_road", {"road": "r2", "parent": "r1"}), ("undo", {"seq": 1}),
         ("set_rule", {"max": 40, "min": 10, "auto": False})]
 
@@ -98,6 +99,30 @@ def test_each_kind_of_event_is_taken_with_its_payload_and_written_in_the_same_or
     out, found = checked(ev.check_event, event(kind, dict(reversed(list(payload.items())))), "event")
     assert found == [] and list(out) == ["seq", "at", "kind", "payload"] and list(out["payload"]) == list(ev.PAYLOAD_KEYS[kind])
     assert out["payload"] == payload or kind == "add_item"
+
+
+def test_the_node_of_a_road_may_be_left_out_and_is_then_kept_as_null_at_the_end_of_the_payload():
+    left_out = {"road": "r1", "name": "Road one", "parent": None, "houses": [hid(1)]}
+    out, found = checked(ev.check_event, event("open_road", left_out), "event")
+    assert found == [] and out["payload"] == {**left_out, "topic": None} and list(out["payload"]) == ["road", "name", "parent", "houses", "topic"]
+    assert ev.OPTIONAL_KEYS == {"open_road": ("topic",)}
+
+
+NODE_FAULTS = [({"id": "ex:d1", "level": "domain"}, "missing name"), ({**NODE, "extra": 1}, "unknown extra"), ({**NODE, "level": "planet"}, "must be one of domain, field, subfield, topic"),
+               ({**NODE, "level": 3}, "must be one of"), ({**NODE, "id": ""}, "must not be empty"), ({**NODE, "name": 5}, "must be a string"), ("domain", "null or an object"),
+               ([NODE], "null or an object"), ({**NODE, "id": "a\nb"}, "control characters")]
+
+
+@pytest.mark.parametrize("node, fragment", NODE_FAULTS, ids=[f for _, f in NODE_FAULTS])
+def test_a_faulty_node_is_a_problem_with_its_place(node, fragment):
+    out, found = checked(ev.check_event, event("open_road", {"road": "r1", "name": "R", "parent": None, "houses": [hid(1)], "topic": node}), "event")
+    assert out is None and any(line.startswith("event.payload.topic") and fragment in line for line in found), found
+
+
+def test_the_four_levels_of_a_node_are_the_four_levels_of_a_topic_of_an_item():
+    for level in ev.ORDER:
+        out, found = checked(ev.check_event, event("open_road", {"road": "r1", "name": "R", "parent": None, "houses": [hid(1)], "topic": {**NODE, "level": level}}), "event")
+        assert found == [] and out["payload"]["topic"]["level"] == level
 
 
 def test_the_kinds_are_the_seven_of_the_page():

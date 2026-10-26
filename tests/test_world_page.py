@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 import refusal_cases as rc
-from hand_support import Hand, hid, item, stamp, topic
+from hand_support import Hand, hid, item, sample_world_items, stamp, topic
 
 from bibliopolis import cli, hand
 from bibliopolis import events as ev
@@ -133,5 +133,14 @@ def test_the_limits_the_page_states_are_the_limits_of_the_program():
     with pytest.raises(ev.Refusal):
         h.journal.append("move_road", {"road": "a", "parent": None}, stamp(99))  # a road is not made a ring-1 road by a move
     assert "A road never becomes a ring-1 road by moving" in PAGE and "No trunk is promoted" in PAGE
-    assert "never marked over" in PAGE and "Under `auto` an arrival is not filed" in PAGE
+    assert "never marked over" in PAGE and "A road for a topic is not split" in PAGE
     assert (ROOT / "docs" / "engine.md").is_file() and "[engine.md](engine.md)" in PAGE
+
+
+def test_the_numbers_the_page_gives_for_the_sample_are_the_numbers_of_the_program():
+    found = re.search(r"the rule makes (\d+) roads \(domains (\d+), fields (\d+), subfields (\d+), topics (\d+)\), and (\d+) houses stay underground", PAGE)
+    assert found, "the sentence about the sample is not on the page"
+    h = Hand({"max": 40, "min": 10, "auto": True})
+    h.add_items(sample_world_items())
+    levels = [sum(1 for n in h.state.nodes.values() if n["topic"]["level"] == level) for level in ev.ORDER]
+    assert [int(x) for x in found.groups()] == [len(h.state.nodes), *levels, h.state.count(None)]

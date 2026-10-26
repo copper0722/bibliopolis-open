@@ -19,6 +19,9 @@ from bibliopolis.store import Store
 from bibliopolis.suggest import suggest_file, suggest_road
 
 
+DOMAIN_1 = {"id": "ex:d1", "level": "domain", "name": "Domain 1"}
+
+
 def raised(act):
     """Run `act`: the refusal or the file error it raises."""
     try:
@@ -144,6 +147,20 @@ def house_elsewhere(tmp):
     h = town(24)
     h.open("a", "A", None, houses(1, 10))
     return raised(lambda: h.open("b", "B", None, houses(1, 10)))
+
+
+def node_taken(tmp):
+    h = Hand()
+    h.add(24, topic(1, 1, 1, 1))
+    h.open("a", "A", None, houses(1, 12), DOMAIN_1)
+    return raised(lambda: h.open("b", "B", None, houses(13, 24), DOMAIN_1))
+
+
+def house_not_under_node(tmp):
+    h = Hand()
+    h.add(12, topic(1, 1, 1, 1))
+    h.add(12, topic(2, 1, 1, 1))
+    return raised(lambda: h.open("a", "A", None, [*houses(2, 10), hid(13)], DOMAIN_1))
 
 
 def already_there(tmp):
@@ -324,6 +341,14 @@ def houses_empty(tmp):
 
 def house_chosen_twice(tmp):
     return road_problem("house_chosen_twice", "open_road", {"road": "r", "name": "N", "parent": None, "houses": ["a", "a"]})
+
+
+def node_not_an_object(tmp):
+    return road_problem("node_not_an_object", "open_road", {"road": "r", "name": "N", "parent": None, "houses": ["a"], "topic": "domain"})
+
+
+def node_level_bad(tmp):
+    return road_problem("node_level_bad", "open_road", {"road": "r", "name": "N", "parent": None, "houses": ["a"], "topic": {**DOMAIN_1, "level": "planet"}})
 
 
 def event_seq_bad(tmp):

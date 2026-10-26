@@ -17,6 +17,7 @@ from bibliopolis import world as zw
 from bibliopolis.events import Refusal, standing
 from bibliopolis.hand import State, fold
 from bibliopolis.journal import Journal
+from bibliopolis.suggest import landing, suggest_road
 
 START = datetime(2026, 1, 1, tzinfo=timezone.utc)
 ROOT = zw.ROOT_PLACE
@@ -43,6 +44,39 @@ def item(i: int, *topics: dict, **extra) -> dict:
 
 def hid(i: int) -> str:
     return f"h{i:04d}"
+
+
+def sample_world_items() -> list[dict]:
+    """The 600 items of the sample as items of a world, in arrival order, with invented OpenAlex-shaped topics made from the nodes they are filed under (the deepest first, up to
+    three): the root of the sample tree is the domain, its child the field, and so on; a node that is not deep enough is its own subfield and topic."""
+    from support import sample
+
+    from bibliopolis.tree import TreeView, major_tag
+
+    tree, library = sample()
+    checked = inputs.read_tree(tree)
+    items = inputs.read_library(library, checked)
+    view = TreeView(checked)
+
+    def path(node_id):
+        out = []
+        while node_id is not None:
+            out.append(node_id)
+            node_id = view.parent(node_id)
+        return out[::-1]
+
+    def oa_of(nodes):
+        pick = lambda i: nodes[min(i, len(nodes) - 1)]  # noqa: E731
+        return {"domain": {"id": f"ex:domain:{pick(0)}", "name": f"Domain {pick(0)}"}, "field": {"id": f"ex:field:{pick(1)}", "name": f"Field {pick(1)}"},
+                "subfield": {"id": f"ex:subfield:{pick(2)}", "name": f"Subfield {pick(2)}"}, "topic": {"id": f"ex:topic:{nodes[-1]}", "name": f"Topic {nodes[-1]}"}}
+
+    out = []
+    for it in items:
+        main = major_tag(view, it)
+        order = ([main] if main else []) + [t for t in it["topics"] if t != main]
+        out.append({"id": it["id"], "title": it["title"], "authors": it["authors"], "year": it["year"], "doi": it["doi"], "type": it["type"],
+                    "openalex": [oa_of(path(t)) for t in order[:3]]})
+    return out
 
 
 def random_item(rng: random.Random, i: int) -> dict:
@@ -94,8 +128,12 @@ class Hand:
             self.count += 1
             self.event("add_item", {"item": it})
 
-    def open(self, road: str, name: str, parent: str | None, houses: list[str]) -> dict:
-        return self.event("open_road", {"road": road, "name": name, "parent": parent, "houses": houses})
+    def open(self, road: str, name: str, parent: str | None, houses: list[str], topic: dict | None = None) -> dict:
+        return self.event("open_road", {"road": road, "name": name, "parent": parent, "houses": houses, "topic": topic})
+
+    def take(self, suggestion: dict, road: str) -> dict:
+        """Open the road of a suggestion (`suggest_road`) as it stands, under the id `road`."""
+        return self.open(road, suggestion["name"], suggestion["at"], suggestion["houses"], suggestion["topic"])
 
     def file(self, house: str, road: str) -> dict:
         return self.event("file", {"house": house, "road": road})
@@ -139,23 +177,65 @@ def scripted():
     return h
 
 
+def scripted_nodes():
+    """A log with OpenAlex topics, for the roads that stand for a node: a suggestion taken as it stands, a house with topics in two domains, a category with no node, the rule
+    `auto` on (an arrival that lands on a road and splits it three levels down in one event, arrivals that stay underground), a rename, a filing, a move of a road with a node,
+    and an undo from the middle."""
+    h = Hand({"max": 12, "min": 5, "auto": False})
+    h.add(8, topic(1, 1, 1, 1))
+    h.add(7, topic(1, 2, 1, 1))
+    h.add(6, topic(2, 1, 1, 1), topic(1, 1, 1, 2))  # primary in domain 2, a second topic in domain 1
+    h.add(3)
+    h.take(suggest_road(h.state, None), "d1")  # domain 1: 21 houses, the six too
+    h.add(5, topic(3, 1, 1, 1))
+    h.open("mine", "My three", None, [hid(22), hid(23), hid(24), hid(25), hid(26)])  # a category with no node
+    h.rule(12, 5, True)
+    h.add(1, topic(1, 1, 1, 1))  # lands on d1 (22 houses): field 1.1 takes 15, then its subfield, then its topic 1.1.1.1 (9)
+    h.add(1, topic(2, 1, 1, 1))  # no road for domain 2
+    h.add(1)  # no topic
+    first = next(k for k in h.state.nodes if k.startswith("auto:"))
+    h.rename(first, "Field one")
+    h.add(1, topic(1, 2, 1, 1))  # lands on d1 (the field 1.2 has no road)
+    h.file(hid(30), "mine")
+    h.add(2, topic(1, 1, 1, 2))  # topic 1.1.1.2: the road of its subfield
+    leaf = next(k for k, n in h.state.nodes.items() if n["topic"] and n["topic"]["level"] == "topic")
+    h.move(leaf, "mine")  # a road for a node moves, with its houses
+    h.add(1, topic(1, 1, 1, 1))  # lands on it, wherever it stands now
+    h.add(1, topic(3, 1, 1, 1))
+    h.add(1, topic(2, 1, 1, 1))
+    h.undo(len(h.journal.events) - 1)  # the arrival before the last: nothing names the house it added
+    return h
+
+
 # ------------------------------------------------------------------------------------------ a random player ----
-def play(seed: int, steps: int = 120, *, auto: bool = False, rule: dict | None = None) -> Journal:
+def play(seed: int, steps: int = 120, *, auto: bool = False, rule: dict | None = None, suggested: bool = False, arrivals: float = 0.46) -> Journal:
     """A random player: items arrive, roads open below the root zone and below roads, houses are filed, roads renamed and moved, the rule changes, events are undone.
-    Every act goes through `Journal.append`; the ones the world refuses are the player's mistakes and are left out of the log."""
+    Every act goes through `Journal.append`; the ones the world refuses are the player's mistakes and are left out of the log. With `suggested`, a road is often opened
+    as a suggestion has it (`suggest_road` at a random place: it carries its OpenAlex node), and otherwise as before: a random choice of houses, a category with no node.
+    `arrivals` is the part of the steps that bring an item (0.46 by default); the other acts keep their shares of the rest."""
     rng = random.Random(seed)
     top = rng.choice([8, 12, 20, 40])
     hand = Hand(rule or {"max": top, "min": min(top, rng.choice([3, 4, 6, 10])), "auto": auto})
     road_no = 0
     for step in range(steps):
         state, r = hand.state, rng.random()
+        if arrivals != 0.46:
+            r = r * 0.46 / arrivals if r < arrivals else 0.46 + (r - arrivals) * 0.54 / (1 - arrivals)
         try:
             if r < 0.46 or len(state.items) < 6:
                 hand.add_items([random_item(rng, hand.count + 1)])
             elif r < 0.62:  # open a road: from a place that holds enough, with a random choice of its houses
                 places = [None, *state.nodes]
                 rng.shuffle(places)
-                for parent in places:
+                taken = False
+                for parent in places if suggested and rng.random() < 0.6 else ():
+                    suggestion = suggest_road(state, parent)
+                    if suggestion is not None:
+                        road_no += 1
+                        hand.take(suggestion, f"r{road_no}")
+                        taken = True
+                        break
+                for parent in places if not taken else ():
                     held = state.houses_at(parent)
                     if len(held) >= state.rule["min"]:
                         k = rng.randint(state.rule["min"], len(held))
@@ -319,7 +399,8 @@ def stability_violations(events: list[dict], rule: dict) -> list[str]:
     """Replay the log one event at a time: after each event that is not an undo, every house that the event did not move has the lot it had before it. An undo is
     excepted (it may re-place what came after the event it takes back): the world is folded again, and the replay goes on from there.
     Also: the roads of the houses change exactly as the event says. The one event that moves houses the payload does not name is an arrival under the rule `auto`: it
-    may open roads of its own for groups of the root zone, and then those houses (and no others) are moved, from the root zone onto roads that the rule opened."""
+    may open roads of its own (`auto:<seq>`, `auto:<seq>.2`, ...) for groups of the place where the house landed, and then those houses (and no others) are moved, each from
+    the place the road was opened from (or, when that road was split in turn, from the place the first of them was opened from) onto a road that the event opened."""
     bad = []
     state, seen = State(rule), []
     for e in events:
@@ -327,7 +408,7 @@ def stability_violations(events: list[dict], rule: dict) -> list[str]:
         if e["kind"] == "undo":
             state = fold(seen, rule)
             continue
-        before_lots, before_roads, auto = lot_snapshot(state), dict(state.road_of), state.rule["auto"]
+        before_lots, before_roads, auto, before_nodes = lot_snapshot(state), dict(state.road_of), state.rule["auto"], set(state.nodes)
         expected = moved_by(e, state)
         try:
             state.apply(e)
@@ -336,9 +417,18 @@ def stability_violations(events: list[dict], rule: dict) -> list[str]:
             return bad
         after_lots = lot_snapshot(state)
         changed = {h for h, road in before_roads.items() if state.road_of[h] != road}
-        if e["kind"] == "add_item" and auto:
-            if any(before_roads[h] is not None or not state.road_of[h].startswith("auto:") for h in changed):
-                bad.append(f"event {e['seq']} (add_item) moved houses other than those of the root zone onto roads that the rule opened: {sorted(changed)[:5]}")
+        if e["kind"] == "add_item":
+            new = [k for k in state.nodes if k not in before_nodes]
+            if not auto and new:
+                bad.append(f"event {e['seq']} (add_item) opened roads without the rule auto: {new}")
+            if any(not k.startswith("auto:") for k in new):
+                bad.append(f"event {e['seq']} (add_item) opened a road that is not an auto road: {new}")
+            for h in changed:
+                road = state.road_of[h]
+                while road is not None and road in new and state.nodes[road]["parent"] in new:  # (up the roads that this event opened, to the one opened from an old place)
+                    road = state.nodes[road]["parent"]
+                if road not in new or state.nodes[road]["parent"] != before_roads[h]:
+                    bad.append(f"event {e['seq']} (add_item) moved the house {h} from {before_roads[h]!r} to {state.road_of[h]!r}, which is not a road opened from where it stood")
             expected = expected | changed
         elif e["kind"] in ("open_road", "file"):
             if changed != expected:
@@ -348,4 +438,27 @@ def stability_violations(events: list[dict], rule: dict) -> list[str]:
         for h, lot in before_lots.items():
             if h not in expected and after_lots[h] != lot:
                 bad.append(f"event {e['seq']} ({e['kind']}) moved the house {h}, which it did not move: {lot['parent']}/{lot['slot']} -> {after_lots[h]['parent']}/{after_lots[h]['slot']}")
+    return bad
+
+
+def landing_violations(events: list[dict], rule: dict) -> list[str]:
+    """Replay the log one event at a time and check where each arrival stands under the rule `auto`: on the road `bibliopolis.suggest.landing` names in the world before it
+    (the root zone when none), or on a road that the same event opened out of the place it landed on (the group of a split goes down, level by level)."""
+    bad = []
+    state, seen = State(rule), []
+    for e in events:
+        seen.append(e)
+        if e["kind"] == "undo":
+            state = fold(seen, rule)
+            continue
+        item, auto = (e["payload"]["item"], state.rule["auto"]) if e["kind"] == "add_item" else (None, False)
+        want, before_nodes = (landing(state, item) if auto else None), set(state.nodes)
+        state.apply(e)
+        if item is None:
+            continue
+        road = state.road_of[item["id"]]
+        while road is not None and road not in before_nodes:  # up the roads that this event opened, to the place the house landed on
+            road = state.nodes[road]["parent"]
+        if road != want:
+            bad.append(f"event {e['seq']}: the house {item['id']} stands on {state.road_of[item['id']]!r}, which does not come of {want!r}, the road it lands on")
     return bad

@@ -23,7 +23,7 @@ ERRORS = ("Refusal", "WorldFileError")
 
 # --------------------------------------------------------------------------------- the list and its scenarios ----
 def test_the_list_of_ids_is_one_list_of_names_each_with_the_names_of_its_params():
-    assert len(ev.CODES) == 61 and all(code.isidentifier() and code == code.lower() for code in ev.CODES)
+    assert len(ev.CODES) == 65 and all(code.isidentifier() and code == code.lower() for code in ev.CODES)
     for code, params in ev.CODES.items():
         assert isinstance(params, tuple) and len(set(params)) == len(params) and all(isinstance(p, str) and p.isidentifier() for p in params), code
 
@@ -54,7 +54,7 @@ def test_each_id_is_made_as_a_refusal_a_file_error_or_a_problem_of_shape_and_the
         made = case(folder)
         kinds["problem" if isinstance(made, dict) else type(made).__name__].add(code)
     assert kinds["Refusal"] | kinds["WorldFileError"] | kinds["problem"] == set(ev.CODES)
-    assert (len(kinds["Refusal"]), len(kinds["WorldFileError"]), len(kinds["problem"])) == (23, 11, 27)
+    assert (len(kinds["Refusal"]), len(kinds["WorldFileError"]), len(kinds["problem"])) == (25, 11, 29)
 
 
 def test_the_problems_of_an_invalid_refusal_have_each_an_id_of_the_list_and_a_place():

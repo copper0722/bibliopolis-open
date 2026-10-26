@@ -5,7 +5,7 @@ The check itself is `stability_violations` of hand_support. It reads what an eve
 so a fault that moves one house too many shows. The mutation controls below plant such faults in the engine and see that the check turns red."""
 
 import pytest
-from hand_support import play, scripted, stability_violations
+from hand_support import landing_violations, play, scripted, scripted_nodes, stability_violations
 
 from bibliopolis import hand
 from bibliopolis import layout as lay
@@ -17,6 +17,14 @@ def test_a_scripted_log_with_every_kind_of_event_is_stable():
     kinds = {e["kind"] for e in h.journal.events}
     assert kinds == {"add_item", "open_road", "file", "rename_road", "move_road", "undo", "set_rule"}
     assert stability_violations(h.journal.events, h.journal.rule) == []
+
+
+def test_a_scripted_log_with_roads_for_nodes_and_the_rule_auto_is_stable_and_its_arrivals_land_where_the_rule_says():
+    h = scripted_nodes()
+    assert {e["kind"] for e in h.journal.events} == {"add_item", "open_road", "file", "rename_road", "move_road", "undo", "set_rule"}
+    assert any(n["topic"] is not None for n in h.state.nodes.values()) and any(k.startswith("auto:") for k in h.state.nodes) and "mine" in h.state.nodes
+    assert stability_violations(h.journal.events, h.journal.rule) == []
+    assert landing_violations(h.journal.events, h.journal.rule) == []
 
 
 @pytest.mark.parametrize("seed", range(40))
@@ -150,3 +158,40 @@ def test_the_check_reads_what_an_event_moves_from_the_event_and_not_from_the_eng
             assert moved == set()
         state.apply(e)
     assert standing(h.journal.events)  # (the script has events that count)
+
+
+def test_the_check_is_red_when_an_arrival_under_the_rule_auto_packs_the_houses_of_the_road_it_lands_on(monkeypatch):
+    h = scripted_nodes()
+    original = hand.HandWorld.add_houses
+
+    def packing(self, road, pending, trigger):
+        original(self, road, pending, trigger)
+        if trigger == "add_item" and road != "place:root":  # the houses of the road close ranks, as a split of the grown city makes them
+            lots = self.lots_on(road)
+            for lot in lots:
+                self.free_lot(lot)
+            original(self, road, [{"article": lot["article"], "tag": lot["tag"], "seq": lot["seq"]} for lot in lots], trigger)
+
+    monkeypatch.setattr(hand.HandWorld, "add_houses", packing)
+    found = stability_violations(h.journal.events, h.journal.rule)
+    assert found and any("(add_item)" in line and "moved the house" in line for line in found), found
+    monkeypatch.undo()
+    assert stability_violations(h.journal.events, h.journal.rule) == []
+
+
+def test_the_check_is_red_when_the_rule_moves_houses_to_a_road_that_is_not_one_opened_from_where_they_stood(monkeypatch):
+    h = scripted_nodes()
+    original = hand.State.settle
+
+    def straying(self, w, e, start, touched, opened):
+        original(self, w, e, start, touched, opened)
+        stray = next((x for x in self.items if self.road_of[x] is None and x not in touched), None)
+        if opened and stray is not None:  # one house of the root zone goes with the group that the rule took from a road
+            w.file_house(stray, opened[0], "add_item")
+            self.road_of[stray] = opened[0]
+
+    monkeypatch.setattr(hand.State, "settle", straying)
+    found = stability_violations(h.journal.events, h.journal.rule)
+    assert found and any("not a road opened from where it stood" in line for line in found), found
+    monkeypatch.undo()
+    assert stability_violations(h.journal.events, h.journal.rule) == []

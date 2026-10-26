@@ -18,9 +18,12 @@ There is no library to plan from, so the plan grows with the world and never cha
   stability       a house stays on its lot unless an event moves it: opening a road moves the houses chosen, filing a house moves that house, moving a road moves
                   the houses of its subtree. The houses that stay keep their lots, whatever holes the others leave. (`undo` may re-place what came after the event
                   it takes back: the fold of the log without that event.)
+  a node          a road may stand for one OpenAlex node (`open_road` `topic`, `{id, level, name}`): the houses chosen are under it, and no other road stands for it.
   the rule        `max` and `min` are the limits of the player's district rule (`open_road` needs `min` houses; `crowded` lists what is above `max`). The world
-                  marks nothing over and splits nothing by itself, except under `auto` (bibliopolis.suggest): after each arrival the rule opens a road for the
-                  largest group of the root zone, with the same mechanics as `open_road`, so even then the houses that stay keep their lots.
+                  marks nothing over and splits nothing by itself, except under `auto` (bibliopolis.suggest): an arriving house stands on the deepest road whose node
+                  it is under (the root zone when there is none), and a place that then holds more than `max` houses opens a road for its largest group, one level of
+                  OpenAlex below the place, with the same mechanics as `open_road`, so even then the houses that stay keep their lots. A road so opened is split in
+                  turn while it holds more than `max`.
   the chronicle   one entry for each road opened (the shape of a split), house filed, road renamed or moved, undo and change of rule, in log order; `event_id` is the
                   `seq` of the event and `at` its `at`.
 """
@@ -32,7 +35,7 @@ from . import layout as lay
 from . import plan as plan_mod
 from . import world as zw
 from .events import AUTO_PREFIX, Refusal, standing
-from .suggest import largest_group
+from .suggest import descends, landing, roads_by_node, suggest_road
 
 ZONING_VERSION = "hand-1"
 FULL = 360 * lay.UNIT
@@ -294,9 +297,9 @@ class State:
     def where(self, road: str | None) -> str:
         return "the root zone" if road is None else f"the road {road!r}"
 
-    def open(self, w: HandWorld, key: str, name: str, parent: str | None, ids: list[str], trigger: str, wedge: tuple[int, int] | None) -> None:
-        """Open a road: its node in the player's tree, its sector when it is a ring-1 road, then the engine's `open_road`."""
-        self.nodes[key] = {"key": key, "name": name, "parent": parent}
+    def open(self, w: HandWorld, key: str, name: str, parent: str | None, ids: list[str], trigger: str, wedge: tuple[int, int] | None, node: dict | None = None) -> None:
+        """Open a road: its node in the player's tree (`topic` is the OpenAlex node it stands for, or None), its sector when it is a ring-1 road, then the engine's `open_road`."""
+        self.nodes[key] = {"key": key, "name": name, "parent": parent, "topic": node}
         if wedge is not None:
             self.add_sector(key, name, wedge)
         w.open_road(key, name, zw.ROOT_PLACE if parent is None else lay.tag_place(parent), ids, trigger)
@@ -308,39 +311,48 @@ class State:
         item = p["item"]
         if item["id"] in self.items:
             raise Refusal(f"{item['id']!r} is a house already", "house_exists", house=item["id"])
+        land = landing(self, item) if self.rule["auto"] else None  # (a road only under `auto`; otherwise the root zone)
         w, before = self.world(e), len(self.doc["chronicle"])
         w.seq += 1  # the arrival number: log order
         w.arrival_ids.add(item["id"])
-        w.add_houses(zw.ROOT_PLACE, [{"article": item["id"], "tag": None, "seq": w.seq}], "add_item")
+        w.add_houses(zw.ROOT_PLACE if land is None else lay.tag_place(land), [{"article": item["id"], "tag": land, "seq": w.seq}], "add_item")
         self.items[item["id"]] = item
-        self.road_of[item["id"]] = None
+        self.road_of[item["id"]] = land
         touched, opened = [item["id"]], []
-        self.settle(w, e, touched, opened)
+        self.settle(w, e, land, touched, opened)
         self.commit(w, e, before)
         self.effects[e["seq"]] = {"houses": touched, "roads": opened}
 
-    def settle(self, w: HandWorld, e: dict, touched: list[str], opened: list[str]) -> None:
-        """After an arrival, under the rule `auto`: while the root zone holds more than `max` houses and some group of `min` or more of them shares an OpenAlex topic, a road is
-        opened for the largest group (`bibliopolis.suggest.largest_group`: the most specific level that gives one) and named after its topic, with the mechanics of `open_road`:
-        the houses that stay keep their lots. The road is `auto:<seq>` (`auto:<seq>.2` for a second one in the same event), a road like any other afterwards. When no group
-        reaches `min`, or the first ring has no direction left, nothing happens and the root zone stays crowded (`bibliopolis.suggest.crowded` says so). Nothing without `auto`."""
-        n = 0
-        while self.rule["auto"] and self.count(None) > self.rule["max"]:
-            group = largest_group({h: self.items[h]["openalex"] for h in self.houses_at(None)}, self.rule["min"])
-            if group is None:
-                return
-            try:
-                wedge = self.next_wedge()
-            except Refusal:
-                return
-            n += 1
-            key = f"{AUTO_PREFIX}{e['seq']}" + (f".{n}" if n > 1 else "")
-            self.open(w, key, group.name, None, group.houses, "add_item", wedge)
-            touched.extend(group.houses)
-            opened.append(key)
+    def settle(self, w: HandWorld, e: dict, start: str | None, touched: list[str], opened: list[str]) -> None:
+        """After an arrival, under the rule `auto`: the place the house stands on (`start`: a road, or None for the root zone) is looked at, and while it holds more than `max`
+        houses directly, a road is opened for the largest group of its houses (`bibliopolis.suggest.suggest_road`: one level of OpenAlex below the place) and named after the
+        node, with the mechanics of `open_road`: the houses that stay keep their lots. Each road so opened is looked at in turn, in the order they were opened, so that one
+        that holds more than `max` houses splits again. The roads are `auto:<seq>`, `auto:<seq>.2`, ... in that order, roads like any other afterwards. A place with no
+        suggestion (no group of `min`, or a road for a topic, which is not split), or the root zone when all 13 directions of the first ring are used, is left as it is,
+        crowded (`bibliopolis.suggest.crowded` says so). Nothing without `auto`."""
+        if not self.rule["auto"]:
+            return
+        n, queue, seen = 0, [start], set(touched)
+        while queue:
+            at = queue.pop(0)
+            while self.count(at) > self.rule["max"]:
+                suggestion = suggest_road(self, at)
+                if suggestion is None:
+                    break
+                try:
+                    wedge = self.next_wedge() if at is None else None
+                except Refusal:
+                    break
+                n += 1
+                key = f"{AUTO_PREFIX}{e['seq']}" + (f".{n}" if n > 1 else "")
+                self.open(w, key, suggestion["name"], at, suggestion["houses"], "add_item", wedge, suggestion["topic"])
+                touched.extend(h for h in suggestion["houses"] if h not in seen)
+                seen.update(suggestion["houses"])
+                opened.append(key)
+                queue.append(key)
 
     def do_open_road(self, e: dict, p: dict) -> None:
-        key, name, parent, ids = p["road"], p["name"], p["parent"], p["houses"]
+        key, name, parent, ids, node = p["road"], p["name"], p["parent"], p["houses"], p.get("topic")  # (the event as `append` keeps it has the key; a log made elsewhere may leave it out)
         least = self.rule["min"]
         if key in self.nodes:
             raise Refusal(f"there is a road {key!r} already", "road_exists", road=key)
@@ -358,9 +370,18 @@ class State:
             if self.road_of[h] != parent:
                 raise Refusal(f"the house {h!r} does not stand directly on {self.where(parent)}; it stands on {self.where(self.road_of[h])}", "house_elsewhere",
                               house=h, road=parent, on=self.road_of[h])
+        if node is not None:
+            taken = roads_by_node(self).get((node["level"], node["id"]))
+            if taken is not None:
+                raise Refusal(f"the road {taken!r} stands for the {node['level']} {node['id']!r} already; two roads never stand for one node", "node_taken",
+                              level=node["level"], topic=node["id"], road=taken)
+            for h in ids:
+                if not descends(self.items[h]["openalex"], node["level"], node["id"]):
+                    raise Refusal(f"the house {h!r} is not under the {node['level']} {node['id']!r}, which the road stands for", "house_not_under_node",
+                                  house=h, level=node["level"], topic=node["id"])
         wedge = self.next_wedge() if parent is None else None  # (may refuse: before anything changes)
         w, before = self.world(e), len(self.doc["chronicle"])
-        self.open(w, key, name, parent, ids, "open_road", wedge)
+        self.open(w, key, name, parent, ids, "open_road", wedge, node)
         self.commit(w, e, before)
         self.effects[e["seq"]] = {"houses": list(ids), "roads": [key]}
 

@@ -22,7 +22,7 @@ the event, writes it into the chronicle, and never reads the clock; `at` does no
 | kind | payload | what it does |
 |---|---|---|
 | `add_item` | `{item}` | the item becomes a house in the root zone, under the town hall |
-| `open_road` | `{road, name, parent, houses}` | the player opens a road, a named category, below a road or (`parent` null) the root zone, and moves the houses chosen onto it. The place it opens from holds at least `min` houses directly, at least `min` houses are chosen, and all of them stand directly there |
+| `open_road` | `{road, name, parent, houses, topic}` | the player opens a road, a named category, below a road or (`parent` null) the root zone, and moves the houses chosen onto it. The place it opens from holds at least `min` houses directly, at least `min` houses are chosen, and all of them stand directly there. `topic` is the OpenAlex node the road stands for (see "A road's node"), or null; it may be left out |
 | `file` | `{house, road}` | a house moves, from the root zone or another road, onto a road |
 | `rename_road` | `{road, name}` | |
 | `move_road` | `{road, parent}` | a road, with the roads and the houses below it, stands again below another road |
@@ -46,6 +46,17 @@ known) may be left out. `openalex` holds up to three topics, the primary one fir
 text, the ids of OpenAlex when the topics come from there. Any other key is refused, so that nothing is dropped in silence. The samples and the tests of this repository use
 invented topics (`ex:d1.f1.s1.t1`).
 
+### A road's node
+
+```json
+{"seq": 41, "at": "2026-10-26T09:30:00Z", "kind": "open_road", "payload": {"road": "d1", "name": "Domain 1", "parent": null, "houses": ["item-0001", "item-0002"], "topic": {"id": "ex:d1", "level": "domain", "name": "Domain 1"}}}
+```
+
+A road may stand for one node of the OpenAlex tree, which has four levels: domain, field, subfield and topic. `topic` is `{id, level, name}` (the level is one of those four), or null for a category that
+the player named, which stands for no node. A suggestion gives its node ready to be the `topic` of `open_road`, and the rule `auto` opens only such roads. The world takes a node on two conditions:
+every house chosen is under it (one of its topics has that node at that level), and no other road stands for it. **Two roads never stand for one node.** Renaming or moving a road does not
+change its node. Left out, `topic` is null, and the event is kept with it, last in the payload.
+
 ### The rule
 
 `{max, min, auto}`: whole numbers 1 <= `min` <= `max`, and a boolean. `min` is the least a new road takes (see `open_road`). `max` is how many houses a road is meant to hold:
@@ -57,7 +68,7 @@ the world never refuses a house for it, never marks a road over and never splits
 **The root zone.** A house starts underground, under the town hall, on the first free cell of the grid of the root zone (as in a grown city, see [engine.md](engine.md)). The
 root zone is no road: nothing of it is on the surface.
 
-**A road** is a topic node of the player's tree. Below the root zone it is a **ring-1 road**: a trunk of its own, with a sector of the circle and a spoke through the plaza.
+**A road** is a node of the player's tree (it may also stand for a node of OpenAlex: see "A road's node"). Below the root zone it is a **ring-1 road**: a trunk of its own, with a sector of the circle and a spoke through the plaza.
 Below a road it is laid out as the engine lays out a topic that the plan does not hold: a rib on the line of its ring-1 road (a road of ring 3 is a rib on the same line). No
 trunk is promoted and no heavy path changes. A road with more houses than a rib holds opens continuation ribs, as in a grown city.
 
@@ -108,12 +119,20 @@ event), `seq` (the houses that have arrived), `trigger` (the kind of the event) 
 
 An event that an undo takes back writes no entry (it does not count); the undo writes one. `python3 -m bibliopolis chronicle` reads them as sentences.
 
-**The rule `auto`.** After an arrival (`add_item`) that leaves the root zone above `max`, the rule opens a road for the largest group of houses of the root zone that share an OpenAlex topic
-at the most specific level that gives a group of at least `min` (see `suggest_road`), named after that topic, below the town hall: `auto:<seq>` (`auto:<seq>.2` for a second road of the
-same arrival), a road like any other afterwards. It uses the mechanics of `open_road`, so the houses that stay keep their lots. It repeats while the root zone is above `max` and a group is
-left. When no group reaches `min`, or all 13 directions of the first ring are used, nothing happens. An arrival still becomes a house in the root zone, and the rule does not file it onto a road that
-is there: the houses of a topic that a road took gather in the root zone again, and a second road of the same name can open. (On the 600-item sample of this repository, with invented topics,
-the first ring is full by the 180th arrival.) A `set_rule` that switches `auto` on opens nothing by itself.
+**The rule `auto`.** The rule follows the OpenAlex tree one level at a time, as a grown city follows its topic tree (nothing here is a model):
+
+1. *An arrival lands.* An item that arrives stands on the deepest road whose node it is under: one of its topics has that node at that level. Of two roads as deep, the one that the topic
+   nearer the primary one reaches wins. With no such road the house stays underground, in the root zone. (This is the nearest open ancestor of a grown city, with the nodes of OpenAlex for the tree.)
+2. *The place is looked at.* If the place the house landed on, a road or the root zone, holds more than `max` houses directly, a road is opened for the largest group of its houses one level below
+   the place (`suggest_road`): the root zone by domain, a domain road by field, a field road by subfield, a subfield road by topic. A road for a topic is not split. The new road stands for the node,
+   is named after it, and opens below the place (a domain below the town hall, as a ring-1 road). It uses the mechanics of `open_road`, so the houses that stay keep their lots. The place is looked
+   at again while it holds more than `max` houses and a group is left.
+3. *The roads it opened are looked at in turn,* in the order they were opened, so a road that holds more than `max` houses splits again in the same event.
+
+The roads are `auto:<seq>`, `auto:<seq>.2`, `auto:<seq>.3`, ... in the order they were opened, roads like any other afterwards. When no group reaches `min`, or all 13 directions of the first ring are used
+(the root zone only), nothing happens at that place and it stays crowded (`crowded` says so). Two roads never stand for one node, so the first ring holds the domains and the rest goes below them.
+A `set_rule` that switches `auto` on opens nothing by itself, and a place that is over `max` for another reason waits for an arrival that lands on it. On the 600-item sample of this repository
+(invented topics) the rule makes 23 roads (domains 6, fields 10, subfields 6, topics 1), and 15 houses stay underground.
 
 **Numbers.** Every document the package writes spells a number as `JSON.stringify` does: an integral value without a fraction (`40`, not `40.0`), any other value as its shortest text
 (`bibliopolis.canonical`). The in-memory documents keep their floats. A number that another language would spell differently (an exponent form, a value of 10**15 or more) is refused.
@@ -152,6 +171,8 @@ that is read passes the refusal of an event on as a `WorldFileError` with the sa
 | `too_few_here` | `road`, `held`, `least` | `open_road` from a place that holds fewer than `least` houses directly (`road` is null for the root zone) | the root zone holds 9 houses directly; a road is opened from a place that holds at least 10 |
 | `too_few_chosen` | `chosen`, `least` | `open_road` with fewer than `least` houses chosen | 9 houses are chosen; a road takes at least 10 |
 | `house_elsewhere` | `house`, `road`, `on` | `open_road` names a house that does not stand directly on the place it opens from (`road`; `on` is where the house stands; null is the root zone) | the house 'h0001' does not stand directly on the root zone; it stands on the road 'a' |
+| `node_taken` | `level`, `topic`, `road` | `open_road` with a `topic` that another road stands for already (`road` is that road): two roads never stand for one node | the road 'a' stands for the domain 'ex:d1' already; two roads never stand for one node |
+| `house_not_under_node` | `house`, `level`, `topic` | `open_road` with a `topic` and a chosen house none of whose topics has that node at that level | the house 'h0013' is not under the domain 'ex:d1', which the road stands for |
 | `already_there` | `house`, `road` | `file` onto the road the house stands on | the house 'h0001' stands on the road 'a' already |
 | `same_name` | `road`, `name` | `rename_road` to the name the road has | the road 'a' is called 'Alpha' already |
 | `move_into_itself` | `road`, `parent` | `move_road` below itself, or below a road of its own | the road 'a1' cannot move below 'a1', which is itself or one of its own roads |
@@ -204,6 +225,8 @@ that is read passes the refusal of an event on as a `WorldFileError` with the sa
 | `undo_seq_bad` | `got` | `seq` of an undo is not the number of an event | event.payload.seq: must be the number of an event (1 or more), got 0 |
 | `houses_empty` | none | `houses` of an `open_road` is not a list, or is empty | event.payload.houses: must be a list of house ids, not empty |
 | `house_chosen_twice` | `house` | a house chosen twice in `houses` of an `open_road` | event.payload.houses[1]: 'a' is chosen twice |
+| `node_not_an_object` | `got` | `topic` of an `open_road` is not null and not an object | event.payload.topic: must be null or an object {id, level, name}, got str |
+| `node_level_bad` | `got`, `levels` | `level` of a `topic` is not one of `levels` (domain, field, subfield, topic) | event.payload.topic.level: must be one of domain, field, subfield, topic, got 'planet' |
 | `event_seq_bad` | `got` | `seq` of an event is not a whole number, 1 or more | event.seq: must be a whole number, 1 or more, got 0 |
 | `date_bad` | `at` | `at` of an event is not an ISO 8601 date or date and time | event.at: 'yesterday' is not an ISO 8601 date or date and time |
 | `kind_unknown` | `kind`, `kinds` | `kind` of an event is not one of `kinds` | event.kind: 'sweep' is not a kind of event (add_item, open_road, file, rename_road, move_road, undo, set_rule) |
@@ -226,15 +249,26 @@ that is read passes the refusal of an event on as a `WorldFileError` with the sa
 
 ## Suggestions
 
-No model and no network: the same world gives the same answer. A house is in the group of each OpenAlex topic it carries, once.
+No model and no network: the same world gives the same answer. A house is in the group of each OpenAlex node it carries at a level, once.
 
-- `suggest_road(world, at)`: the road to open at `at` (a road id, or `None` for the root zone). The largest group of the houses standing directly there that share a topic at the most specific
-  level (topic, then subfield, field, domain) that still gives a group of at least `min`; at one level the largest group wins, and of two as large the one with the lower topic id. Returns
-  `{at, level, topic: {id, name}, name, houses}`, `name` being the default name of the road (the name of that topic), or `None`.
-- `suggest_file(world, house)`: the road that the house belongs on. A road scores a count for each level, the topic level first: the topics the house shares with the houses of the road, summed
-  over those houses. The best score wins, a road opened earlier winning a tie. Returns `{house, road, name, level, shared, confidence}`: `level` is the most specific level at which the
-  winner shares anything, `shared` the count there, `confidence` that count as a part of the same count over every road that could take the house (1.0 when no other road shares a topic
-  at that level), in hundredths. A house on a road gets a suggestion only for a road that scores better than its own; `None` when there is nothing to suggest.
+- `suggest_road(world, at)`: the road to open at `at` (a road id, or `None` for the root zone). The houses that stand directly there are grouped by the level **one below** the level the place stands
+  for: the root zone by domain, a domain road by field, a field road by subfield, a subfield road by topic; a road for a topic is not split (`None`). Only the topics at or below the node of the
+  place count, and a node that a road stands for already is left out. The largest group of at least `min` houses wins; of two as large the one with the lower node id. Returns
+  `{at, topic: {id, level, name}, name, houses}`: `houses` in arrival order, `topic` the node of the group, ready to be the `topic` of `open_road`, `name` the default name of the road (the name
+  of the node as the first house that carries it writes it); or `None`.
+- *A category that stands for no node* (a road the player named) stands, for this, for the deepest node that its houses share. Of its houses that carry a topic, a node is shared when all but fewer
+  than `min` of them carry it (the few that do not could not make a road of their own). The nodes are taken from the domain down, each below the one before it, the largest first and of two as
+  large the one with the lower id. The category is then grouped one level below that node, among the houses under it. With no shared node, not even a domain, it is grouped by domain, as the
+  root zone is; with a shared topic there is nothing below it and the answer is `None`. (Read as "the level below the deepest level that `min` houses share", the rule would never give a
+  group: below the deepest level at which some node reaches `min` houses, by definition no node reaches `min`.)
+- `suggest_file(world, house)`: the road that the house belongs on. A road that stands for a node at or above one of the topics of the house comes first, the deepest one, and of two as deep the
+  one that the topic nearer the primary reaches. Returns `{house, road, name, level, shared, confidence}`: `level` is the level of the node, `shared` the houses of the road (the house itself left
+  out) that are under the same node, `confidence` one over the number of roads as deep as the winner, in hundredths. A house on such a road gets a suggestion only for a deeper one; a house on
+  another road, or underground, for the winner. With no such road, a road scores a count for each level, the topic level first: the topics the house shares with the houses of the road, summed over
+  those houses. The best score wins, a road opened earlier winning a tie; `level` is the most specific level at which it shares anything, `shared` the count there, `confidence` that count
+  as a part of the same count over every road that could take the house (1.0 when no other road shares a topic at that level). A house on a road gets a suggestion only for a road that scores better than
+  its own; `None` when there is nothing to suggest.
+- `landing(world, item)`: the road an arriving item stands on under the rule `auto` (the deepest road whose node it is under), or `None`.
 - `crowded(world)`: `[{at, name, houses}]` for the places that hold more than `max` houses directly, the root zone (`at` and `name` null) first.
 
 ## The files
@@ -275,8 +309,8 @@ suggest_road(journal.state, None)
 - A town has at most 13 avenues (above): the 14th category goes below an avenue. The sectors are fixed by the rule, not by the weight of a road.
 - No trunk is promoted below ring 1 and no heavy path changes; a road below a road is a rib on the line of its ring-1 road.
 - A road never becomes a ring-1 road by moving (`parent` is a road).
-- Under `auto` an arrival is not filed onto a road that is there (above).
-- The roads of a hand-built city are never marked over and nothing splits by itself; `crowded` is computed on demand.
+- A road for a topic is not split, whatever it holds: the OpenAlex tree has no level below a topic (`crowded` lists it).
+- The roads of a hand-built city are never marked over and nothing splits by itself, except under `auto`; `crowded` is computed on demand.
 - A `set_rule` that lowers `max` or `min` changes nothing in the world; it changes what `crowded` lists and what `open_road` takes.
 
 ## Where the tests are
