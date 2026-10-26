@@ -1,5 +1,6 @@
 """The README does not drift from the program: its commands run, and the lines it shows are the lines the commands print."""
 
+import importlib.util
 import json
 import os
 import re
@@ -22,22 +23,32 @@ ENGLISH, CHINESE = README.split("\n---\n", 1)
 HALVES = ((ENGLISH, "## Set up", "## How a city grows", "## Try it"), (CHINESE, "## 安裝與設定", "## 城邦怎麼長大", "## 試試看"))
 
 # The lines of the code blocks that the test does not run, and why. Every other line of a code block must be a bibliopolis command (run below), the version
-# command (run below) or a line that a command printed (compared with the real output below).
+# command (run below), the virtual environment line (run below, for real) or a line that a command printed (compared with the real output below).
 NOT_RUN = {
     "git clone https://github.com/copper0722/bibliopolis-open.git": "downloads the repository from GitHub",
-    "python3 -m pip install pytest": "installs from the internet",
-    "python3 -m pytest": "is the test run itself",
+    ".venv/bin/python -m pip install pytest": "installs from the internet, and a test must work offline",
+    ".venv/bin/python -m pytest": "is the test run itself, with the environment that the line before it fills (the three lines were also run for real, by hand, when they were written)",
+}
+RUN_BY_ANOTHER_TEST = {
+    "python3 -m venv .venv": "test_the_virtual_environment_line_makes_the_python_the_readme_names_and_git_ignores_it makes the environment for real",
 }
 # The same for a command inside a sentence.
 NOT_RUN_INLINE = {
     "brew install python": "installs Python with Homebrew",
+    "sudo apt install python3": "installs Python on Debian and Ubuntu (an example, and it needs root)",
+    "sudo dnf install python3": "installs Python on Fedora (an example, and it needs root)",
+    "sudo apt install python3-venv": "installs the venv module on Debian and Ubuntu (it needs root)",
     "git clone": "the name of the command, with the line of NOT_RUN above",
     "cd bibliopolis-open": "moves into the folder that `git clone` makes",
     "cd ": "the first word of a command that the reader completes",
-    "python3 -m pip install pytest": "installs from the internet",
+    "cd <path to the folder>": "moves into the folder, for a desktop whose menu has no Open in Terminal",
+    "py -m venv .venv": "the Windows form of the virtual environment line (Windows only)",
+    ".venv\\Scripts\\python -m pip install pytest": "the Windows form of an installer line (Windows only, and it installs from the internet)",
+    ".venv\\Scripts\\python -m pytest": "the Windows form of the test run (Windows only)",
     "python3 examples/make_pictures.py": "makes the pictures of docs/images/; tests/test_images.py runs the script into a temporary folder",
 }
 OUTPUT = ("wrote ", "house ")
+COMMAND_WORDS = ("python3", "py", "git", "brew", "pip", "cd", "sudo", "apt", "dnf")
 
 
 def commands(text):
@@ -56,9 +67,9 @@ def fenced_lines(text):
 
 
 def inline_commands(text):
-    """The commands inside sentences: the `code` spans (outside the code blocks) that start like one."""
+    """The commands inside sentences: the `code` spans (outside the code blocks) of more than one word that start with a command word or a virtual environment."""
     prose = re.sub(r"```.*?```", "", text, flags=re.DOTALL)
-    return [span for span in re.findall(r"`([^`\n]+)`", prose) if span.startswith(("python3 ", "py ", "git ", "brew ", "pip ", "cd "))]
+    return [span for span in re.findall(r"`([^`\n]+)`", prose) if " " in span and (span.split()[0] in COMMAND_WORDS or span.startswith(".venv"))]
 
 
 def section(text, head, next_head="\n## "):
@@ -110,10 +121,17 @@ def test_the_commands_of_the_readme_run_in_order_on_the_files_of_the_repository_
 def test_every_command_the_readme_shows_is_run_by_the_test_or_is_on_the_list_of_those_that_are_not():
     for half, *_heads in HALVES:
         for line in fenced_lines(half):
-            assert line.startswith("python3 -m bibliopolis ") or line == "python3 --version" or line in NOT_RUN or line.startswith(OUTPUT), line
+            ok = line.startswith("python3 -m bibliopolis ") or line == "python3 --version" or line in NOT_RUN or line in RUN_BY_ANOTHER_TEST
+            assert ok or line.startswith(OUTPUT), line
         for span in inline_commands(half):
             assert span in NOT_RUN_INLINE, span
-    assert all(reason for reason in [*NOT_RUN.values(), *NOT_RUN_INLINE.values()])
+    assert all(reason for reason in [*NOT_RUN.values(), *RUN_BY_ANOTHER_TEST.values(), *NOT_RUN_INLINE.values()])
+
+
+def test_the_lists_of_commands_that_are_not_run_hold_nothing_that_the_readme_no_longer_shows_in_either_half():
+    for half, *_heads in HALVES:
+        assert set(NOT_RUN) | set(RUN_BY_ANOTHER_TEST) <= set(fenced_lines(half))
+        assert set(NOT_RUN_INLINE) <= set(inline_commands(half))
 
 
 def test_the_version_command_of_the_readme_runs_and_the_version_it_asks_for_is_the_one_the_project_needs(tmp_path):
@@ -135,10 +153,33 @@ def test_each_half_has_a_set_up_section_before_how_a_city_grows_for_a_reader_who
         assert half.index(head) < half.index(next_head)
         text = section(half, head, next_head)
         for needle in ("python.org/downloads", "Homebrew", "`py`", "`python3`", "git clone https://github.com/copper0722/bibliopolis-open.git", "Download ZIP",
-                       "`cmd`", "city.svg", "pytest"):
+                       "`cmd`", "city.svg", "pytest", "sudo apt install python3", "sudo dnf install python3", "cd <path to the folder>",
+                       "package manager" if half is ENGLISH else "套件管理員"):
             assert needle in text, (head, needle)
         try_it = section(half, try_head)  # up to the next heading
         assert commands(text) == [commands(try_it)[0], commands(try_it)[2]]  # the two example commands of Set up: the grow build and the picture
+
+
+@pytest.mark.skipif(importlib.util.find_spec("ensurepip") is None, reason="this Python cannot make a virtual environment with pip in it")
+def test_the_virtual_environment_line_makes_the_python_the_readme_names_and_git_ignores_it(tmp_path):
+    assert all("python3 -m venv .venv" in fenced_lines(half) for half, *_heads in HALVES)
+    if shutil.which("git"):
+        subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+        shutil.copy(ROOT / ".gitignore", tmp_path / ".gitignore")
+    done = subprocess.run([sys.executable, "-m", "venv", ".venv"], cwd=tmp_path, capture_output=True, text=True, check=False)  # `python3 -m venv .venv`, for real
+    assert done.returncode == 0, done.stderr
+    windows = os.name == "nt"
+    python = tmp_path / ".venv" / ("Scripts" if windows else "bin") / ("python.exe" if windows else "python")  # `.venv/bin/python`, or `.venv\Scripts\python`
+    assert python.is_file()
+    for half, *_heads in HALVES:
+        assert (".venv\\Scripts\\python -m pytest" in inline_commands(half)) and ".venv/bin/python -m pytest" in fenced_lines(half)
+    assert subprocess.run([str(python), "--version"], capture_output=True, text=True, check=False).stdout == subprocess.run(
+        [sys.executable, "--version"], capture_output=True, text=True, check=False).stdout  # the environment's Python is the one that made it
+    assert subprocess.run([str(python), "-m", "pip", "--version"], capture_output=True, check=False).returncode == 0  # pip is in it: what `pip install pytest` runs
+    if shutil.which("git"):
+        (tmp_path / ".venv" / ".gitignore").unlink(missing_ok=True)  # Python 3.13 and later put one in the environment; the repository's own rule is what is tested
+        status = subprocess.run(["git", "-C", str(tmp_path), "status", "--porcelain"], capture_output=True, text=True, check=False).stdout
+        assert ".venv" not in status  # the environment is ignored: `git status` stays clean
 
 
 def test_the_readme_shows_the_line_the_build_command_prints_on_the_sample(tmp_path):

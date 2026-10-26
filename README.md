@@ -19,15 +19,20 @@ open extraction of a private, self-use project.
 This takes a few minutes and needs no programming. You need Python 3.11 or newer and the files of this repository. Nothing else has to be installed: the
 program uses only what comes with Python.
 
-**1. Install Python.** Download it from [python.org/downloads](https://www.python.org/downloads/) and run the installer. On a Mac you can use Homebrew
-instead: `brew install python`. Then open a terminal and check the version:
+**1. Check Python, and install it if you need to.** Open a terminal (Windows: open the Start menu, type `cmd` and press Enter; Mac: open Terminal; Linux:
+open your terminal program) and check the version:
 
 ```
 python3 --version
 ```
 
-It should say Python 3.11 or higher. If it says an older version (a Mac may come with Python 3.9), install a newer one. On Windows, type `py` instead of
-`python3` here and in every command on this page.
+If it says Python 3.11 or higher, go on to step 2. On Windows, type `py` instead of `python3` here and in every command on this page. If it says an older
+version (a Mac may come with Python 3.9), or that the command is not found, install Python:
+
+- Windows and Mac: download the installer from [python.org/downloads](https://www.python.org/downloads/) and run it. On a Mac you can use Homebrew instead:
+  `brew install python`.
+- Linux: python.org has no installer for it, so use your system's package manager. Many systems already have Python 3, so try the check above first. As
+  examples, on Debian and Ubuntu: `sudo apt install python3`; on Fedora: `sudo dnf install python3`.
 
 **2. Get the files.** If you have Git, run this:
 
@@ -39,7 +44,8 @@ If you do not, open the repository on GitHub, press the green "Code" button, cho
 
 **3. Open a terminal in that folder.** If you used `git clone`, type `cd bibliopolis-open` in the same terminal. Otherwise, on Windows open the folder in
 File Explorer, click its address bar, type `cmd` and press Enter. On a Mac open Terminal, type `cd ` (with a space after it), drag the folder into the
-window and press Enter. On Linux right-click in the folder and choose "Open in Terminal".
+window and press Enter. On Linux right-click in the folder and choose "Open in Terminal"; if your desktop has no such entry, open any terminal and type
+`cd <path to the folder>`.
 
 **4. Build a city and draw it.** Type these two commands, one after the other:
 
@@ -59,7 +65,7 @@ wrote city.svg: 39457 bytes
 in the middle, the roads that go out from it, and a coloured house for each article. The picture is big (1800 pixels wide): if your browser shows only part
 of it, zoom out with Ctrl and the minus key (Cmd and the minus key on a Mac). The example library is invented; to use your own, see "Try it" below.
 
-You need `python3 -m pip install pytest` only if you want to run the tests (see Tests below).
+Only the tests need an extra package, pytest (see Tests below). `build`, `picture` and `chronicle` need no packages.
 
 ## How a city grows
 
@@ -140,10 +146,19 @@ of each problem. JSON Schema files are in `schema/`.
 
 ## Tests
 
+Only the tests need a package that does not come with Python: pytest. (`build`, `picture` and `chronicle` need no packages at all.) Some systems, such as
+Homebrew and Debian or Ubuntu, do not let `pip` install into their own Python, so make a virtual environment in the folder of the files first, put pytest into
+it and run the tests with that environment's Python:
+
 ```
-python3 -m pip install pytest
-python3 -m pytest
+python3 -m venv .venv
+.venv/bin/python -m pip install pytest
+.venv/bin/python -m pytest
 ```
+
+On Debian and Ubuntu, if the first line says that the environment could not be created, run `sudo apt install python3-venv` first. On Windows the
+environment's Python is `.venv\Scripts\python`: make the environment with `py -m venv .venv`, then run `.venv\Scripts\python -m pip install pytest` and
+`.venv\Scripts\python -m pytest`.
 
 The pictures of this page are made by `examples/make_pictures.py` from the example. A test makes them again and compares them with the files in
 `docs/images/` byte for byte, so they cannot go stale. After a change to the engine or the example, run `python3 examples/make_pictures.py` and commit
@@ -178,14 +193,18 @@ the result.
 
 不需要會寫程式，幾分鐘就能完成。你需要兩樣東西：Python 3.11 或更新的版本，以及這個 repo 的檔案。其他東西都不用安裝：這個程式只用 Python 內建的功能。
 
-**1. 安裝 Python。** 到 [python.org/downloads](https://www.python.org/downloads/) 下載，執行安裝程式。Mac 也可以改用 Homebrew：`brew install python`。
-接著開啟終端機，檢查版本：
+**1. 檢查 Python，需要的話再安裝。** 開啟終端機（Windows：打開開始功能表，輸入 `cmd` 再按 Enter；Mac：開啟「終端機」；Linux：開啟你的終端機程式），檢查版本：
 
 ```
 python3 --version
 ```
 
-畫面應該顯示 Python 3.11 或更高的版本。如果顯示的版本比較舊（有些 Mac 內建的是 Python 3.9），請安裝新版。Windows 請把這一頁每一行指令裡的 `python3` 改成 `py`。
+畫面如果顯示 Python 3.11 或更高的版本，就直接做第 2 步。Windows 請把這一頁每一行指令裡的 `python3` 改成 `py`。如果顯示的版本比較舊（有些 Mac 內建的是 Python 3.9），
+或是說找不到這個指令，請先安裝 Python：
+
+- Windows 與 Mac：到 [python.org/downloads](https://www.python.org/downloads/) 下載安裝程式並執行。Mac 也可以改用 Homebrew：`brew install python`。
+- Linux：python.org 沒有提供 Linux 的安裝程式，請改用系統的套件管理員。很多系統本來就有 Python 3，所以先做上面的檢查。以下只是舉例：Debian、Ubuntu 用
+  `sudo apt install python3`；Fedora 用 `sudo dnf install python3`。
 
 **2. 取得檔案。** 如果你有安裝 Git，可以執行這一行：
 
@@ -196,7 +215,8 @@ git clone https://github.com/copper0722/bibliopolis-open.git
 沒有 Git 的話，打開這個 repo 在 GitHub 上的頁面，按綠色的「Code」按鈕，選「Download ZIP」，再把下載的檔案解壓縮。兩種做法都會得到一個資料夾。
 
 **3. 在那個資料夾裡開啟終端機。** 如果你用的是 `git clone`，在同一個終端機輸入 `cd bibliopolis-open` 就可以。否則，Windows 請用檔案總管打開資料夾，點一下上方的網址列，
-輸入 `cmd` 再按 Enter；Mac 請開啟「終端機」，輸入 `cd `（後面留一個空格），把資料夾拖進視窗，再按 Enter；Linux 請在資料夾裡按右鍵，選「在終端機中開啟」。
+輸入 `cmd` 再按 Enter；Mac 請開啟「終端機」，輸入 `cd `（後面留一個空格），把資料夾拖進視窗，再按 Enter；Linux 請在資料夾裡按右鍵，選「在終端機中開啟」；如果你的桌面沒有這個選項，就開啟任何一個終端機，輸入
+`cd <path to the folder>`（把 `<path to the folder>` 換成那個資料夾的路徑）。
 
 **4. 蓋一座城邦，再把它畫出來。** 依序輸入這兩行指令：
 
@@ -215,7 +235,7 @@ wrote city.svg: 39457 bytes
 **5. 看看成果。** 用瀏覽器打開 `city.svg`：把檔案拖進瀏覽器視窗，或對檔案按右鍵，選「開啟方式」。你會看到市政廳在中央，路從它往外延伸，每篇文獻是一棟上了色的房子。
 這張圖很大（寬 1800 像素），如果瀏覽器只顯示一部分，請縮小畫面：按 Ctrl 加減號（Mac 按 Cmd 加減號）。範例文獻庫是虛構的；要用你自己的文獻庫，請看下面的「試試看」。
 
-只有要跑測試時，才需要 `python3 -m pip install pytest`（見下面的「測試」）。
+只有測試需要多裝一個套件 pytest（見下面的「測試」）；`build`、`picture`、`chronicle` 不需要任何套件。
 
 ## 城邦怎麼長大
 
@@ -290,10 +310,17 @@ wrote city.json: 600 houses on 22 roads, 15 under the town hall, 22 splits, 1 ov
 
 ## 測試
 
+只有測試需要一個 Python 沒有內建的套件：pytest。（`build`、`picture`、`chronicle` 完全不需要任何套件。）有些系統（例如 Homebrew，以及 Debian、Ubuntu）不讓 `pip`
+裝進系統自己的 Python，所以請先在檔案所在的資料夾裡建一個虛擬環境，把 pytest 裝進去，再用那個環境的 Python 跑測試：
+
 ```
-python3 -m pip install pytest
-python3 -m pytest
+python3 -m venv .venv
+.venv/bin/python -m pip install pytest
+.venv/bin/python -m pytest
 ```
+
+在 Debian 和 Ubuntu 上，如果第一行說無法建立虛擬環境，請先執行 `sudo apt install python3-venv`。Windows 上，這個環境的 Python 在 `.venv\Scripts\python`：
+用 `py -m venv .venv` 建立環境，再執行 `.venv\Scripts\python -m pip install pytest` 和 `.venv\Scripts\python -m pytest`。
 
 這一頁的圖由 `examples/make_pictures.py` 從範例產生。測試會重新產生這些圖，和 `docs/images/` 裡的檔案逐位元組比對，所以圖不會過期。
 改了引擎或範例之後，執行 `python3 examples/make_pictures.py`，再把結果提交。
