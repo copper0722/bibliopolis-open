@@ -163,6 +163,13 @@ def test_the_threat_model_of_the_files_is_on_the_page_and_in_the_card():
     assert "(`no_hard_links`" in page and "no_hard_links" not in card and "refused where there are no hard links" in card
 
 
+def test_the_page_states_the_scope_of_the_restore_in_place_that_the_journal_tests_pin():
+    page = " ".join(PAGE.split())
+    for phrase in ("the State, its live tree and its main dictionaries (`nodes`, `items`, `road_of`, `plan`, `held`, `kinds`, `effects`) are the same objects afterwards",
+                   "`rule`, the document and the record of each road are replaced by the copies taken before", "The copy of the event that `append` gives back is made before anything changes"):
+        assert phrase in page, phrase
+
+
 def test_the_limits_the_page_states_are_the_limits_of_the_program():
     h = Hand()
     h.add(10)

@@ -8,6 +8,7 @@ import pytest
 from hand_support import Hand, hid, item, journal_value, scripted, scripted_merge, scripted_nodes, stamp, topic
 
 from bibliopolis import hand
+from bibliopolis import journal as journal_module
 from bibliopolis import layout as lay
 from bibliopolis.events import KINDS, Refusal
 from bibliopolis.hand import HandWorld, State
@@ -269,6 +270,39 @@ def test_a_log_that_cannot_take_the_event_after_the_world_took_it_leaves_the_jou
         h.journal.append(kind, NEXT[kind](h), AT)
     h.journal.events = list(h.journal.events)
     assert journal_value(h.journal) == before
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_a_copy_of_the_event_that_cannot_be_made_leaves_the_journal_as_it_was(kind, monkeypatch):
+    """The copy that `append` gives back is made before anything changes: a failure to make it (no memory) used to come after the commit, with the event in the log and the world changed."""
+    h = a_world_where_every_kind_of_event_can_come_next()
+    before = journal_value(h.journal)
+
+    def no_memory(value):
+        raise MemoryError("no memory for a copy")
+
+    monkeypatch.setattr(journal_module, "copy_json", no_memory)
+    with pytest.raises(MemoryError):
+        h.journal.append(kind, copy.deepcopy(NEXT[kind](h)), AT)
+    monkeypatch.undo()
+    assert journal_value(h.journal) == before
+    h.journal.append(kind, copy.deepcopy(NEXT[kind](h)), AT)  # ... and the same event goes in
+
+
+def test_a_restore_keeps_the_identity_of_the_state_and_its_main_dictionaries_and_replaces_the_records_the_rule_and_the_document():
+    """The scope of "in place": what the journal holds is the same object after a failed event, except the records of the roads, the rule and the document, which are the copies taken before.
+    A reference to a road record taken before the event is not the journal's afterwards, and still shows what the failed event did to it."""
+    h = a_world_where_every_kind_of_event_can_come_next()
+    state, tree = h.state, h.state.tree
+    same = {name: getattr(state, name) for name in ("nodes", "items", "road_of", "plan", "held", "kinds", "effects")}
+    record, rule, doc = state.nodes["a"], state.rule, state.doc
+    with pytest.MonkeyPatch.context() as plant:
+        plant.setattr(State, "commit", fail_after(State, "commit", RuntimeError("a fault"), first=True))
+        with pytest.raises(RuntimeError):
+            h.journal.append("rename_road", {"road": "a", "name": "Alpha"}, AT)  # the name is changed in the record before the commit is reached
+    assert h.journal.state is state and state.tree is tree and all(getattr(state, name) is same[name] for name in same)
+    assert state.nodes["a"] is not record and state.nodes["a"]["name"] == "A" and record["name"] == "Alpha"
+    assert state.rule is not rule and state.rule == rule and state.doc is doc
 
 
 def test_an_arrival_that_fails_after_the_rule_opened_some_roads_leaves_no_road_behind(monkeypatch):

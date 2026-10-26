@@ -300,7 +300,9 @@ class State:
                 "doc": self.doc, "held": dict(self.held), "kinds": dict(self.kinds), "effects": dict(self.effects)}
 
     def restore(self, saved: dict) -> None:
-        """Put back what `snapshot` kept. The dictionaries are emptied and filled again, not replaced, so that whoever holds one (the live tree holds `nodes`) still holds the State's."""
+        """Put back what `snapshot` kept. The dictionaries `nodes`, `items`, `road_of`, `plan`, `held`, `kinds` and `effects` are emptied and filled again, not replaced, so that whoever holds
+        one (the live tree holds `nodes`) still holds the State's. What `snapshot` copied one level down is replaced: the record of each road in `nodes`, and `rule`, and the document, which
+        is a new object at every commit; a reference to one of those taken before a failed event is not the State's afterwards."""
         self.rule, self.doc = saved["rule"], saved["doc"]
         for name in ("nodes", "items", "road_of", "plan", "held", "kinds", "effects"):
             current = getattr(self, name)

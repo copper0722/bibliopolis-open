@@ -8,8 +8,10 @@
 
 `append` is the one way an event enters a world. It checks the shape of the event (bibliopolis.events), asks the world to take it (bibliopolis.hand) and only then
 keeps it, so a log made by `append` folds again to the same world. It is all or nothing: a `State.snapshot` is taken before the event is applied, and when anything at all comes out of
-the call (a refusal, a fault of the engine, an interrupt, a log that cannot take the event) the State is put back from it, in place, and the log is as it was. (An `undo` folds a new
-State instead, and the one that is there is not touched until the fold has succeeded.) An `undo` is held to two more rules, so that the player undoes from the end backwards:
+the call (a refusal, a fault of the engine, an interrupt, a log that cannot take the event) the State is put back from it, in place, and the log is as it was. "In place" means: the State, its
+live tree and its dictionaries `nodes`, `items`, `road_of`, `plan`, `held`, `kinds` and `effects` are the same objects afterwards; `rule`, the document and the record of each road in `nodes`
+are replaced by the copies taken before, so a reference to a road record taken before a failed event is not the journal's and still shows what that event did to it. The copy of the event that
+`append` gives back is made first, before anything changes. (An `undo` folds a new State instead, and the one that is there is not touched until the fold has succeeded.) An `undo` is held to two more rules, so that the player undoes from the end backwards:
 
   - the event it names counts, and no later event that counts depends on it: none names a road it opened, or a house it placed or moved;
   - the log without that event still folds: every later event that counts can be taken again (the check that sees what the rule above cannot say, for example the
@@ -79,6 +81,7 @@ class Journal:
         event = check_event({"seq": len(self.events) + 1, "at": at, "kind": kind, "payload": payload}, "event", problems)
         _refuse(problems)
         assert event is not None
+        returned = copy_json(event)  # made first, before anything changes: if there is no memory for it, the journal is as it was
         if kind == "undo":
             before = self.state
             try:
@@ -88,7 +91,7 @@ class Journal:
                 self.state = before
                 del self.events[event["seq"] - 1:]
                 raise
-            return copy_json(event)
+            return returned
         saved = self.state.snapshot()
         try:
             self.state.apply(event)
@@ -97,7 +100,7 @@ class Journal:
             self.state.restore(saved)
             del self.events[event["seq"] - 1:]
             raise
-        return copy_json(event)
+        return returned
 
     def undone(self, event: dict) -> State:
         """The world after the undo `event`, if it may be taken."""
