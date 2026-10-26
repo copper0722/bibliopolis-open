@@ -8,14 +8,16 @@ The cut (bibliopolis.cut) reads the whole library once. The plan keeps what must
   streets      the streets of the cut with their addresses and what is collapsed into them; `sites` maps every topic to the street that
                holds it.
   districts    the rule the roads open by: {max, min, extract, count}.
+  ring         the ring road round the town hall (bibliopolis.ring): its name and the radius of its first lap, `params.ring` = {label, radius}. The radius is the least
+               that holds `max` houses between the gates and gives the narrowest ring-1 sector the arc an avenue needs.
 
-There is no radius, no band and no coordinate in a plan: a street opens at the frontier of its trunk's line when its first house arrives
-(bibliopolis.world). The plan is plain JSON-able data built from sorted inputs with integer angles (units of 1/100 degree).
+There is no band and no coordinate in a plan, and no radius but the ring road's: a street opens at the frontier of its trunk's line when its first house
+arrives (bibliopolis.world). The plan is plain JSON-able data built from sorted inputs with integer angles (units of 1/100 degree).
 
 Two modes share it:
 
   grow     the roads are decided by the houses that stand: a crowded road opens a road for its largest group. The plan pins the directions
-           and the ring-1 streets the root zone may open.
+           and the ring-1 streets the ring road may open.
   mirror   every topic an item is filed under (any of its topics), and every topic above one, is a road from the start (`plan["roads"]`), and
            the plan has a street for each of them: the topic tree is the street plan.
 """
@@ -26,6 +28,7 @@ from types import SimpleNamespace
 
 from . import cut
 from . import layout as lay
+from . import ring as ring_mod
 from .tree import TreeView
 
 ZONING_VERSION = "districts-1"
@@ -114,6 +117,13 @@ class _Directions:
                 self.trunk(c, w, street, "side", sd, c.place, 0)
 
 
+def ring_params(trunks: dict[str, dict], max_houses: int, label: str = ring_mod.RING_LABEL) -> dict:
+    """`params.ring` for a plan with these trunks: the name of the ring road and the radius of its first lap, the least that holds `max_houses` houses between the
+    gates of the plan's ring-1 trunks and gives the narrowest ring-1 sector the arc an avenue needs (bibliopolis.ring)."""
+    radius = ring_mod.ring_radius_for(ring_mod.gates_of(trunks), max_houses, ring_mod.sector_min(ring_mod.sectors_of(trunks)))
+    return {"label": label, "radius": radius}
+
+
 # ----------------------------------------------------------------------------------------------- plan ----
 def build_plan(tree: TreeView, items: list[dict], *, mode: str = GROW, max_houses: int = MAX_HOUSES, min_houses: int = MIN_HOUSES,
                home_max: int = lay.HOME_MAX, trunk_min: int = lay.TRUNK_MIN, min_ring1: int = lay.MIN_RING1) -> dict:
@@ -157,7 +167,7 @@ def build_plan(tree: TreeView, items: list[dict], *, mode: str = GROW, max_house
         "zoning_version": ZONING_VERSION,
         "mode": mode,
         "params": {"home_max": home_max, "trunk_min": trunk_min, "min_ring1": deg(min_ring1), "centre_tag": comp.centre_tag,
-                   "districts": districts},
+                   "districts": districts, "ring": ring_params(directions.trunks, max_houses)},
         "ring1": ring1,
         "trunks": dict(sorted(directions.trunks.items())),
         "streets": dict(sorted(streets.items())),

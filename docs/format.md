@@ -49,7 +49,7 @@ The order of the items in the file does not matter: only `added_at` and `id` do.
 | `parent` | string or null | the id of the parent node; null for a root. |
 
 A tree may have several roots. A tree with exactly one root has that root as its centre: the root is the town hall, its children are the
-ring-1 roads, and a house whose address is the root itself stands in the root zone.
+ring-1 roads, and a house whose address is the root itself stands on the ring road.
 
 ## What the program checks beyond the schemas
 
@@ -101,8 +101,9 @@ writes from a world built by hand is the same document, with `world.mode` `hand`
 
 `home_max`, `trunk_min` (the numbers the plan was cut with), `articles` = `buildings` (the houses in the document), `reserved_lots`
 (empty lots in the document: always 0 here), `ring1` (every ring-1 sector: `{place, label, weight, from, to, span}`, degrees), `streets`
-(`{total, containers, leaves, trunks, groups, spokes, lanes, continuations, underground}`: a road with continuation ribs is counted once) and `measure`
-(`lots`, `land_area`, `max_radius`, the walk from the plaza to the doors, `streets_by_class`, `underground_lots`, ...). The measures count the surface only.
+(`{total, containers, leaves, trunks, groups, spokes, lanes, continuations, ring}`: a road with continuation ribs is counted once, and the ring road counts as one
+street, its laps being continuations; `ring` is the number of street records of shape `ring`, laps included) and `measure` (`lots`, `land_area`, `max_radius`, the
+walk from the plaza to the doors, `streets_by_class`, `ring_lots`, the houses on the ring road, ...). Every house is on the surface, and the measures count them all.
 
 ### `world`
 
@@ -132,17 +133,22 @@ A **chronicle** entry is either a split or an over, numbered `n` = 1, 2, ... in 
 Every place has a `kind`.
 
 - **`plaza`**: `{label, position, radius}`.
-- **`lot`**: one house. `{article, parent, order, slot, position, facing, seq}` and `underground: true` for a house in the root zone. `article` is the
-  item id, `parent` the rib it stands in (its road, or a continuation of it), `slot` its number in the rib (the lowest empty one is used first), `seq`
-  the arrival number, `facing` a bearing in degrees.
+- **`lot`**: one house. `{article, parent, order, slot, position, facing, seq}`. `article` is the item id, `parent` the rib it stands in (its road, or a
+  continuation of it; for a house on the ring road, its lap), `slot` its number in the rib (the lowest empty one is used first), `seq` the arrival number,
+  `facing` a bearing in degrees.
 - **`reserved`**: an empty lot (only in a document made with reserved lots; `build` does not).
 - **`street`**: a road, in one of these `shape`s:
   - `trunk`: a road with a spoke of its own (every ring-1 road, and below it a heavy container road): `wedge`, `axis`, `s0`, `s_end`, `open`, `bands`, `road`, `lane`, `heavy`.
   - `group`: a road with roads below it; its own houses (if any) stand on the bands of its carrier trunk.
   - `rib`: a road with no road below it, a stretch of a band of its carrier trunk (`carrier`), or of the spoke.
-  - `underground`: the root zone `place:root` (label `根區`): no road, no rib, nothing on the surface. It is in the document once it exists, empty or not.
+  - `ring`: the ring road `place:root` (label `Knowledge`), a closed circular road round the plaza, and its laps (below). It is in the document from day one,
+    empty or not. It has no rib: its houses are the polar cells of its lane, one on each side. `{ring: {lap, radius, slots, gaps}}`: the number of the lap (1 for
+    `place:root`), the radius of its lane, how many houses it holds (two to a cell, a cell one long along the lane) and the bearings of the gates its cells keep
+    clear (the directions the avenues leave by). A lot of the ring has `slot` s in cell s // 2 of its lap: the inner row at the lane radius less 1 when s is even,
+    the outer row at the lane radius plus 1 when odd. When the ring is full it goes on as a **lap**: a street of shape `ring` with `lane_of: "place:root"`,
+    `ordinal`, `continued: true` and the ring's label, address and class, outside the lane of the lap before it, in `lanes` of the ring.
 
-  A street has `tag` (the topic id; the root zone has none), `address` (the labels from ring 1 down to this road), `level` (1 for ring 1),
+  A street has `tag` (the topic id; the ring road has none), `address` (the labels from ring 1 down to this road), `level` (1 for ring 1),
   `class` (`大道` ring 1 = avenue, `路` ring 2 = road, `巷` ring 3 = lane, `弄` ring 4 and deeper = alley), `parent` (the street above, or the plaza),
   `lots` and `reserved`. `label` is there when it differs from the tree's label (a road with a collapsed
   chain: `"Humanities・History"`), else `address[-1]` is the name. `collapsed` lists the topics collapsed into the road, top first. `over: true` marks a road
@@ -165,9 +171,11 @@ Each road has `street`, `kind`, `class`, `parent` (the road it hangs on), `at` (
 
 - `spoke`: a straight road through the plaza along the bisector of a wedge (`axis`, `s0`, `s_end`, `open`, `wedge`);
 - `arc`: a connector from a trunk to the axis of a side wedge (`side`);
-- `lane`: an arc around the plaza across a trunk, one stretch per street (`trunk`, `band`, `side`, `off`, `radius`, `bearings`).
+- `lane`: an arc around the plaza across a trunk, one stretch per street (`trunk`, `band`, `side`, `off`, `radius`, `bearings`);
+- `ring`: the lane of the ring road or of one of its laps, a closed circle round the plaza from north clockwise (the last point is the first), with no parent (`radius`).
 
-The walk from the plaza to a door is the sum of the `at` of its road and its ancestors, and the distance along its own lane.
+The walk from the plaza to a door is the sum of the `at` of its road and its ancestors, and the distance along its own lane. The spokes of ring 1 start at the outer
+edge of the ring road (`s0`); the walk to a house on the ring goes out through the nearest gate to its lane, then along it.
 
 ## Two modes
 

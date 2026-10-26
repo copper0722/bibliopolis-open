@@ -43,7 +43,7 @@ def test_build_writes_the_city_and_reports_what_it_made(files, tmp_path, capsys)
     doc = json.loads(out.read_text(encoding="utf-8"))
     assert doc["layout_version"] == "v4" and doc["world"]["mode"] == "grow" and doc["world"]["houses"] == len(library["items"])
     s = bibliopolis.summary(doc)
-    assert err.strip() == (f"wrote {out}: {s['houses']} houses on {s['roads']} roads, {s['underground']} under the town hall, "
+    assert err.strip() == (f"wrote {out}: {s['houses']} houses on {s['roads']} roads, {s['ring']} on the ring road, "
                            f"{s['splits']} splits, {s['over']} over (mode grow)")
     assert s["houses"] == 58 and s["splits"] >= 2 and s["roads"] >= 2
     assert out.read_text(encoding="utf-8") == bibliopolis.render(bibliopolis.build_city(library, tree, mode="grow"))

@@ -5,7 +5,7 @@
     city     the layout v4 document that `build` writes (docs/format.md, The city): only what a picture and the chronicle read is checked
 
 `topics` are ids of tree nodes. The address of a house is its item's deepest topic (ties in code-point order of the id); an item with no
-topic lives in the root zone. Items arrive in `added_at` order, ties by id.
+topic lives on the ring road. Items arrive in `added_at` order, ties by id.
 
 The checks are strict on purpose: a library that names a topic the tree does not have is a mistake worth stopping for, not a house to place
 somewhere. Every problem found is reported at once (up to MAX_PROBLEMS), each with the place it was found at.
@@ -294,6 +294,12 @@ def _check_street(problems: _Problems, where: str, p: dict) -> None:
         elif rib.get("band") is not None:  # a cell of a band is the polar cell of its lane: `s`, the radius of the lane, divides
             _typed(problems, f"{where}.rib", rib, "band", _whole, "a whole number or null")
             _typed(problems, f"{where}.rib", rib, "s", lambda v: _number(v) and v > 0, "a number above 0 (the radius of the lane)")
+    if p.get("shape") == "ring":  # the ring road or a lap of it: a house on it is the polar cell of its lane, the radius of the lane divides
+        ring = p.get("ring")
+        if not isinstance(ring, dict):
+            problems.add(f"{where}.ring", f"must be an object {{radius, ...}} for a street of shape ring, got {_shown(ring)}")
+        else:
+            _typed(problems, f"{where}.ring", ring, "radius", lambda v: _number(v) and v > 0, "a number above 0 (the radius of the lane)")
 
 
 def _check_house(problems: _Problems, where: str, p: dict) -> None:
@@ -360,6 +366,7 @@ def _check_composition(problems: _Problems, name: str, comp: dict) -> None:
         for key in ("max_radius", "walk_mean", "walk_longest"):
             _typed(problems, f"{where}.measure", comp["measure"], key, _number, "a number")
         _typed(problems, f"{where}.measure", comp["measure"], "underground_lots", _number, "a number", required=False)
+        _typed(problems, f"{where}.measure", comp["measure"], "ring_lots", _number, "a number", required=False)
     if isinstance(comp.get("streets"), dict):
         _typed(problems, f"{where}.streets", comp["streets"], "total", _number, "a number")
 
@@ -472,7 +479,10 @@ def _check_links(problems: _Problems, name: str, doc: dict) -> None:
         for pid in line:
             top[pid] = found
     ring1 = {sector["place"] for sector in sectors}
+    rings = {pid for pid, p in places.items() if p["kind"] == "street" and p.get("shape") == "ring" and p["parent"] == PLAZA}  # the ring road is a root of its own
+    ring1 |= rings
     outside: dict[str, str] = {}  # a street that houses stand on, under a street that is no sector of ring 1 -> the first of those houses
+    astray: dict[str, str] = {}  # a street that houses stand on, under the ring road, that is no lap of it -> the first of those houses
     for pid, p in places.items():
         if p["kind"] not in ("lot", "reserved"):
             continue
@@ -481,8 +491,12 @@ def _check_links(problems: _Problems, name: str, doc: dict) -> None:
             problems.add(f"{name}.places[{pid!r}].parent", f"{p['parent']!r} is not a street")
         elif not p.get("underground") and top.get(p["parent"]) is not None and top[p["parent"]] not in ring1:
             outside.setdefault(p["parent"], pid)
+        elif top.get(p["parent"]) in rings and above.get("shape") != "ring":  # a house of the ring road stands in a lap of it, the polar cell of the lane of the lap
+            astray.setdefault(p["parent"], pid)
     for street, house in outside.items():
         problems.add(f"{name}.places[{street!r}]", f"it stands under {top[street]!r}, which is not a sector in composition.ring1 (a house on it: {house!r})")
+    for street, house in astray.items():
+        problems.add(f"{name}.places[{street!r}]", f"it stands under the ring road {top[street]!r} and is no lap of it, a street of shape ring (a house on it: {house!r})")
 
 
 def read_city(doc, name: str = "city") -> dict:

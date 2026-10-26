@@ -23,9 +23,9 @@ TABLE = [(0, "0"), (-0.0, "0"), (1, "1"), (-1, "-1"), (40, "40"), (6.0, "6"), (1
          (2026, "2026"), (-189.97, "-189.97"), (0.30000000000000004, "0.30000000000000004")]
 
 # the sha256 of the text of the city that the sample makes (examples/tree.json + library.json); change them on purpose, with the engine
-PINS = {"grow": "7709df8ca630267167758a083321d13720cd9c981f7e06343da666c35e24260d",
-        "mirror": "dccf46c97cc888a9629b9d20a80d2d88d6bc1a6cf76a2650d6b15eab2e732424",
-        "grow, first 41": "66786136f586a2cb0643f61367fd60666de808aa819f09cb996a679fa969634f"}
+PINS = {"grow": "4658bf88a2ab94579bf24339dcf48f72c738bea1c30614a23d3fff3db6b6217b",
+        "mirror": "49f2c49eabc10f7777269f485fb23856fed1966d453878bef0db049e04beeb86",
+        "grow, first 41": "525294305416c6bb3c16220b99fa53c11e7b93950a5bd7ea3a8059bfb0d336e0"}
 
 
 @pytest.fixture(scope="module")
@@ -180,8 +180,8 @@ def test_a_picture_drawn_from_the_text_of_a_hand_built_city_is_the_picture_of_th
 
 
 def test_the_line_of_numbers_of_a_picture_is_the_same_for_a_measure_that_is_a_whole_number_or_a_float():
-    city = {"composition": {"buildings": 3, "streets": {"total": 1}, "measure": {"underground_lots": 0, "max_radius": 8, "walk_mean": 4.5, "walk_longest": 55}}}
+    city = {"composition": {"buildings": 3, "streets": {"total": 1}, "measure": {"ring_lots": 0, "max_radius": 8, "walk_mean": 4.5, "walk_longest": 55}}}
     other = json.loads(json.dumps(city))
     other["composition"]["measure"].update(max_radius=8.0, walk_longest=55.0)
-    want = "3 houses (0 under the town hall) on 1 roads; the farthest house is 8.0 cells from the centre, the mean walk 4.5, the longest 55.0"
+    want = "3 houses (0 on the ring road) on 1 roads; the farthest house is 8.0 cells from the centre, the mean walk 4.5, the longest 55.0"
     assert picture.stats_line(city, (0, 0)) == picture.stats_line(other, (0, 0)) == want

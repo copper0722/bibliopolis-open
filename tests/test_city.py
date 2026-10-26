@@ -13,8 +13,8 @@ def forest(*names):
     return {"nodes": [{"id": n, "label": n.upper(), "parent": None} for n in names]}
 
 
-# the root zone fills up to 41 houses with no group of 10 (over), a tenth house of t0 opens its road (not over any more), nine more roots of one house
-# each fill the root zone up to 41 again (over a second time)
+# the ring road fills up to 41 houses with no group of 10 (over), a tenth house of t0 opens its road (not over any more), nine more roots of one house
+# each fill the ring up to 41 again (over a second time)
 TREE = forest(*[f"t{i}" for i in range(5)], *[f"s{i}" for i in range(9)])
 ARRIVALS = [f"t{i // 8}" for i in range(40)] + ["t0"] + ["t0"] + [f"s{i}" for i in range(9)]
 
@@ -29,16 +29,16 @@ def overs(doc):
 
 
 def test_the_summary_counts_the_streets_that_are_over_now_not_the_times_one_went_over():
-    first = city(41)  # the 41st house: the root zone holds 41 and no group has 10
+    first = city(41)  # the 41st house: the ring holds 41 and no group has 10
     assert [e["seq"] for e in overs(first)] == [41] and first["places"]["place:root"]["over"] is True
-    assert bibliopolis.summary(first) == {"mode": "grow", "houses": 41, "roads": 0, "underground": 41, "splits": 0, "over": 1}
-    second = city(42)  # the 42nd house gives t0 its tenth: the road opens, the root zone drops to 32 and is not over any more
+    assert bibliopolis.summary(first) == {"mode": "grow", "houses": 41, "roads": 1, "ring": 41, "splits": 0, "over": 1}  # (the ring road is the one road)
+    second = city(42)  # the 42nd house gives t0 its tenth: the road opens, the ring drops to 32 and is not over any more
     assert [e["seq"] for e in overs(second)] == [41] and [e["to"] for e in second["world"]["chronicle"] if "from" in e] == ["place:tag:t0"]
     assert "over" not in second["places"]["place:root"]
-    assert bibliopolis.summary(second) == {"mode": "grow", "houses": 42, "roads": 1, "underground": 32, "splits": 1, "over": 0}  # the chronicle still has the old entry
+    assert bibliopolis.summary(second) == {"mode": "grow", "houses": 42, "roads": 2, "ring": 32, "splits": 1, "over": 0}  # the chronicle still has the old entry
     third = city(51)  # nine houses more: over a second time
     assert [e["seq"] for e in overs(third)] == [41, 51] and third["places"]["place:root"]["over"] is True
-    assert bibliopolis.summary(third) == {"mode": "grow", "houses": 51, "roads": 1, "underground": 41, "splits": 1, "over": 1}  # two entries, one street over
+    assert bibliopolis.summary(third) == {"mode": "grow", "houses": 51, "roads": 2, "ring": 41, "splits": 1, "over": 1}  # two entries, one street over
 
 
 def test_the_command_line_reports_the_streets_that_are_over_now(tmp_path, capsys):
@@ -47,7 +47,7 @@ def test_the_command_line_reports_the_streets_that_are_over_now(tmp_path, capsys
     (tmp_path / "l.json").write_text(json.dumps({"items": items}), encoding="utf-8")
     out = tmp_path / "city.json"
     assert cli.main(["build", "--library", str(tmp_path / "l.json"), "--tree", str(tmp_path / "t.json"), "--out", str(out)]) == 0
-    assert capsys.readouterr().err.strip() == f"wrote {out}: 42 houses on 1 roads, 32 under the town hall, 1 splits, 0 over (mode grow)"
+    assert capsys.readouterr().err.strip() == f"wrote {out}: 42 houses on 2 roads, 32 on the ring road, 1 splits, 0 over (mode grow)"
     assert len(overs(json.loads(out.read_text(encoding="utf-8")))) == 1  # (the chronicle remembers it)
 
 
@@ -71,9 +71,9 @@ def test_a_document_can_be_made_without_its_coast():
 
 
 @pytest.mark.parametrize("mode", ["grow", "mirror"])
-def test_the_summary_of_a_town_hall_with_nothing_else_is_zeros(mode):
+def test_the_summary_of_a_town_hall_and_an_empty_ring_is_zeros_and_the_ring_road(mode):
     doc = bibliopolis.build_city({"items": []}, TREE, mode=mode)
-    assert bibliopolis.summary(doc) == {"mode": mode, "houses": 0, "roads": 0, "underground": 0, "splits": 0, "over": 0}
+    assert bibliopolis.summary(doc) == {"mode": mode, "houses": 0, "roads": 1, "ring": 0, "splits": 0, "over": 0}
 
 
 # ----------------------------------------------------------------------------------------------- a replay ----
@@ -90,23 +90,23 @@ def test_first_replays_the_growth_the_plan_still_reads_the_whole_library(mode):
     assert bibliopolis.render(bibliopolis.build_city(library, tree, mode=mode, first=10_000)) == bibliopolis.render(full)  # more than there are: all of them
 
 
-def test_the_first_forty_items_of_the_sample_are_all_under_the_town_hall_and_the_41st_opens_the_first_road():
+def test_the_first_forty_items_of_the_sample_are_all_on_the_ring_and_the_41st_opens_the_first_road():
     tree, library = sample()
     forty = bibliopolis.build_city(library, tree, first=40)
-    assert bibliopolis.summary(forty) == {"mode": "grow", "houses": 40, "roads": 0, "underground": 40, "splits": 0, "over": 0} and forty["roads"] == {}
+    assert bibliopolis.summary(forty) == {"mode": "grow", "houses": 40, "roads": 1, "ring": 40, "splits": 0, "over": 0} and list(forty["roads"]) == ["road:place:root"]
     forty_one = bibliopolis.build_city(library, tree, first=41)
     (entry,) = forty_one["world"]["chronicle"]
-    assert (entry["seq"], entry["from"], entry["to"]) == (41, "place:root", "place:tag:computing") and bibliopolis.summary(forty_one)["roads"] == 1
+    assert (entry["seq"], entry["from"], entry["to"]) == (41, "place:root", "place:tag:computing") and bibliopolis.summary(forty_one)["roads"] == 2
 
 
 @pytest.mark.parametrize("mode", ["grow", "mirror"])
-def test_a_replay_of_no_items_is_the_town_hall_alone_and_the_plan_is_there(mode):
+def test_a_replay_of_no_items_is_the_town_hall_and_the_empty_ring_and_the_plan_is_there(mode):
     tree, library = sample()
     full = bibliopolis.build_city(library, tree, mode=mode)
     nothing = bibliopolis.build_city(library, tree, mode=mode, first=0)
-    assert set(nothing["places"]) == {"place:plaza"} and nothing["roads"] == {} and nothing["world"]["houses"] == 0 and nothing["world"]["chronicle"] == []
-    assert bibliopolis.summary(nothing)["roads"] == 0 and nothing["composition"]["ring1"] == full["composition"]["ring1"]  # the sectors are pinned all the same
-    assert bibliopolis.summary(full)["roads"] > 0
+    assert set(nothing["places"]) == {"place:plaza", "place:root"} and list(nothing["roads"]) == ["road:place:root"] and nothing["world"]["houses"] == 0
+    assert nothing["world"]["chronicle"] == [] and bibliopolis.summary(nothing)["roads"] == 1 and nothing["composition"]["ring1"] == full["composition"]["ring1"]  # the sectors are pinned all the same
+    assert bibliopolis.summary(full)["roads"] > 1
 
 
 @pytest.mark.parametrize("first", [-1, 1.5, True, "3"])
@@ -122,7 +122,7 @@ def test_the_command_line_replays_with_first(tmp_path, capsys):
     (tmp_path / "l.json").write_text(json.dumps(library), encoding="utf-8")
     out = tmp_path / "city41.json"
     assert cli.main(["build", "--library", str(tmp_path / "l.json"), "--tree", str(tmp_path / "t.json"), "--first", "41", "--out", str(out)]) == 0
-    assert capsys.readouterr().err.strip() == f"wrote {out}: 41 houses on 1 roads, 26 under the town hall, 1 splits, 0 over (mode grow)"
+    assert capsys.readouterr().err.strip() == f"wrote {out}: 41 houses on 2 roads, 26 on the ring road, 1 splits, 0 over (mode grow)"
     assert cli.main(["build", "--library", str(tmp_path / "l.json"), "--tree", str(tmp_path / "t.json"), "--first", "-3", "--out", str(tmp_path / "x.json")]) == 2
     assert "first must be a whole number" in capsys.readouterr().err and not (tmp_path / "x.json").exists()
 
@@ -138,9 +138,9 @@ def test_the_chronicle_of_the_sample_reads_as_sentences_one_per_entry():
     lines = bibliopolis.city.chronicle_lines(doc)
     assert len(lines) == len(doc["world"]["chronicle"]) == 23
     assert lines[:4] == [
-        "house 41, 2019-06-26: The root zone held 41 houses. Computing opens as a road with 15 of them; 26 stay.",
-        "house 62, 2019-10-15: The root zone held 41 houses. Physical sciences opens as a road with 12 of them; 29 stay.",
-        "house 85, 2020-01-26: The root zone held 41 houses. Life sciences opens as a road with 17 of them; 24 stay.",
+        "house 41, 2019-06-26: Knowledge held 41 houses. Computing opens as a road with 15 of them; 26 stay.",
+        "house 62, 2019-10-15: Knowledge held 41 houses. Physical sciences opens as a road with 12 of them; 29 stay.",
+        "house 85, 2020-01-26: Knowledge held 41 houses. Life sciences opens as a road with 17 of them; 24 stay.",
         "house 130, 2020-08-12: Computing held 41 houses. Systems opens as a road with 20 of them; 21 stay.",
     ]
     assert lines[18] == "house 575, 2026-06-02: Networks holds 41 houses, more than 40, and no group of 10 or more can open a road. It is marked over."
@@ -160,23 +160,23 @@ def test_every_number_of_a_sentence_comes_from_its_entry_or_the_rule_of_the_docu
 
 def test_the_day_is_the_date_part_of_at_whatever_the_library_wrote_and_is_left_out_when_there_is_none():
     base = {"n": 1, "seq": 7, "from": "place:root", "to": "place:tag:a", "label": "Alpha", "houses": ["h1"], "count_before": 41, "count_after": 40}
-    places = {"place:root": {"underground": True, "address": ["根區"]}}
+    places = {"place:root": {"shape": "ring", "address": ["Knowledge"]}}
     cases = [("2026-06-02", ", 2026-06-02"), ("2026-06-02T09:30:00+08:00", ", 2026-06-02"), ("2026-06-02 09:30:00", ", 2026-06-02"), ("last week", ", last week"),
              ("", ""), (None, "")]
     for at, shown in cases:
         entry = {**base, **({"at": at} if at is not None else {})}
-        assert bibliopolis.city.chronicle_lines(chronicle_doc(entry, places=places))[0].startswith(f"house 7{shown}: The root zone held 41 houses.")
+        assert bibliopolis.city.chronicle_lines(chronicle_doc(entry, places=places))[0].startswith(f"house 7{shown}: Knowledge held 41 houses.")
 
 
-def test_a_road_is_named_by_its_address_the_root_zone_by_its_flag_and_a_place_the_document_lacks_by_its_id():
-    places = {"place:root": {"underground": True, "address": ["根區"]}, "place:tag:a": {"address": ["Alpha", "Beta"]}}
+def test_a_road_is_named_by_its_address_the_ring_road_too_and_a_place_the_document_lacks_by_its_id():
+    places = {"place:root": {"shape": "ring", "address": ["Knowledge"]}, "place:tag:a": {"address": ["Alpha", "Beta"]}}
     split = {"seq": 3, "from": "place:tag:a", "to": "place:tag:b", "label": "Gamma", "houses": ["h1", "h2"], "count_before": 41, "count_after": 39}
     over = {"seq": 4, "over": "place:tag:zzz", "count": 44}
     root = {"seq": 5, "over": "place:root", "count": 41}
     lines = bibliopolis.city.chronicle_lines(chronicle_doc(split, over, root, places=places))
     assert lines == ["house 3: Beta held 41 houses. Gamma opens as a road with 2 of them; 39 stay.",
                      "house 4: place:tag:zzz holds 44 houses, more than 40, and no group of 10 or more can open a road. It is marked over.",
-                     "house 5: The root zone holds 41 houses, more than 40, and no group of 10 or more can open a road. It is marked over."]
+                     "house 5: Knowledge holds 41 houses, more than 40, and no group of 10 or more can open a road. It is marked over."]
 
 
 def test_the_chronicle_of_a_mirror_city_is_the_roads_that_became_crowded():

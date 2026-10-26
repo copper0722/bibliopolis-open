@@ -231,7 +231,7 @@ def test_the_readme_shows_the_chronicle_the_command_prints_on_the_sample(tmp_pat
 
 def test_the_readme_replay_is_the_city_at_house_41_and_the_picture_command_draws_it(tmp_path):
     done = build_on_the_sample(tmp_path, "--mode", "grow", "--first", "41", "--out", "city-41.json")
-    assert done.returncode == 0 and done.stderr.strip() == "wrote city-41.json: 41 houses on 1 roads, 26 under the town hall, 1 splits, 0 over (mode grow)"
+    assert done.returncode == 0 and done.stderr.strip() == "wrote city-41.json: 41 houses on 2 roads, 26 on the ring road, 1 splits, 0 over (mode grow)"
     assert run(["-m", "bibliopolis", "picture", "--city", "city-41.json", "--out", "city-41.svg"], tmp_path).returncode == 0
     city = json.loads((tmp_path / "city-41.json").read_text(encoding="utf-8"))
     assert (tmp_path / "city-41.svg").read_text(encoding="utf-8") == picture.render(city)

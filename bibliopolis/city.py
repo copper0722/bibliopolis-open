@@ -57,13 +57,21 @@ def build_city(library: dict, tree: dict, *, mode: str = GROW, max_houses: int =
 
 
 def summary(doc: dict) -> dict:
-    """The numbers of a city document: houses, roads (continuations are not counted twice), houses under the town hall, splits, and the streets that are
-    over now (a road or the root zone that holds more than `max` houses and cannot split). The chronicle remembers every road that was ever over; a road
-    that a later split brought back under `max` is in the chronicle and no longer counts here."""
+    """The numbers of a city document: houses, roads (continuations are not counted twice; the ring road counts as one), the houses on the ring road (`ring`) or,
+    in a city with no ring road, under the town hall (`underground`), splits, and the streets that are over now (a road or the root that holds more than `max`
+    houses and cannot split). The chronicle remembers every road that was ever over; a road that a later split brought back under `max` is in the chronicle and no
+    longer counts here."""
     streets = doc["composition"]["streets"]
     chronicle = doc["world"]["chronicle"]
-    return {"mode": doc["world"]["mode"], "houses": doc["world"]["houses"], "roads": streets["total"], "underground": doc["composition"]["measure"]["underground_lots"],
+    measure = doc["composition"]["measure"]
+    root = {"ring": measure["ring_lots"]} if "ring_lots" in measure else {"underground": measure["underground_lots"]}
+    return {"mode": doc["world"]["mode"], "houses": doc["world"]["houses"], "roads": streets["total"], **root,
             "splits": sum(1 for e in chronicle if "from" in e), "over": sum(1 for p in doc["places"].values() if p["kind"] == "street" and p.get("over"))}
+
+
+def root_words(s: dict) -> str:
+    """Where the houses of the root stand, for the line the command line prints."""
+    return f"{s['ring']} on the ring road" if "ring" in s else f"{s['underground']} under the town hall"
 
 
 _DAY = re.compile(r"\d{4}-\d\d-\d\d")

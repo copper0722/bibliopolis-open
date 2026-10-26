@@ -24,7 +24,7 @@ split as they grow).
 ## Layout and checks
 
 - `bibliopolis/` the package (Python 3.11+, standard library only): `inputs` (read and check the files), `cut` and `plan` (the directions),
-  `world` (the growing city), `document` and `layout` and `coast` (the document), `picture` (the SVG), `city` and `cli`; `canonical` (the one number form of
+  `ring` (the geometry of the ring road), `world` (the growing city), `document` and `layout` and `coast` (the document), `picture` (the SVG), `city` and `cli`; `canonical` (the one number form of
   every document written). The world built by hand: `events` (the log and its checks), `hand` (the fold), `journal` (append, the world file), `suggest`,
   `store` (SQLite, the home folder). Rules: `docs/engine.md` and `docs/world.md` (with the notes for a port); formats: `docs/format.md` and `schema/` (the library, the tree and, for a world built by hand, `schema/world.schema.json`).
 - `examples/` the seeded generator of the synthetic sample (`make_example.py`) and its output; a derived city is never committed. `make_pictures.py` makes
@@ -35,7 +35,7 @@ split as they grow).
   `build` and `picture` replace their own output. Threat model: several runs of this tool by one user at once, a wrong name, a fault or an interrupt in the middle of a call and a disk with no hard
   links are in scope; a hostile process with write access to the same folder is out (it could delete or replace the world itself, and no way of publishing stops that). See `docs/world.md`, "The files".
 - `tests/`: `python3 -m pytest` from the repository root. Every test is offline and synthetic.
-- The plan, the world of `grow` mode (roads, direct counts, root zone, chronicle, lots, ribs, lines) and the document it makes (places, roads, coast,
+- The plan, the world of `grow` mode (roads, direct counts, the ring road, chronicle, lots, ribs, lines) and the document it makes (places, roads, coast,
   measures) are an extraction of the private engine. A parity test in the private repository compares them with it on random libraries and on the
   sample (the whole document against a private plan without the journal sector). Not compared, because the private engine has nothing to compare
   with: the input checks (and the checks of a city file), the mirror mode (and `complete`), the command line and its summary, the `at` dates of the

@@ -275,14 +275,24 @@ def finish_layout(layout: dict, with_coast: bool = True) -> dict:
 
 # ----------------------------------------------------------------------------------------------- measures ----
 def road_starts(layout: dict) -> dict[str, float]:
-    """road id -> length of the road walk from the centre of the plaza to the start of the road."""
+    """road id -> length of the road walk from the centre of the plaza to the start of the road.
+
+    A road with no parent starts at its own `s0` when it has one (a spoke: the plaza rim in a city with no ring road, the outer edge of the ring road in a city
+    with one), at its `radius` when it is a ring road (the lane of the ring), else at the plaza rim."""
     roads = layout["roads"]
     cum: dict[str, float] = {}
 
     def start_of(rid: str) -> float:
         if rid not in cum:
             r = roads[rid]
-            cum[rid] = (start_of(r["parent"]) + r["at"]) if r["parent"] else layout["centre"]["radius"]
+            if r["parent"]:
+                cum[rid] = start_of(r["parent"]) + r["at"]
+            elif "s0" in r:
+                cum[rid] = r["s0"]
+            elif r["kind"] == "ring":
+                cum[rid] = r["radius"]
+            else:
+                cum[rid] = layout["centre"]["radius"]
         return cum[rid]
 
     for rid in roads:
@@ -290,10 +300,22 @@ def road_starts(layout: dict) -> dict[str, float]:
     return cum
 
 
+def ring_walk(places: dict[str, dict], lot: dict, lap: dict) -> float:
+    """The walk from the centre of the plaza to a house on the ring road: straight out through the nearest gate to the lane of its lap, R, then along the lane to
+    the house: R + R * radians(d), d the smallest angle between the bearing of the house (atan2(x, -z) of its position, degrees) and a gate of G1 (`ring.gaps` of
+    the root of the ring, the gates by which the plaza reaches it; none: the bearing from north)."""
+    radius = lap["ring"]["radius"]
+    gates = places[lap.get("lane_of", lot["parent"])]["ring"]["gaps"] or [0.0]
+    bearing = math.degrees(math.atan2(lot["position"]["x"], -lot["position"]["z"]))
+    d = min(abs((bearing - g + 180.0) % 360.0 - 180.0) for g in gates)
+    return radius + radius * math.radians(d)
+
+
 def lot_door_walks(layout: dict) -> dict[str, float]:
     """article id -> length of the road walk from the centre of the plaza to the door of its lot, along the road tree.
 
-    The door of a lot is the point of its lane right in front of it. A house of the root zone stands under the plaza and walks no road."""
+    The door of a lot is the point of its lane right in front of it. A house on the ring road walks `ring_walk`. A house of the root zone of a city with no ring
+    road stands under the plaza and walks no road."""
     places, roads = layout["places"], layout["roads"]
     starts = road_starts(layout)
     out: dict[str, float] = {}
@@ -301,6 +323,9 @@ def lot_door_walks(layout: dict) -> dict[str, float]:
         if p["kind"] != "lot" or p.get("underground"):
             continue
         owner = places[p["parent"]]
+        if owner.get("shape") == "ring":
+            out[p["article"]] = ring_walk(places, p, owner)
+            continue
         rid = owner.get("lane") or owner["road"]
         road, rib = roads[rid], owner["rib"]
         centre = rib["x0"] + p["slot"] // 2 + 0.5
@@ -320,8 +345,10 @@ def place_root(places: dict[str, dict], pid: str) -> str:
 
 
 def measure(layout: dict) -> dict:
-    """The numbers of a city, read back from the document alone. The surface only: the houses of the root zone (`underground`) and the root
-    street stand under the plaza, and a rib that continues a road (`continued`) is the road it continues."""
+    """The numbers of a city, read back from the document alone. The surface only: the houses of the root zone (`underground`, a city with no ring road) and the
+    root street stand under the plaza, and a rib that continues a road (`continued`) is the road it continues. A city with a ring road has no underground: its ring
+    and its houses are on the surface like any road's, `ring_lots` counts the houses on every lap of the ring, and the ring counts as one 大道 (its laps are
+    continuations)."""
     places, roads = layout["places"], layout["roads"]
     lots = [p for p in places.values() if p["kind"] == "lot" and not p.get("underground")]
     reserved = [p for p in places.values() if p["kind"] == "reserved"]
@@ -335,7 +362,7 @@ def measure(layout: dict) -> dict:
             by_class[p["class"]] = by_class.get(p["class"], 0) + 1
     land = sum(coast.polygon_area(poly) for poly in layout.get("coast", {}).get("polygons", []))
     ring1 = layout["composition"]["ring1"]
-    return {
+    out = {
         "lots": len(lots), "reserved_lots": len(reserved), "slots": len(lots) + len(reserved),
         "land_area": round(land, 1), "land_per_lot": round(land / len(lots), 2) if lots and land else None,
         "land_per_slot": round(land / (len(lots) + len(reserved)), 2) if lots and land else None,
@@ -347,8 +374,12 @@ def measure(layout: dict) -> dict:
         "max_ring": max((p["level"] for p in streets), default=0),
         "ring1_wedges": [{"place": r["place"], "label": r["label"], "span": r["span"]} for r in ring1],
         "roads": len(roads), "road_length": round(sum(r["length"] for r in roads.values()), 1),
-        "underground_lots": sum(1 for p in places.values() if p["kind"] == "lot" and p.get("underground")),
     }
+    if any(p["kind"] == "street" and p.get("shape") == "ring" for p in places.values()):  # a city with the ring road: its houses are in the numbers above
+        out["ring_lots"] = sum(1 for p in lots if places[p["parent"]].get("shape") == "ring")
+    else:
+        out["underground_lots"] = sum(1 for p in places.values() if p["kind"] == "lot" and p.get("underground"))
+    return out
 
 
 # ------------------------------------------------------------------------------------------------ the text ----

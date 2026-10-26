@@ -119,9 +119,9 @@ def test_a_mirror_replay_has_no_road_that_no_house_stands_on_or_below(case):
     for n in SWEEP:
         part = bibliopolis.build_city(library, TREE, mode="mirror", trunk_min=weight, first=n)
         places = part["places"]
-        roads = {pid for pid, p in places.items() if p["kind"] == "street" and not p.get("underground") and "lane_of" not in p}
-        standing = {pid for pid in houses_below(part) if "lane_of" not in places[pid] and not places[pid].get("underground")}
-        assert roads == standing, (n, sorted(roads ^ standing))  # the roads of the replay are exactly the streets a house stands on or below
+        roads = {pid for pid, p in places.items() if p["kind"] == "street" and p.get("shape") != "ring" and "lane_of" not in p}
+        standing = {pid for pid in houses_below(part) if "lane_of" not in places[pid] and places[pid].get("shape") != "ring"}
+        assert roads == standing, (n, sorted(roads ^ standing))  # the roads of the replay are exactly the streets a house stands on or below (the ring road stands from day one)
 
 
 def test_a_road_that_opens_late_is_not_in_a_replay_before_its_first_house_and_is_where_the_full_city_has_it_after(case):

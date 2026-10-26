@@ -25,7 +25,7 @@ sys.path.insert(0, str(ROOT))
 from bibliopolis import build_city, picture, summary  # noqa: E402
 
 OUT = ROOT / "docs" / "images"
-STEPS = (40, 41, 150, 600)  # the growth sheet: the town hall alone, the first road, a few roads, the whole sample
+STEPS = (40, 41, 150, 600)  # the growth sheet: the ring road alone, the first road, a few roads, the whole sample
 
 
 def sample() -> tuple[dict, dict]:
@@ -36,6 +36,11 @@ def sample() -> tuple[dict, dict]:
 
 def plural(n: int, one: str, many: str) -> str:
     return f"{n} {one if n == 1 else many}"
+
+
+def topic_roads(s: dict) -> int:
+    """The roads of a city that stand for topics: the streets of its summary but the ring road, which is the root of them all and no topic's."""
+    return s["roads"] - 1
 
 
 def latest_split(city: dict) -> dict | None:
@@ -50,16 +55,17 @@ def growth_caption(n: int, city: dict) -> list[str]:
     split = latest_split(city)
     head = f"After {n} houses · 蓋到第 {n} 棟"
     if split is None:
-        return [head, f"No road yet: all {s['underground']} are under the town hall.", f"還沒有路：{s['underground']} 棟全在市政廳地下。"]
+        return [head, f"No road yet: all {s['ring']} are on the ring road.", f"還沒有路：{s['ring']} 棟全在圓環上。"]
     moved = len(split["houses"])
-    if s["roads"] == 1:
+    if s["splits"] == 1:  # (the ring road is a road too: the first road that opens from it is the first split)
         return [head, f"The first road opens: {split['label']} takes {moved} (orange).", f"第一條路開出來：{split['label']} 搬走 {moved} 棟（橘色）。"]
-    return [head, f"{plural(s['roads'], 'road', 'roads')}; newest: {split['label']}, {moved} houses (orange).",
-            f"{s['roads']} 條路；最新的 {split['label']} 搬走 {moved} 棟（橘色）。"]
+    roads = topic_roads(s)
+    return [head, f"{plural(roads, 'road', 'roads')}; newest: {split['label']}, {moved} houses (orange).",
+            f"{roads} 條路；最新的 {split['label']} 搬走 {moved} 棟（橘色）。"]
 
 
 def growth() -> str:
-    """The `grow` city of the sample at four moments, one frame: nothing above ground at first, then the first road, then the splits."""
+    """The `grow` city of the sample at four moments, one frame: the ring road alone with its houses at first, then the first road, then the splits."""
     tree, library = sample()
     panels = []
     for n in STEPS:
@@ -76,10 +82,10 @@ def modes() -> str:
     mirror, grown = build_city(library, tree, mode="mirror"), build_city(library, tree, mode="grow")
     m, g = summary(mirror), summary(grown)
     panels = [
-        picture.Panel(mirror, ["Your library as a city · 把你的文獻庫變成城邦", f"mirror: {m['roads']} roads, one for every topic that holds a house.",
-                               f"mirror：{m['roads']} 條路，有文獻的主題，每一個都是路。"]),
-        picture.Panel(grown, ["A city from zero · 從零開始建城邦", f"grow: {g['roads']} roads, opened one by one as the houses arrived.",
-                              f"grow：{g['roads']} 條路，隨文獻抵達，一條一條開出來。"]),
+        picture.Panel(mirror, ["Your library as a city · 把你的文獻庫變成城邦", f"mirror: {topic_roads(m)} roads, one for every topic that holds a house.",
+                               f"mirror：{topic_roads(m)} 條路，有文獻的主題，每一個都是路。"]),
+        picture.Panel(grown, ["A city from zero · 從零開始建城邦", f"grow: {topic_roads(g)} roads, opened one by one as the houses arrived.",
+                              f"grow：{topic_roads(g)} 條路，隨文獻抵達，一條一條開出來。"]),
     ]
     return picture.sheet(panels, columns=2, panel_px=500, label_px=(12.0, 0.0, 12.0))
 
@@ -117,7 +123,7 @@ def along(points: list[list[float]], fraction: float) -> tuple[float, float]:
 
 
 def concept() -> str:
-    """A small city with its parts named: a house, a road, a branch road, the town hall and the root zone under it."""
+    """A small city with its parts named: a house, a road, a branch road, the town hall and the ring road round it."""
     city = build_city(concept_library(), CONCEPT_TREE, mode="mirror")
     places, roads = city["places"], city["roads"]
     frame, scale, look = picture.fit([city], 500, (15.0, 12.0, 17.0), pad=7.0)
@@ -130,12 +136,13 @@ def concept() -> str:
         return left + (point[0] - x0) * scale, top + (point[1] - z0) * scale
 
     radius = places[picture.PLAZA]["radius"]
-    life = [p for p in places.values() if p["kind"] == "lot" and not p.get("underground") and picture.ring1_place(places, p["parent"]) == "place:tag:life"]
+    ring_radius = places["place:root"]["ring"]["radius"]
+    life = [p for p in places.values() if p["kind"] == "lot" and picture.ring1_place(places, p["parent"]) == "place:tag:life"]
     east = max(life, key=lambda p: (p["position"]["x"], p["article"]))  # the house farthest east: no name stands on it
     notes = [  # (the place it names, in cells; the side of the picture; the words: English, Chinese, ...)
         (along(roads["road:place:lane:networks:2"]["points"], 0.9), "left", ["a sub-topic = a branch road", "子主題＝岔路"]),
         ((-radius * 0.72, -radius * 0.72), "left", ["the town hall = the root", "市政廳＝根"]),
-        ((0.0, radius + look.plaza * 1.15 + 0.9 * look.plaza), "left", ["the root zone", "articles with no topic yet", "根區：還沒有主題的文獻"]),
+        ((0.0, ring_radius), "left", ["the ring road", "articles with no topic yet", "圓環：還沒有主題的文獻"]),
         (along(roads["road:place:tag:history"]["points"], 0.45), "right", ["a topic = a road", "主題＝路"]),
         ((east["position"]["x"], east["position"]["z"]), "right", ["an article = a house", "一篇文獻＝一棟房子"]),
     ]

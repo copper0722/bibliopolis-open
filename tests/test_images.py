@@ -86,10 +86,11 @@ def test_a_picture_is_valid_xml_small_and_made_of_shapes_and_text_only(name):
 
 def test_the_growth_picture_shows_the_town_hall_alone_then_the_first_road_then_the_splits(script):
     said = [t for t, *_ in texts("growth.svg")]
-    for line in ("After 40 houses · 蓋到第 40 棟", "No road yet: all 40 are under the town hall.", "地下 40 棟",
-                 "After 41 houses · 蓋到第 41 棟", "The first road opens: Computing takes 15 (orange).", "地下 26 棟",
-                 "After 150 houses · 蓋到第 150 棟", "After 600 houses · 蓋到第 600 棟", "地下 15 棟"):
+    for line in ("After 40 houses · 蓋到第 40 棟", "No road yet: all 40 are on the ring road.", "還沒有路：40 棟全在圓環上。",
+                 "After 41 houses · 蓋到第 41 棟", "The first road opens: Computing takes 15 (orange).",
+                 "After 150 houses · 蓋到第 150 棟", "After 600 houses · 蓋到第 600 棟"):
         assert line in said, line
+    assert said.count("Knowledge") == 4  # the ring road is named once in each of the four panels, at its north point
     tree, library = script.sample()
     for n in script.STEPS:  # every number of a caption is the number of the city it sits over
         city = bibliopolis.build_city(library, tree, first=n)
@@ -104,19 +105,20 @@ def test_the_modes_picture_puts_the_same_items_in_both_modes_on_one_frame(script
     said = [t for t, *_ in texts("modes.svg")]
     tree, library = script.sample()
     mirror, grown = (bibliopolis.summary(bibliopolis.build_city(library, tree, mode=m)) for m in ("mirror", "grow"))
-    assert f"mirror: {mirror['roads']} roads, one for every topic that holds a house." in said
-    assert f"grow: {grown['roads']} roads, opened one by one as the houses arrived." in said
+    assert f"mirror: {script.topic_roads(mirror)} roads, one for every topic that holds a house." in said
+    assert f"grow: {script.topic_roads(grown)} roads, opened one by one as the houses arrived." in said
+    assert (script.topic_roads(mirror), script.topic_roads(grown)) == (79, 22) and mirror["roads"] - 1 == 79  # (the ring road is a street of both cities and no topic's)
     assert mirror["houses"] == grown["houses"] == 600 and mirror["roads"] > grown["roads"]
 
 
-def test_the_concept_picture_names_a_house_a_road_a_branch_road_the_town_hall_and_the_root_zone_in_two_languages(script):
+def test_the_concept_picture_names_a_house_a_road_a_branch_road_the_town_hall_and_the_ring_road_in_two_languages(script):
     said = [t for t, *_ in texts("concept.svg")]
     for pair in (("an article = a house", "一篇文獻＝一棟房子"), ("a topic = a road", "主題＝路"), ("a sub-topic = a branch road", "子主題＝岔路"),
-                 ("the town hall = the root", "市政廳＝根"), ("the root zone", "根區：還沒有主題的文獻")):
+                 ("the town hall = the root", "市政廳＝根"), ("the ring road", "圓環：還沒有主題的文獻")):
         assert all(line in said for line in pair), pair
-    assert "市政廳" in said and "地下 5 棟" in said and "Networks" in said  # the plaza, the mark of the root zone, the branch road named
+    assert "市政廳" in said and "Knowledge" in said and "Networks" in said  # the plaza, the name of the ring road, the branch road named
     city = bibliopolis.build_city(script.concept_library(), script.CONCEPT_TREE, mode="mirror")
-    assert bibliopolis.summary(city)["houses"] == 53 and bibliopolis.summary(city)["underground"] == 5 and len(city["composition"]["ring1"]) == 3
+    assert bibliopolis.summary(city)["houses"] == 53 and bibliopolis.summary(city)["ring"] == 5 and len(city["composition"]["ring1"]) == 3
 
 
 def test_no_two_labels_of_the_concept_picture_stand_on_each_other():

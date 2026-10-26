@@ -1,10 +1,10 @@
-"""Roads open from the root zone when a road gets crowded (bibliopolis.world, "Roads"; docs/engine.md).
+"""Roads open from the ring road when a road gets crowded (bibliopolis.world, "Roads"; docs/engine.md).
 
-Synthetic trees and arrivals, no files. The rule under test: the first houses lie in the root zone (根區), UNDER the town hall (no road, no rib on
-the surface); a road holds `max` houses directly; the house that would be one more is decided before it is placed; the largest group of at least
-`min` (the child topic of the road's key on the path of each house) opens a road below it; the houses that stay are packed again onto the first
-lots; no group of `min`: the road is over. A rib is sized to the houses its road holds plus headroom; a full road opens a continuation rib, the same
-road, over or not.
+Synthetic trees and arrivals, no files. The rule under test: the first houses stand on the ring road round the town hall (the root of the road tree, with
+houses on both sides); a road holds `max` houses directly; the house that would be one more is decided before it is placed; the largest group of at least
+`min` (the child topic of the road's key on the path of each house) opens a road below it; the houses that stay are packed again onto the first lots of
+the road (on the ring road they keep their lots); no group of `min`: the road is over. A rib is sized to the houses its road holds plus headroom; a full
+road opens a continuation rib, the same road, over or not. The ring itself is tests/test_ring.py.
 """
 
 import json
@@ -12,8 +12,8 @@ import math
 
 import checks
 import pytest
-from support import (ROOT, T, Town, art, as_text, by_tag, count, direct_counts, lot_of, make_tree, ribs_of, road_of, roads_of, send, simulate_districts,
-                     tag_street, underground, world_of)
+from support import (ROOT, T, Town, art, as_text, by_tag, capacity, count, direct_counts, gates_of, lot_of, make_tree, on_ring, ribs_of, road_of, roads_of, send,
+                     simulate_districts, slot_cell, tag_street, world_of)
 
 from bibliopolis import layout as lay
 from bibliopolis import plan as plan_mod
@@ -45,18 +45,18 @@ def test_a_plan_is_not_built_for_a_rule_or_a_mode_the_engine_does_not_know(kw):
         plan_mod.build_plan(TreeView(tree), items, **kw)
 
 
-def test_a_new_world_starts_with_the_rule_an_empty_chronicle_and_the_town_hall_alone():
+def test_a_new_world_starts_with_the_rule_an_empty_chronicle_the_town_hall_and_the_empty_ring_road():
     tree, items, plan, doc = world_of({"a": T(30), "b": T(5)})
     assert doc["chronicle"] == [] and doc["districts"] == {"max": 40, "min": 10, "extract": "largest", "count": "direct"} and doc["mode"] == "grow"
-    assert [r["place"] for r in doc["composition"]["ring1"]] == [tag_street("a"), tag_street("b")] and list(doc["places"]) == [lay.PLAZA_PLACE]
+    assert [r["place"] for r in doc["composition"]["ring1"]] == [tag_street("a"), tag_street("b")] and list(doc["places"]) == [lay.PLAZA_PLACE, ROOT]
     assert sum(r["span"] for r in doc["composition"]["ring1"]) == 360  # the ring-1 streets share the whole circle: there is no sector for anything else
     assert "zone" not in plan and not [r for r in plan["ring1"] if "zone" in r]
     day_one = world_layout(doc)
-    assert list(day_one["places"]) == [lay.PLAZA_PLACE] and day_one["roads"] == {} and day_one["world"]["houses"] == 0 and day_one["world"]["chronicle"] == []
-    assert day_one["composition"]["measure"]["lots"] == 0 and day_one["coast"]["polygons"]  # the land is the plaza's
+    assert list(day_one["places"]) == [lay.PLAZA_PLACE, ROOT] and list(day_one["roads"]) == ["road:place:root"] and day_one["world"]["houses"] == 0
+    assert day_one["world"]["chronicle"] == [] and day_one["composition"]["measure"]["lots"] == 0 and day_one["coast"]["polygons"]  # the land is the plaza's and the ring's
 
 
-# ------------------------------------------------------------------------------- the grid under the plaza ----
+# ----------------------------------------------------------- the grid under the plaza (a world with no ring road) ----
 def test_the_cells_under_the_plaza_are_whole_cells_nearest_first_and_the_first_89_lie_inside_it():
     cells = [zw.underground_cell(k) for k in range(300)]
     assert cells[0] == (0.0, 0.0) and len(set(cells)) == 300  # the centre first, no cell twice
@@ -68,52 +68,54 @@ def test_the_cells_under_the_plaza_are_whole_cells_nearest_first_and_the_first_8
     assert [zw.underground_cell(k) for k in range(300)] == cells and zw._cells_within(7) == zw._cells_within(15)[:len(zw._cells_within(7))]
 
 
-# ---------------------------------------------------------------- the root zone and the first split ----
+# --------------------------------------------------------------------------- the ring road and the first split ----
 SPEC_A = {"med": T(0, a1=T(8), a2=T(7), b=T(9), c=T(9)), "pub": T(12)}  # 33 houses of med, then 12 of pub: house 41 is the 8th of pub
 
 
-def test_the_first_forty_houses_lie_underground_and_the_41st_opens_the_first_road():
+def test_the_first_forty_houses_stand_on_the_ring_and_the_41st_opens_the_first_road():
     tree, arts, plan, doc = world_of(SPEC_A)
+    g = gates_of(plan)
     for n, a in enumerate(arts[:40], start=1):
         doc, _ = send(plan, tree, doc, [a], event_id=n)
         lot = lot_of(doc, a)
-        assert lot["street"] == ROOT and lot["parent"] == ROOT and lot["underground"] is True and doc["chronicle"] == []
-        assert (lot["slot"], lot["order"]) == (n - 1, n - 1) and (lot["position"]["x"], lot["position"]["z"]) == zw.underground_cell(n - 1)  # arrival order
-    # the root zone is one street under the town hall: no road, no rib, nothing on the surface
-    assert doc["places"][ROOT] == {"kind": "street", "shape": "underground", "underground": True, "label": "根區", "address": ["根區"],
-                                   "parent": lay.PLAZA_PLACE, "lots": 40, "reserved": 0}
-    assert doc["roads"] == {} and doc["lines"] == {} and len(doc["places"]) == 2 + 40 and roads_of(doc) == {}
+        assert lot["street"] == ROOT and lot["parent"] == ROOT and "underground" not in lot and doc["chronicle"] == []
+        (x, z), facing = slot_cell(8.5, g, n - 1)
+        assert (lot["slot"], lot["order"]) == (n - 1, n - 1) and (lot["position"]["x"], lot["position"]["z"]) == (round(x, 3), round(z, 3))  # arrival order
+        assert lot["facing"] == pytest.approx(round(facing, 3), abs=2e-3)
+    # the ring is one street round the town hall: a road and a lap, no rib, houses on both sides of its lane
+    assert doc["places"][ROOT] == {"kind": "street", "shape": "ring", "level": 1, "class": "大道", "label": "Knowledge", "address": ["Knowledge"], "parent": lay.PLAZA_PLACE,
+                                   "lots": 40, "reserved": 0, "road": "road:place:root", "ring": {"lap": 1, "radius": 8.5, "slots": capacity(8.5, g), "gaps": g}}
+    assert list(doc["roads"]) == ["road:place:root"] and doc["lines"] == {} and len(doc["places"]) == 2 + 40 and roads_of(doc) == {}
     shown = world_layout(doc)
     assert shown["composition"]["articles"] == shown["composition"]["buildings"] == shown["world"]["houses"] == 40  # (they are houses: one lot each)
-    m = shown["composition"]["measure"]  # the surface measures do not see them
-    assert (m["lots"], m["max_radius"], m["walk_longest"], m["roads"], m["underground_lots"]) == (0, 0.0, 0.0, 0, 40)
-    assert shown["coast"] == world_layout(zw.new_world(plan))["coast"]  # the land is the plaza's and nothing more
-    assert shown["composition"]["streets"] == {"total": 0, "containers": 0, "leaves": 0, "trunks": 0, "groups": 0, "spokes": 0, "lanes": 0,
-                                               "continuations": 0, "underground": 1}
-    assert [p for p in shown["places"].values() if p["kind"] == "lot" and not p.get("underground")] == []
+    m = shown["composition"]["measure"]  # the surface measures see them: they are on the surface
+    assert (m["lots"], m["ring_lots"], m["roads"], m["streets_by_class"]["大道"]) == (40, 40, 1, 1) and "underground_lots" not in m
+    assert m["max_radius"] == round(max(math.hypot(p["position"]["x"], p["position"]["z"]) for p in on_ring(doc)) + 0.71, 1)
+    assert shown["composition"]["streets"] == {"total": 1, "containers": 0, "leaves": 0, "trunks": 0, "groups": 0, "spokes": 0, "lanes": 0, "continuations": 0, "ring": 1}
+    assert len([p for p in shown["places"].values() if p["kind"] == "lot"]) == 40 and all("underground" not in p for p in shown["places"].values())
     doc, res = send(plan, tree, doc, [arts[40]], event_id=41)
     (entry,) = doc["chronicle"]
     assert (entry["n"], entry["event_id"], entry["seq"], entry["trigger"]) == (1, 41, 41, "arrival")
-    assert (entry["from"], entry["to"], entry["label"]) == (ROOT, tag_street("med"), "Med")  # the chronicle says the road came out of 根區
+    assert (entry["from"], entry["to"], entry["label"]) == (ROOT, tag_street("med"), "Med")  # the chronicle says the road came out of the ring
     assert entry["count_before"] == 41 and entry["count_after"] == 8 and len(entry["houses"]) == 33
     assert set(entry["houses"]) == {a["id"] for a in by_tag(arts, "a1", "a2", "b", "c")}  # the group of the largest root topic
     assert count(doc, ROOT) == 8 and count(doc, tag_street("med")) == 33
-    assert all(road_of(doc, a) == tag_street("med") and "underground" not in lot_of(doc, a) for a in by_tag(arts, "a1", "a2", "b", "c"))
-    assert all(road_of(doc, a) == ROOT for a in by_tag(arts, "pub")[:8])  # pub has 8 houses: below min, it stays underground
+    assert all(road_of(doc, a) == tag_street("med") for a in by_tag(arts, "a1", "a2", "b", "c"))
+    assert all(road_of(doc, a) == ROOT for a in by_tag(arts, "pub")[:8])  # pub has 8 houses: below min, it stays on the ring
     med = doc["places"][tag_street("med")]  # a ring-1 road on its plan wedge: its record's parent stays the plaza
     assert (med["level"], med["class"], med["shape"], med["tag"], med["parent"]) == (1, "大道", "trunk", "med", lay.PLAZA_PLACE)
     assert ribs_of(doc, tag_street("med")) == [zw.district_rib_size(33, 40)] == [40] and res["stats"]["splits"] == 1
     assert res["placements"][arts[40]["id"]]["street"] == ROOT  # the arrival is where it stands now
 
 
-def test_a_group_of_nine_stays_underground_and_a_group_of_ten_leaves():
-    # the 41st house finds 32 + 9 in the root zone: min is 10, so only the 32 leave (a house of another root arrives after)
+def test_a_group_of_nine_stays_on_the_ring_and_a_group_of_ten_leaves():
+    # the 41st house finds 32 + 9 on the ring: min is 10, so only the 32 leave (a house of another root arrives after)
     tree, arts, plan, doc = world_of({"big": T(32), "nine": T(9), "one": T(1)})
     doc, _ = send(plan, tree, doc, arts, event_id=1)
     (entry,) = doc["chronicle"]
     assert entry["to"] == tag_street("big") and len(entry["houses"]) == 32 and (entry["count_before"], entry["count_after"]) == (41, 9)
     assert count(doc, ROOT) == 10 and all(road_of(doc, a) == ROOT for a in by_tag(arts, "nine", "one"))
-    # the same root zone with a group of exactly 10 among 31 single houses: the 10 leave, the others stay
+    # the same ring with a group of exactly 10 among 31 single houses: the 10 leave, the others stay
     spec = {"ten": T(10), **{f"s{i}": T(1) for i in range(31)}}
     tree, arts, plan, doc = world_of(spec)
     doc, _ = send(plan, tree, doc, arts, event_id=1)
@@ -122,21 +124,26 @@ def test_a_group_of_nine_stays_underground_and_a_group_of_ten_leaves():
     assert count(doc, ROOT) == 31 and count(doc, tag_street("ten")) == 10
 
 
-def test_the_survivors_of_a_split_are_packed_again_onto_the_first_cells_in_arrival_order():
+def test_the_survivors_of_a_split_from_the_ring_keep_their_lots_and_the_next_houses_take_the_holes():
     tree, arts, plan, doc = world_of(SPEC_A)
     doc, _ = send(plan, tree, doc, arts[:40])
     before = {p["article"]: p for p in doc["places"].values() if p["kind"] == "lot"}
     assert [before[a["id"]]["slot"] for a in by_tag(arts, "pub")[:7]] == list(range(33, 40))  # behind the 33 houses of med
     doc, _ = send(plan, tree, doc, [arts[40]])
-    stay = underground(doc)
-    assert [p["slot"] for p in stay] == list(range(8)) and {p["parent"] for p in stay} == {ROOT}  # no hole: the first cells, in order
-    assert [p["article"] for p in stay] == [a["id"] for a in by_tag(arts, "pub")[:8]]
-    assert [(p["position"]["x"], p["position"]["z"]) for p in stay] == [zw.underground_cell(k) for k in range(8)]
+    stay = on_ring(doc)
+    assert {p["parent"] for p in stay} == {ROOT} and [p["article"] for p in stay] == [a["id"] for a in by_tag(arts, "pub")[:8]]
+    for p in stay[:7]:  # the houses that stay keep their exact lot records: slot, position, facing, order, seq
+        assert p == before[p["article"]]
+    assert (stay[7]["slot"], stay[7]["seq"]) == (0, 41)  # the house of the call that stays takes the lowest free slot: a hole the split left
+    assert sorted(p["slot"] for p in stay) == [0, *range(33, 40)]
     assert doc["places"][ROOT]["lots"] == 8 and not [q for q in doc["places"].values() if q["kind"] == "reserved" and q["parent"] == ROOT]  # (an empty cell is nothing)
     new_road = [p for p in doc["places"].values() if p["kind"] == "lot" and p["street"] == tag_street("med")]
     assert sorted(p["slot"] for p in new_road) == list(range(33)) and {p["parent"] for p in new_road} == {tag_street("med")}
     assert [p["seq"] for p in sorted(new_road, key=lambda p: p["slot"])] == sorted(p["seq"] for p in new_road)  # (seq is kept: arrival order)
     assert all(lot_of(doc, a["id"])["seq"] == before[a["id"]]["seq"] for a in arts[:40])
+    for k, a in enumerate(by_tag(arts, "pub")[8:11], start=1):  # the next arrivals take the holes, the lowest first
+        doc, _ = send(plan, tree, doc, [a])
+        assert (lot_of(doc, a)["slot"], lot_of(doc, a)["parent"]) == (k, ROOT)
 
 
 def test_a_split_in_the_middle_of_one_call_changes_where_the_next_houses_of_that_topic_stand():
@@ -168,13 +175,13 @@ def test_a_split_happens_mid_batch_so_the_houses_after_it_stand_on_the_new_road_
     assert res["stats"]["houses"] == len(first + rest)  # every arrival counted once, whatever it went through
 
 
-def test_a_tree_with_one_root_has_the_root_as_its_centre_and_the_root_zone_groups_by_the_children_of_the_centre():
+def test_a_tree_with_one_root_has_the_root_as_its_centre_and_the_ring_groups_by_the_children_of_the_centre():
     tree, arts, plan, doc = world_of({"med": T(3, a=T(25), b=T(16))})
     assert plan["params"]["centre_tag"] == "med"  # (the plan has a ring-1 street for the centre's own houses; a house tagged the centre gets no road)
     doc, _ = send(plan, tree, doc, arts[:44], event_id=2)  # 3 houses tagged med itself, then 25 of a and 16 of b: 44 in all
     (entry,) = doc["chronicle"]
     assert (entry["from"], entry["to"], entry["seq"]) == (ROOT, tag_street("a"), 41) and len(entry["houses"]) == 25
-    assert count(doc, ROOT) == 19 and count(doc, tag_street("a")) == 25  # b stayed (16 houses, but the root zone is at 19, under max); so did the centre's own
+    assert count(doc, ROOT) == 19 and count(doc, tag_street("a")) == 25  # b stayed (16 houses, but the ring is at 19, under max); so did the centre's own
     assert all(road_of(doc, a) == ROOT for a in by_tag(arts, "med", "b"))
 
 
@@ -193,12 +200,12 @@ def test_a_group_above_max_splits_again_at_once():
     assert doc["places"][tag_street("a")]["address"] == ["Med", "A"]
     # nothing was put on a rib that a split took away again: each road holds one rib, sized to the houses it holds (no continuation)
     assert ribs_of(doc, tag_street("med")) == [zw.district_rib_size(16, 40)] == [24] and ribs_of(doc, tag_street("a")) == [zw.district_rib_size(25, 40)] == [38]
-    # the root zone stands in the document once it exists, empty or not: the chronicle names it, and what it names must be there
+    # the ring road stands in the document from day one, empty or not: the chronicle names it, and what it names must be there
     shown = world_layout(doc, with_coast=False)
-    assert shown["places"][ROOT]["lots"] == 0 and shown["places"][ROOT]["underground"] is True and shown["composition"]["streets"]["underground"] == 1
+    assert shown["places"][ROOT]["lots"] == 0 and shown["places"][ROOT]["shape"] == "ring" and shown["composition"]["streets"]["ring"] == 1
     assert [e["from"] for e in shown["world"]["chronicle"] if "from" in e] == [ROOT, tag_street("med")] and all(
         e["from"] in shown["places"] and e["to"] in shown["places"] for e in shown["world"]["chronicle"] if "from" in e)
-    assert list(world_layout(zw.new_world(plan), with_coast=False)["places"]) == [lay.PLAZA_PLACE]  # day one: the town hall alone, no root zone yet
+    assert list(world_layout(zw.new_world(plan), with_coast=False)["places"]) == [lay.PLAZA_PLACE, ROOT]  # day one: the town hall and the ring road
 
 
 # ----------------------------------------------------------------------------- ribs: sized to the road ----
@@ -213,7 +220,7 @@ def test_a_full_road_opens_a_continuation_rib_the_same_road_and_over_is_another_
     t = Town({"a": T(14), "b": T(3), "c": T(3), "d": T(1)}, **SMALL)
     a = tag_street("a")
     own = t.tagged("a")
-    # six houses of a, three of b, three of c, one of d: the 13th makes the root zone over max; a is the largest group (6 >= min 4) and opens a road
+    # six houses of a, three of b, three of c, one of d: the 13th makes the ring over max; a is the largest group (6 >= min 4) and opens a road
     t.send(own[:6] + t.tagged("b", "c", "d"), event_id=1)
     assert [(e["from"], e["to"]) for e in t.doc["chronicle"]] == [(ROOT, a)] and t.count(a) == 6 and t.count(ROOT) == 7
     assert ribs_of(t.doc, a) == [zw.district_rib_size(6, 12)] == [10]  # the first rib is sized to the 6 houses of the road and headroom (4 lots), not to max
@@ -230,8 +237,8 @@ def test_a_full_road_opens_a_continuation_rib_the_same_road_and_over_is_another_
     assert [e["over"] for e in t.doc["chronicle"] if "over" in e] == [a]  # `over` is independent of the continuation ribs: the 11th house made one, not an entry
     shown = t.shown()  # one road in the document: counted once, named once
     streets = shown["composition"]["streets"]
-    assert (streets["total"], streets["continuations"], streets["lanes"], streets["underground"]) == (1, 2, 0, 1)
-    assert shown["composition"]["measure"]["streets_by_class"]["大道"] == 1 and sum(shown["composition"]["measure"]["streets_by_class"].values()) == 1
+    assert (streets["total"], streets["continuations"], streets["lanes"], streets["ring"]) == (2, 2, 0, 1)  # (the ring road is a street like any: road a and the ring)
+    assert shown["composition"]["measure"]["streets_by_class"]["大道"] == 2 and sum(shown["composition"]["measure"]["streets_by_class"].values()) == 2
     assert shown["places"]["place:lane:a:3"]["label"] == shown["places"][a]["address"][-1] and shown["places"]["place:lane:a:3"]["continued"] is True
     assert "street.continued" in NOTES_DISTRICTS and "street.continued" in shown["world"]["notes"]
 
@@ -252,7 +259,7 @@ def test_a_road_over_max_with_no_group_of_min_is_over_and_a_group_of_min_lets_it
     t = Town({"med": T(8, m1=T(4), m2=T(3), m3=T(3)), "x": T(2)}, **SMALL)
     med = tag_street("med")
     own, m1, m2 = t.tagged("med"), t.tagged("m1"), t.tagged("m2")
-    t.send(own + m1[:3] + m2[:1], event_id=1)  # 12 houses: the root zone is at max, nothing has happened
+    t.send(own + m1[:3] + m2[:1], event_id=1)  # 12 houses: the ring is at max, nothing has happened
     assert t.doc["chronicle"] == [] and t.count(ROOT) == 12 and "over" not in t.doc["places"][ROOT]
     t.send(m2[1:2], event_id=2)  # the 13th: med opens for the group of its root topic and holds 13, with no group of 4 below it
     split, over = t.doc["chronicle"]
@@ -276,23 +283,24 @@ def test_a_road_over_max_with_no_group_of_min_is_over_and_a_group_of_min_lets_it
     assert not [r for r in again["roads"] if "lane:med:2" in r]
 
 
-def test_the_root_zone_over_max_with_no_group_of_min_is_over_and_a_group_of_min_leaves():
+def test_the_ring_over_max_with_no_group_of_min_is_over_and_a_group_of_min_leaves():
     t = Town({"p": T(3), "q": T(3), "r": T(3), "s": T(3), "t": T(1)}, **SMALL)
     t.send(t.items[:13], event_id=1)  # 13 houses: four roots of 3 (= min - 1) and one of 1: no group can open
     (over,) = t.doc["chronicle"]
     assert over["over"] == ROOT and over["count"] == 13 and t.doc["places"][ROOT]["over"] is True and roads_of(t.doc) == {}
-    assert "rib" not in t.doc["places"][ROOT] and "lanes" not in t.doc["places"][ROOT]  # the root zone has no ribs, so it has nothing to continue
-    assert [p["slot"] for p in underground(t.doc)] == list(range(13))  # the 13th has its cell too (the grid does not end at max)
+    assert "rib" not in t.doc["places"][ROOT] and "lanes" not in t.doc["places"][ROOT]  # the ring has no ribs, and it holds 13 houses in a lap of 100 slots
+    assert [p["slot"] for p in on_ring(t.doc)] == list(range(13))  # the 13th has its cell too (the lap does not end at max)
     t.send([art(900, ["p"])], event_id=2)  # p has 4 = min: it opens
     entry = t.doc["chronicle"][1]
     assert (entry["from"], entry["to"], entry["count_before"], entry["count_after"]) == (ROOT, tag_street("p"), 14, 10) and len(entry["houses"]) == 4
     assert "over" not in t.doc["places"][ROOT] and t.count(ROOT) == 10 and t.count(tag_street("p")) == 4
+    assert [p["slot"] for p in on_ring(t.doc)] == list(range(3, 13))  # the houses that stay keep their slots: the three that stood on slots 0 to 2 left, the 14th was never placed
 
 
 def test_a_road_the_split_leaves_under_min_stays_open_there_is_no_merge_back():
     t = Town({"med": T(2, a=T(10), b=T(2)), "x": T(1)}, **SMALL)
     med = tag_street("med")
-    t.send(t.tagged("med") + t.tagged("a") + t.tagged("b")[:1], event_id=1)  # 13 houses: the root zone opens med, then med opens a for its 10
+    t.send(t.tagged("med") + t.tagged("a") + t.tagged("b")[:1], event_id=1)  # 13 houses: the ring opens med, then med opens a for its 10
     first, second = t.doc["chronicle"]
     assert (first["from"], first["to"]) == (ROOT, med) and (second["from"], second["to"]) == (med, tag_street("a"))
     assert second["count_after"] == 3 < SMALL["min_houses"] and t.count(med) == 3  # the houses that stay are fewer than `min` ...
@@ -310,7 +318,7 @@ def test_a_group_that_sits_in_a_chain_of_one_child_topics_opens_the_deepest_road
     med, m3 = tag_street("med"), tag_street("m3")
     t.send(t.tagged("med") + t.tagged("m3"), event_id=7)  # 13 houses: 5 on med itself, 8 under the chain
     first, second = t.doc["chronicle"]
-    assert (first["from"], first["to"], second["from"], second["to"]) == (ROOT, med, med, m3)  # med opens from the root zone, then the group below it
+    assert (first["from"], first["to"], second["from"], second["to"]) == (ROOT, med, med, m3)  # med opens from the ring, then the group below it
     road = t.doc["places"][m3]
     assert road["collapsed"] == ["m1", "m2"] and road["tag"] == "m3" and road["label"] == lay.JOIN.join(["M1", "M2", "M3"]) == "M1・M2・M3"
     assert second["label"] == road["label"] and road["parent"] == med and road["level"] == 2 and road["address"] == ["Med", "M1・M2・M3"]
@@ -353,8 +361,8 @@ def test_a_group_whose_road_would_have_to_sit_above_an_open_road_stays_where_it_
     assert t.doc["chronicle"][-1]["over"] == med and t.doc["chronicle"][-1]["count"] == 13 and t.doc["chronicle"][-1]["event_id"] == 2
 
 
-# ------------------------------------------------------------------ the root zone, the plan's ring 1 ----
-def test_an_item_with_no_topic_and_an_item_of_an_unknown_topic_lie_underground_there_are_no_other_streets():
+# ------------------------------------------------------------------ the ring road, the plan's ring 1 ----
+def test_an_item_with_no_topic_and_an_item_of_an_unknown_topic_stand_on_the_ring_there_are_no_other_streets():
     tree, arts, plan, doc = world_of(SPEC_A)
     plain = art(901, [])
     unknown = art(902, ["a_topic_the_tree_never_had"])  # the engine reads a topic the tree does not have as no topic (bibliopolis.inputs refuses it earlier)
@@ -362,11 +370,11 @@ def test_an_item_with_no_topic_and_an_item_of_an_unknown_topic_lie_underground_t
     doc, res = send(plan, tree, doc, [plain, unknown, both], event_id=1)
     assert [res["placements"][a["id"]]["street"] for a in (plain, unknown, both)] == [ROOT] * 3
     assert [res["placements"][a["id"]]["tag"] for a in (plain, unknown, both)] == [None, None, "pub"]
-    assert all(res["placements"][a["id"]]["underground"] is True for a in (plain, unknown, both))
-    assert doc["places"][ROOT]["label"] == "根區" and [pid for pid, p in doc["places"].items() if p["kind"] == "street"] == [ROOT]
+    assert all(res["placements"][a["id"]]["parent"] == ROOT and "underground" not in res["placements"][a["id"]] for a in (plain, unknown, both))
+    assert doc["places"][ROOT]["label"] == "Knowledge" and [pid for pid, p in doc["places"].items() if p["kind"] == "street"] == [ROOT]
 
 
-def test_the_root_zone_opens_the_ring_one_street_of_the_plan_with_the_chain_the_plan_pins():
+def test_the_ring_opens_the_ring_one_street_of_the_plan_with_the_chain_the_plan_pins():
     spec = {"science": T(0, computing=T(0, ml=T(25), systems=T(0, db=T(3)), theory=T(1))), "life": T(16)}
     tree, arts, plan, doc = world_of(spec)
     street = plan["streets"]["place:tag:computing"]  # science has nothing of its own and one child with houses: it is collapsed into computing
@@ -382,7 +390,7 @@ def test_the_root_zone_opens_the_ring_one_street_of_the_plan_with_the_chain_the_
     assert entry["label"] == "Science・Computing" and road["label"] == entry["label"]
     assert count(doc, cs) == 25 and count(doc, ROOT) == 16
     more = [art(100, ["science"]), art(101, ["computing"]), art(102, ["life"]), art(103, ["db"])]  # the chain topic, the key and a topic below it: the road
-    res = zw.assign(plan, tree, doc, more, event_id=6)  # (a topic of another root stays underground)
+    res = zw.assign(plan, tree, doc, more, event_id=6)  # (a topic of another root stays on the ring)
     assert [res["placements"][a["id"]]["street"] for a in more] == [cs, cs, ROOT, cs]
 
 
@@ -425,17 +433,26 @@ def test_an_item_cannot_arrive_twice_or_be_placed_again():
 
 
 # ------------------------------------------------------------------------- the surface and the coast ----
-def test_the_houses_under_the_plaza_are_left_out_of_the_coast_the_roads_and_the_surface_measures_however_many_they_are():
-    spec = {f"t{i}": T(9) for i in range(14)}  # fourteen roots of 9 houses: no group of 10, so every house stays underground
+def test_the_houses_of_the_ring_are_in_the_coast_the_roads_and_the_surface_measures_and_a_full_ring_goes_on_as_a_lap():
+    spec = {f"t{i}": T(9) for i in range(14)}  # fourteen roots of 9 houses: no group of 10, so every house stays on the ring
     tree, arts, plan, doc = world_of(spec)
+    g = gates_of(plan)
+    day_one = world_layout(zw.new_world(plan))
     doc, _ = send(plan, tree, doc, arts[:120], event_id=1)
     assert roads_of(doc) == {} and count(doc, ROOT) == 120 and doc["places"][ROOT]["over"] is True  # over 40, and no group of 10 anywhere
-    assert max(p["position"]["x"] ** 2 + p["position"]["z"] ** 2 for p in underground(doc)) > lay.PLAZA_RADIUS ** 2  # more than 89 cells: some lie beyond the plaza
+    assert capacity(8.5, g) == 56 < 120 and len(g) == 14  # fourteen gates cost the first lap the cells they cut: it holds 56
+    laps = [ROOT, *doc["places"][ROOT]["lanes"]]
+    assert laps == [ROOT, "place:root:lap:2"] and [doc["places"][lap]["lots"] for lap in laps] == [56, 64]  # the lowest lap with a free slot takes the house
+    lap2 = doc["places"]["place:root:lap:2"]
+    assert (lap2["lane_of"], lap2["continued"], lap2["ordinal"], lap2["label"]) == (ROOT, True, 2, "Knowledge") and lap2["ring"]["radius"] == 11.5  # back to back: R1 + 3
     shown = world_layout(doc)
     m = shown["composition"]["measure"]
-    assert (m["lots"], m["max_radius"], m["walk_longest"], m["walk_mean"], m["underground_lots"]) == (0, 0.0, 0.0, 0.0, 120)
-    assert shown["coast"] == world_layout(zw.new_world(plan))["coast"] and shown["roads"] == {}
-    assert shown["composition"]["articles"] == 120 and shown["world"]["houses"] == 120  # ... and still 120 houses, one lot each
+    assert (m["lots"], m["ring_lots"], m["roads"]) == (120, 120, 2) and "underground_lots" not in m  # they are surface lots, and every lap has its road
+    assert m["max_radius"] == round(max(math.hypot(p["position"]["x"], p["position"]["z"]) for p in on_ring(doc)) + 0.71, 1) > 12.5
+    assert m["walk_longest"] > m["walk_mean"] > 0 and m["land_area"] > day_one["composition"]["measure"]["land_area"]
+    assert shown["coast"] != day_one["coast"] and set(shown["roads"]) == {"road:place:root", "road:place:root:lap:2"}
+    assert shown["composition"]["articles"] == 120 and shown["world"]["houses"] == 120  # ... one lot each
+    assert shown["composition"]["streets"]["total"] == 1 and shown["composition"]["streets"]["continuations"] == 1 and shown["composition"]["streets"]["ring"] == 2
 
 
 def test_the_document_holds_what_stands_and_with_reserved_the_empty_lots_too():

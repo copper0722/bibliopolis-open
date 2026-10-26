@@ -73,19 +73,20 @@ def test_a_road_is_never_drawn_thicker_than_it_is_at_3_and_a_half_pixels_to_the_
 
 
 # ---------------------------------------------------------------------------------------------- what is drawn ----
-def test_a_city_of_forty_houses_is_the_town_hall_and_the_number_underground_and_nothing_else(cities):
+def test_a_city_of_forty_houses_is_the_town_hall_and_the_ring_road_with_its_forty_houses_and_nothing_else(cities):
     city = cities[40]
     lines = "\n".join(drawn(city))
-    assert [t for t, *_ in names(city)] == ["市政廳", "地下 40 棟"]
-    assert "hsl(" not in lines  # no house on the surface
-    assert not any(color in lines for color in picture.CLASS_COLOR.values())  # no road
+    assert [t for t, *_ in names(city)] == ["市政廳", "Knowledge"]  # the plaza, and the ring road at its north point
+    assert "hsl(" not in lines  # no house in the colour of a district of ring 1: the ring is no sector
+    assert picture.RING_COLOR[0] in lines and lines.count(picture.RING_COLOR[0]) == 1 and lines.count("M") > 40  # one path of forty cells, in the colour of the ring
+    assert picture.CLASS_COLOR["大道"] in lines and not any(color in lines for name, color in picture.CLASS_COLOR.items() if name != "大道")  # no road but the ring road
     assert lines.count("<circle") == 1 and "<path" in lines  # the plaza, and the coast round it
 
 
 def test_the_first_road_names_its_own_sector_and_no_other(cities):
     city = cities[41]
     shown = {t for t, *_ in names(city)}
-    assert shown == {"市政廳", "地下 26 棟", "Computing"}
+    assert shown == {"市政廳", "Knowledge", "Computing"}
     assert sector_names(city) > shown & sector_names(city)  # the plan has more sectors: they have no road yet
 
 
@@ -140,11 +141,11 @@ def test_a_sector_name_that_would_sit_on_another_name_stands_farther_out_with_a_
     assert len(zs) == 2 and zs[1] < zs[0] < 0  # north is up: the second stands farther from the centre
 
 
-def test_the_town_hall_label_and_the_underground_mark_follow_the_plaza_not_the_look(cities):
+def test_the_town_hall_label_and_the_name_of_the_ring_follow_the_plaza_and_the_ring_not_the_look(cities):
     for look in (picture.Look(), picture.Look.of_pixels(3.2, 11, 0, 11)):
         by_text = {t: (x, z, size) for t, x, z, size in names(cities[150], look)}
-        assert by_text["市政廳"][0] == 0 and by_text["地下 40 棟"][0] == 0
-        assert by_text["地下 40 棟"][1] > cities[150]["places"][picture.PLAZA]["radius"]  # below the circle, not inside it
+        assert by_text["市政廳"][0] == 0 and by_text["Knowledge"][0] == 0
+        assert by_text["Knowledge"][1] < -cities[150]["places"]["place:root"]["ring"]["radius"]  # north of the ring (north is up), outside its outer row
 
 
 # ---------------------------------------------------------------------------------------------- render ----
@@ -160,7 +161,7 @@ def test_render_is_valid_xml_the_same_bytes_every_time(cities, key):
 def test_render_has_a_title_a_line_of_numbers_and_a_legend(cities):
     text = picture.render(cities[600])
     assert picture.TITLE in text
-    assert "600 houses (15 under the town hall) on 22 roads" in text
+    assert "600 houses (15 on the ring road) on 23 roads" in text
     for word in ("大道 avenue", "路 road", "巷 lane", "弄 alley", "50 cells 格"):
         assert word in text
     assert "My <city> & more" not in picture.render(cities[40], title="My <city> & more")

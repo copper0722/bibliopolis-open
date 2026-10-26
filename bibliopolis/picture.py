@@ -2,15 +2,15 @@
 
     python -m bibliopolis picture --city city.json --out city.svg [--title ...]
 
-Draws the coast, the roads by display class (大道 路 巷 弄), the houses (the lots), the plaza (市政廳) with the number of houses that lie underground in
-the root zone (地下 n 棟), and the names of the roads where they fit; each district of ring 1 has its own colour. Units are cells; x east, z south, north
-up. Pure text, standard library only; the same document gives the same bytes.
+Draws the coast, the roads by display class (大道 路 巷 弄), the houses (the lots), the plaza (市政廳) and the names of the roads where they fit; each district of
+ring 1 has its own colour. Units are cells; x east, z south, north up. Pure text, standard library only; the same document gives the same bytes.
 
   render(city, title=None, size=1800)    one city, with a title, a line of numbers and a legend
   sheet(panels, columns=2, ...)          several cities in one picture on one frame (a replay of growth, two modes side by side), each with a caption
 
-The houses of the root zone are not drawn as lots: they stand under the plaza, and the plaza says how many. A sector of ring 1 is named once a road
-of it exists.
+The ring road round the plaza is drawn like any road (a closed circle, class 大道, every lap of it); its houses are drawn like any house, as the polar cells of the
+lane of their lap on both sides of it, in a colour of their own (the ring is no sector of ring 1), and its name stands at its north point. (The houses of the root
+zone of a city with no ring road are not drawn as lots: they stand under the plaza, and the plaza says how many.) A sector of ring 1 is named once a road of it exists.
 """
 
 from __future__ import annotations
@@ -30,6 +30,7 @@ SEA, LAND, SHORE = "#e9f1f5", "#f4efe2", "#b9ad8c"
 INK, GREY = "#202028", "#4a4a55"
 HIGHLIGHT = ("#e4572e", "#7a1f05")  # fill and edge of the houses a picture is about
 PLAZA_INK = "#6b4f0f"
+RING_COLOR = ("#f1e3b8", "#8a6d1f")  # fill and edge of the houses of the ring road round the plaza
 PLAZA = "place:plaza"
 TITLE = "Bibliopolis 文獻城邦"
 PAD = 24.0  # cells of sea round the land: room for the names of ring 1
@@ -52,6 +53,12 @@ def num(v: float, digits: int = 2) -> str:
 
 def underground_count(city: dict) -> int:
     return sum(1 for p in city["places"].values() if p["kind"] == "lot" and p.get("underground"))
+
+
+def ring_lot(places: dict[str, dict], p: dict) -> dict | None:
+    """The lap (a street of shape ring) a lot or an empty lot stands on, or None: a house of the ring road is a polar cell of the lane of its lap."""
+    owner = places[p["parent"]]
+    return owner if owner.get("shape") == "ring" and "ring" in owner else None
 
 
 def ring1_place(places: dict[str, dict], pid: str) -> str:
@@ -134,10 +141,13 @@ def draw_lots(city: dict, add, look: Look, highlight: set[str] | None = None) ->
     for p in places.values():
         if p["kind"] not in ("lot", "reserved") or p.get("underground"):  # (the root zone is under the plaza: a count, not lots)
             continue
-        g = groups.setdefault(index[ring1_place(places, p["parent"])], {"lot": [], "reserved": []})
+        lap = ring_lot(places, p)
+        g = groups.setdefault(-1 if lap else index[ring1_place(places, p["parent"])], {"lot": [], "reserved": []})  # (-1: the ring road, no sector)
         rib = places[p["parent"]].get("rib")
         pos = p["position"]
-        if rib and rib.get("band") is not None:  # a cell of a band: the polar cell of its lane
+        if lap:  # a cell of the ring road: the polar cell of the lane of its lap
+            path = cell_path(pos["x"], pos["z"], lap["ring"]["radius"], look.digits)
+        elif rib and rib.get("band") is not None:  # a cell of a band: the polar cell of its lane
             path = cell_path(pos["x"], pos["z"], rib["s"], look.digits)
         else:
             path = square_path(pos["x"], pos["z"], p.get("facing", 0.0), look.digits)
@@ -146,7 +156,10 @@ def draw_lots(city: dict, add, look: Look, highlight: set[str] | None = None) ->
         else:
             g[p["kind"]].append(path)
     for i in sorted(groups):
-        fill, edge = f"hsl({HUES[i % len(HUES)]},45%,72%)", f"hsl({HUES[i % len(HUES)]},40%,45%)"
+        if i == -1:
+            fill, edge = RING_COLOR
+        else:
+            fill, edge = f"hsl({HUES[i % len(HUES)]},45%,72%)", f"hsl({HUES[i % len(HUES)]},40%,45%)"
         if groups[i]["reserved"]:
             add(f'<path d="{"".join(groups[i]["reserved"])}" fill="none" stroke="{edge}" stroke-width="0.12" opacity="0.8"/>')
         if groups[i]["lot"]:
@@ -221,6 +234,9 @@ def draw_labels(city: dict, add, look: Look, boxes: list[Box] | None = None) -> 
 
     unit = look.big / 7.0
     put(0.0, look.plaza * 0.35, places[PLAZA]["label"], look.plaza, PLAZA_INK)
+    for pid, p in sorted(places.items()):  # the ring road: its name stands at its north point, outside the outer row of its first lap
+        if p["kind"] == "street" and p.get("shape") == "ring" and "lane_of" not in p:
+            put(0.0, -(p["ring"]["radius"] + 1.5) - 0.2 * look.plaza, p.get("label") or p["address"][-1], look.plaza, PLAZA_INK)
     under = underground_count(city)
     if under:  # the root zone, under the town hall: how many houses lie there
         put(0.0, places[PLAZA]["radius"] + look.plaza * 1.15, f"地下 {under} 棟", look.plaza, PLAZA_INK)
@@ -331,7 +347,8 @@ def stats_line(city: dict, labels: tuple[int, int]) -> str:
     """The line of numbers under the title. A measure is printed as the float it is (`55.0`), whether the file it was read from has `55.0` or `55` (the canonical form of a
     document writes the second): a picture drawn from a city file has the same bytes as the picture of the city."""
     comp, m = city["composition"], city["composition"]["measure"]
-    text = (f'{comp["buildings"]} houses ({m.get("underground_lots", 0)} under the town hall) on {comp["streets"]["total"]} roads; '
+    where = f'{m["ring_lots"]} on the ring road' if "ring_lots" in m else f'{m.get("underground_lots", 0)} under the town hall'
+    text = (f'{comp["buildings"]} houses ({where}) on {comp["streets"]["total"]} roads; '
             f'the farthest house is {float(m["max_radius"])} cells from the centre, the mean walk {float(m["walk_mean"])}, the longest {float(m["walk_longest"])}')
     if labels[1]:
         text += f"; road names drawn: {labels[0]} of {labels[1]}"

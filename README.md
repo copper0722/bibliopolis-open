@@ -57,8 +57,8 @@ python3 -m bibliopolis picture --city city.json --out city.svg
 Each one prints a line when it is done:
 
 ```
-wrote city.json: 600 houses on 22 roads, 15 under the town hall, 22 splits, 1 over (mode grow)
-wrote city.svg: 39457 bytes
+wrote city.json: 600 houses on 23 roads, 15 on the ring road, 22 splits, 1 over (mode grow)
+wrote city.svg: 41418 bytes
 ```
 
 **5. Look at it.** Open `city.svg` in a web browser: drag the file onto a browser window, or right-click it and choose "Open with". You see the town hall
@@ -86,9 +86,9 @@ python3 -m bibliopolis chronicle --city city.json --limit 4
 ```
 
 ```
-house 41, 2019-06-26: The root zone held 41 houses. Computing opens as a road with 15 of them; 26 stay.
-house 62, 2019-10-15: The root zone held 41 houses. Physical sciences opens as a road with 12 of them; 29 stay.
-house 85, 2020-01-26: The root zone held 41 houses. Life sciences opens as a road with 17 of them; 24 stay.
+house 41, 2019-06-26: Knowledge held 41 houses. Computing opens as a road with 15 of them; 26 stay.
+house 62, 2019-10-15: Knowledge held 41 houses. Physical sciences opens as a road with 12 of them; 29 stay.
+house 85, 2020-01-26: Knowledge held 41 houses. Life sciences opens as a road with 17 of them; 24 stay.
 house 130, 2020-08-12: Computing held 41 houses. Systems opens as a road with 20 of them; 21 stay.
 ```
 
@@ -133,7 +133,7 @@ is invented. In `grow` mode the first road opens at the 41st item, one topic (Ne
 marked over, and the chain Humanities / History becomes one road. The `build` command says what it made:
 
 ```
-wrote city.json: 600 houses on 22 roads, 15 under the town hall, 22 splits, 1 over (mode grow)
+wrote city.json: 600 houses on 23 roads, 15 on the ring road, 22 splits, 1 over (mode grow)
 ```
 
 `city.json` holds the geometry and the structure of the city, not the titles: those stay in your library file. The same input gives the
@@ -228,8 +228,8 @@ python3 -m bibliopolis picture --city city.json --out city.svg
 每一行做完，都會印出一行結果：
 
 ```
-wrote city.json: 600 houses on 22 roads, 15 under the town hall, 22 splits, 1 over (mode grow)
-wrote city.svg: 39457 bytes
+wrote city.json: 600 houses on 23 roads, 15 on the ring road, 22 splits, 1 over (mode grow)
+wrote city.svg: 41418 bytes
 ```
 
 **5. 看看成果。** 用瀏覽器打開 `city.svg`：把檔案拖進瀏覽器視窗，或對檔案按右鍵，選「開啟方式」。你會看到市政廳在中央，路從它往外延伸，每篇文獻是一棟上了色的房子。
@@ -255,9 +255,9 @@ python3 -m bibliopolis chronicle --city city.json --limit 4
 ```
 
 ```
-house 41, 2019-06-26: The root zone held 41 houses. Computing opens as a road with 15 of them; 26 stay.
-house 62, 2019-10-15: The root zone held 41 houses. Physical sciences opens as a road with 12 of them; 29 stay.
-house 85, 2020-01-26: The root zone held 41 houses. Life sciences opens as a road with 17 of them; 24 stay.
+house 41, 2019-06-26: Knowledge held 41 houses. Computing opens as a road with 15 of them; 26 stay.
+house 62, 2019-10-15: Knowledge held 41 houses. Physical sciences opens as a road with 12 of them; 29 stay.
+house 85, 2020-01-26: Knowledge held 41 houses. Life sciences opens as a road with 17 of them; 24 stay.
 house 130, 2020-08-12: Computing held 41 houses. Systems opens as a road with 20 of them; 21 stay.
 ```
 
@@ -298,7 +298,7 @@ python3 -m bibliopolis picture --city city.json --out city.svg
 `build` 指令會告訴你它蓋出了什麼：
 
 ```
-wrote city.json: 600 houses on 22 roads, 15 under the town hall, 22 splits, 1 over (mode grow)
+wrote city.json: 600 houses on 23 roads, 15 on the ring road, 22 splits, 1 over (mode grow)
 ```
 
 `city.json` 只放城邦的幾何與結構，不放標題；標題留在你自己的文獻庫檔案裡。相同的輸入會得到逐位元組相同的檔案。`picture` 把城邦畫成一個可以用瀏覽器開啟的 SVG 檔，

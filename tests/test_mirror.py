@@ -1,7 +1,7 @@
 """The mirror mode: the topic tree is the street plan (docs/engine.md).
 
 Every topic that holds an item, directly or below, is a road from the start. Nothing splits: a road that holds more than `max` houses is `over`, and
-the chronicle says when. An item with no topic (or the topic that is the town hall itself) lives in the root zone. Chains are not collapsed and
+the chronicle says when. An item with no topic (or the topic that is the town hall itself) lives on the ring road. Chains are not collapsed and
 nothing is folded into a leaf: one topic, one road.
 """
 
@@ -79,15 +79,15 @@ def test_a_group_that_could_open_a_road_does_not_in_mirror_mode():
     assert tag_street("med") in roads_of(t.doc) and count(t.doc, tag_street("med")) == 0
 
 
-def test_items_with_no_topic_and_the_town_hall_topic_live_in_the_root_zone():
-    spec = {"sci": T(3, a=T(5), b=T(5))}  # one root: it is the town hall; its own 3 houses and the 3 without a topic live underground
+def test_items_with_no_topic_and_the_town_hall_topic_live_on_the_ring_road():
+    spec = {"sci": T(3, a=T(5), b=T(5))}  # one root: it is the town hall; its own 3 houses and the 3 without a topic live on the ring road
     t = Town(spec, mode="mirror", **SMALL)
     assert t.plan["params"]["centre_tag"] == "sci" and t.plan["roads"] == ["a", "b"]  # the centre is no road
     loose = [art(900 + i, []) for i in range(3)]
     t.send(t.items + loose, event_id=1)
     assert count(t.doc, ROOT) == 6 and count(t.doc, tag_street("a")) == 5 and set(roads_of(t.doc)) == {tag_street("a"), tag_street("b")}
     assert all(road_of_(t.doc, a) == ROOT for a in by_tag(t.items, "sci") + loose)
-    assert t.doc["places"][ROOT]["lots"] == 6 and all(p.get("underground") for p in t.doc["places"].values() if p["kind"] == "lot" and p["street"] == ROOT)
+    assert t.doc["places"][ROOT]["lots"] == 6 and all(p["parent"] == ROOT and "underground" not in p for p in t.doc["places"].values() if p["kind"] == "lot" and p["street"] == ROOT)
 
 
 def road_of_(doc, item):
@@ -132,7 +132,7 @@ def test_the_document_of_a_mirror_city_is_sound_and_says_its_mode():
     doc = bibliopolis.build_city({"items": items}, tree, mode="mirror")
     assert doc["world"]["mode"] == "mirror" and doc["world"]["houses"] == len(items) and doc["world"]["chronicle"] == []
     assert checks.document_problems(doc) == {}
-    assert doc["composition"]["streets"]["total"] == 10 and doc["composition"]["streets"]["underground"] == 0  # no house under the plaza: none has no topic
+    assert doc["composition"]["streets"]["total"] == 10 + 1 and doc["composition"]["streets"]["ring"] == 1  # ten roads and the ring road, which no house stands on: none has no topic
     text = bibliopolis.render(doc)
     assert json.loads(text)["world"]["mode"] == "mirror" and text == bibliopolis.render(bibliopolis.build_city({"items": items}, tree, mode="mirror"))
 
@@ -167,7 +167,7 @@ def test_an_item_filed_under_two_branches_makes_a_road_on_each_and_its_house_sta
         assert (rec["lots"], rec["reserved"]) == (0, 0) and "rib" not in rec and rec["address"][-1] == name.upper() and rec["level"] == len(rec["address"])
     assert places[tag_street("b")]["shape"] == "trunk" and places[tag_street("b")]["road"] in doc["roads"]  # a ring-1 road keeps its wedge and its spoke
     assert places[tag_street("y")]["parent"] == tag_street("b") and places[tag_street("x")]["parent"] == tag_street("a")
-    assert checks.document_problems(doc) == {} and doc["composition"]["streets"]["total"] == 4
+    assert checks.document_problems(doc) == {} and doc["composition"]["streets"]["total"] == 4 + 1  # (and the ring road)
     assert [r["place"] for r in doc["composition"]["ring1"]] == [tag_street("a"), tag_street("b")]
 
 
@@ -175,7 +175,7 @@ def test_two_roots_and_one_item_filed_under_both_make_two_roads_and_one_house():
     tree = {"nodes": [{"id": "a", "label": "A", "parent": None}, {"id": "b", "label": "B", "parent": None}]}
     doc = bibliopolis.build_city({"items": [art(1, ["a", "b"])]}, tree, mode="mirror")
     roads = {p["tag"]: p for p in doc["places"].values() if p["kind"] == "street" and p.get("tag")}
-    assert sorted(roads) == ["a", "b"] and doc["world"]["houses"] == 1 and bibliopolis.summary(doc)["roads"] == 2
+    assert sorted(roads) == ["a", "b"] and doc["world"]["houses"] == 1 and bibliopolis.summary(doc)["roads"] == 2 + 1  # (the ring road counts as one)
     assert roads["a"]["lots"] == 1 and (roads["b"]["lots"], roads["b"]["reserved"]) == (0, 0) and "rib" not in roads["b"]
     assert next(p for p in doc["places"].values() if p["kind"] == "lot")["parent"] == tag_street("a")  # both topics are depth 1: the lower id
     assert checks.document_problems(doc) == {}
@@ -186,7 +186,7 @@ def test_two_roots_and_one_item_filed_under_both_make_two_roads_and_one_house():
 def test_in_grow_mode_the_same_item_makes_no_road_at_all():
     tree, items = two_branches()
     doc = bibliopolis.build_city({"items": items}, tree, mode="grow")
-    assert doc["composition"]["streets"]["total"] == 0 and doc["composition"]["measure"]["underground_lots"] == 1  # roads open for houses, not for filing
+    assert doc["composition"]["streets"]["total"] == 1 and doc["composition"]["measure"]["ring_lots"] == 1  # roads open for houses, not for filing: the ring road alone
 
 
 def test_a_topic_above_an_address_and_a_topic_beside_it_are_both_roads():
@@ -198,11 +198,11 @@ def test_a_topic_above_an_address_and_a_topic_beside_it_are_both_roads():
     assert checks.document_problems(doc) == {}
 
 
-def test_a_filed_topic_that_is_the_town_hall_is_no_road_and_an_item_filed_only_there_stands_in_the_root_zone():
+def test_a_filed_topic_that_is_the_town_hall_is_no_road_and_an_item_filed_only_there_stands_on_the_ring_road():
     tree = {"nodes": [{"id": "r", "label": "R", "parent": None}, {"id": "c", "label": "C", "parent": "r"}, {"id": "d", "label": "D", "parent": "r"}]}
     doc = bibliopolis.build_city({"items": [art(1, ["r"]), art(2, ["c", "d"])]}, tree, mode="mirror")
     assert sorted(p["tag"] for p in doc["places"].values() if p["kind"] == "street" and p.get("tag")) == ["c", "d"]  # r is the centre
-    assert doc["composition"]["measure"]["underground_lots"] == 1 and doc["world"]["houses"] == 2
+    assert doc["composition"]["measure"]["ring_lots"] == 1 and doc["world"]["houses"] == 2
 
 
 def test_the_mirror_plan_names_the_roads_of_every_filing_and_has_a_street_for_each():
@@ -249,5 +249,5 @@ def test_a_mirror_world_is_the_same_whether_its_arrivals_come_in_one_call_or_one
     whole, one = (zw.apply_delta(d, zw.complete(plan, tree, d)["delta"]) for d in (whole, one))
     assert as_text(one["places"]) == as_text(whole["places"]) and as_text(one["roads"]) == as_text(whole["roads"]) and as_text(one["lines"]) == as_text(whole["lines"])
     assert {p["tag"] for p in roads_of(whole).values()} == set(plan["roads"])
-    assert [m["s0"] for m in whole["lines"]["place:tag:a"]["members"]] == [6.0, 15.0]  # m opened at the frontier of a trunk whose bands had grown
+    assert [m["s0"] for m in whole["lines"]["place:tag:a"]["members"]] == [9.0, 15.0]  # the trunk leaves the ring's outer edge (8.5 + 0.5); m opened at the frontier of a trunk whose bands had grown
     sound(whole, plan, tree)

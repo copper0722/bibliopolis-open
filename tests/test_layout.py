@@ -10,6 +10,7 @@ from support import T, make_tree
 import bibliopolis
 from bibliopolis import coast
 from bibliopolis import layout as lay
+from bibliopolis import ring
 
 EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
 
@@ -110,8 +111,10 @@ def test_the_text_is_json_with_one_road_and_one_place_per_line(city):
     assert lay.render(city) == text  # (rendering changes nothing)
 
 
-def test_the_text_of_a_town_hall_with_no_road_is_still_json():
+def test_the_text_of_a_document_with_no_road_is_still_json():
     doc = bibliopolis.build_city({"items": []}, {"nodes": []})
+    assert list(doc["roads"]) == ["road:place:root"]  # (a city has the ring road from day one: take it away to see the empty case)
+    doc["roads"] = {}
     assert json.loads(lay.render(doc))["roads"] == {} and lay.render(doc).count('"roads": {') == 1
 
 
@@ -119,12 +122,12 @@ def test_the_text_of_a_town_hall_with_no_road_is_still_json():
 def test_the_measures_agree_with_the_document_they_are_read_from(city):
     m = city["composition"]["measure"]
     lots = [p for p in city["places"].values() if p["kind"] == "lot"]
-    assert m["lots"] == sum(1 for p in lots if not p.get("underground")) and m["underground_lots"] == sum(1 for p in lots if p.get("underground"))
-    assert m["lots"] + m["underground_lots"] == city["world"]["houses"] == 600 and m["roads"] == len(city["roads"])
+    assert m["lots"] == len(lots) == city["world"]["houses"] == 600 and m["roads"] == len(city["roads"])  # (every house is on the surface)
+    assert m["ring_lots"] == sum(1 for p in lots if city["places"][p["parent"]].get("shape") == "ring") > 0 and "underground_lots" not in m
     assert 0 < m["walk_median"] <= m["walk_longest"] and 0 < m["walk_mean"] <= m["walk_longest"]
-    surface = max(math.hypot(p["position"]["x"], p["position"]["z"]) for p in lots if not p.get("underground"))
+    surface = max(math.hypot(p["position"]["x"], p["position"]["z"]) for p in lots)
     assert m["max_radius"] == round(surface + 0.71, 1)  # the farthest cell, to its far corner
-    assert sum(m["streets_by_class"].values()) == city["composition"]["streets"]["total"] and m["max_ring"] == max(p["level"] for p in city["places"].values() if p["kind"] == "street" and not p.get("underground"))
+    assert sum(m["streets_by_class"].values()) == city["composition"]["streets"]["total"] and m["max_ring"] == max(p["level"] for p in city["places"].values() if p["kind"] == "street")
     assert [r["span"] for r in m["ring1_wedges"]] == [r["span"] for r in city["composition"]["ring1"]]
     assert round(sum(r["length"] for r in city["roads"].values()), 1) == m["road_length"]
 
@@ -149,18 +152,20 @@ def test_the_land_holds_every_house_on_the_surface_and_every_road_and_the_plaza(
     assert round(sum(coast.polygon_area(p) for p in polys), 1) == city["composition"]["measure"]["land_area"]  # the land of the measures is the land of the coast
 
 
-def test_the_land_of_a_town_hall_with_nothing_else_is_a_disc_round_the_plaza():
+def test_the_land_of_a_town_hall_with_nothing_else_but_the_ring_road_is_a_disc_round_the_ring():
     doc = bibliopolis.build_city({"items": []}, {"nodes": []})
     (poly,) = doc["coast"]["polygons"]
     radii = [math.hypot(x, z) for x, z in poly]
-    assert min(radii) > lay.PLAZA_RADIUS and max(radii) < lay.PLAZA_RADIUS + coast.COAST_BUFFER + 2
+    assert min(radii) > lay.PLAZA_RADIUS and max(radii) < ring.RING_MIN + coast.COAST_BUFFER + 2  # the land reaches the buffer beyond the ring road, not beyond the plaza alone
+    assert max(radii) > lay.PLAZA_RADIUS + coast.COAST_BUFFER + 2
 
 
-def test_the_land_grows_with_the_houses_and_the_underground_houses_do_not_count():
-    tree, items = make_tree({"a": T(9), "b": T(9), "c": T(9)})  # nothing leaves the root zone: no road, no surface lot
-    under = bibliopolis.build_city({"items": items}, tree)
+def test_the_land_grows_with_the_houses_those_of_the_ring_road_too():
+    tree, items = make_tree({"a": T(9), "b": T(9), "c": T(9)})  # nothing leaves the ring: no road but the ring road, and 27 houses on it
+    on_ring = bibliopolis.build_city({"items": items}, tree)
     none = bibliopolis.build_city({"items": []}, tree)
-    assert under["coast"] == none["coast"] and under["composition"]["measure"]["underground_lots"] == 27
+    assert on_ring["composition"]["measure"]["ring_lots"] == on_ring["composition"]["measure"]["lots"] == 27
+    assert on_ring["coast"] != none["coast"] and on_ring["composition"]["measure"]["land_area"] > none["composition"]["measure"]["land_area"]
     tree, items = make_tree({"a": T(45), "b": T(9)})
     assert bibliopolis.build_city({"items": items}, tree)["composition"]["measure"]["land_area"] > none["composition"]["measure"]["land_area"]
 

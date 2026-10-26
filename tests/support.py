@@ -132,8 +132,39 @@ def ribs_of(doc, road):
     return [doc["places"][c]["rib"]["slots"] for c in ([road] if "rib" in rec else []) + list(rec.get("lanes", []))]
 
 
-def underground(doc):
-    return sorted((p for p in doc["places"].values() if p["kind"] == "lot" and p.get("underground")), key=lambda p: p["slot"])
+def on_ring(doc):
+    """The houses on the ring road (any lap), by arrival."""
+    return sorted((p for p in doc["places"].values() if p["kind"] == "lot" and p["street"] == ROOT), key=lambda p: p["seq"])
+
+
+def laps_of(doc):
+    """The streets of the laps of the ring road that stand, lap 1 first."""
+    return [ROOT, *doc["places"][ROOT].get("lanes", [])]
+
+
+def gates_of(plan, sides=False):
+    """G1 (G2 with `sides`) stated from the plan file alone: the axis of a trunk is the middle of its wedge, in whole hundredths of a degree, mod 360, to 3
+    decimals."""
+    out = set()
+    for rec in plan["trunks"].values():
+        if rec["role"] == "ring1" or (sides and rec["role"] == "side"):
+            lo, hi = (round(v * 100) for v in rec["wedge"])
+            out.add(round(((lo + hi) / 200) % 360, 3) + 0.0)
+    return sorted(out)
+
+
+def capacity(radius, gates):
+    """What a lap holds, from the independent cells of tests/checks.py."""
+    return 2 * len(checks.free_cells(radius, gates))
+
+
+def slot_cell(radius, gates, slot):
+    """((x, z), facing) of a slot of a lap, from the independent cells: the inner lot (even slot) at radius - 1 facing outward, the outer lot (odd) at radius + 1
+    facing inward."""
+    theta = math.degrees(checks.free_cells(radius, gates)[slot // 2] / radius)
+    if slot % 2 == 0:
+        return checks.polar(radius - 1.0, theta), theta % 360
+    return checks.polar(radius + 1.0, theta), (theta + 180.0) % 360
 
 
 def as_text(obj):
@@ -171,11 +202,20 @@ class Town:
     def check(self):
         sound(self.doc, self.plan, self.tv)
 
-    def send(self, arrivals, event_id=None):
+    def send(self, arrivals, event_id=None, check=True):
         res = zw.assign(self.plan, self.tv, self.doc, arrivals, event_id=event_id)
         self.doc = zw.apply_delta(self.doc, res["delta"])
-        self.check()
+        if check:
+            self.check()
         return res
+
+    def one_by_one(self, arrivals, check=True):
+        """The arrivals as one call each (a call the world is only checked after, when `check`): the world does not depend on how a batch is cut, except for the
+        size of a rib that opens for it."""
+        for a in arrivals[:-1]:
+            self.send([a], check=False)
+        if arrivals:
+            self.send(arrivals[-1:], check=check)
 
     def finish(self):
         """Complete the world after its last arrival (a mirror city: the roads no house stands on or below) and check it."""
@@ -196,6 +236,49 @@ class Town:
 
 
 # --------------------------------------------------------------------------------- the rule, as a checker ----
+def ring_root_problems(places, pv):
+    """The root of a world on a plan with the ring road: it stands from day one, with the plan's label, the plan's radius for lap 1 and the gates G1 (G2 beyond)."""
+    root = zw.ROOT_PLACE
+    rec = places.get(root)
+    if rec is None:
+        return [(root, "a world with the ring road has the ring from day one")]
+    want = {"kind": "street", "shape": "ring", "label": pv.ring["label"], "address": [pv.ring["label"]], "parent": lay.PLAZA_PLACE, "level": 1, "class": "大道",
+            "road": f"road:{root}"}
+    bad = [(root, f"{k} is {rec.get(k)!r}") for k, v in want.items() if rec.get(k) != v]
+    if rec["ring"]["radius"] != pv.ring["radius"] or rec["ring"]["gaps"] != list(pv.gates()) or rec["ring"]["lap"] != 1:
+        bad.append((root, "lap 1 is not the plan's radius with the gates G1"))
+    if any(places[lap]["ring"]["gaps"] != list(pv.gates(sides=True)) for lap in rec.get("lanes", [])):
+        bad.append((root, "a lap beyond the first does not have the gates G2"))
+    return bad
+
+
+def root_zone_problems(places):
+    """The root zone of a world on a plan with no ring road: under the town hall, no road, no rib, lots on the cells of a grid in slot order (the first ones inside
+    the plaza)."""
+    root = zw.ROOT_PLACE
+    rec = places.get(root)
+    under = sorted((p for p in places.values() if p["kind"] == "lot" and p["street"] == root), key=lambda p: p["slot"])
+    bad = []
+    if rec is None:
+        if under:
+            bad.append((root, "houses without a root zone"))
+    else:
+        want = {"kind": "street", "shape": "underground", "underground": True, "label": "根區", "address": ["根區"], "parent": lay.PLAZA_PLACE}
+        bad += [(root, f"{k} is {rec.get(k)!r}") for k, v in want.items() if rec.get(k) != v]
+        bad += [(root, f"the root zone has a {k}") for k in ("rib", "road", "lane", "lanes", "tag", "carrier") if k in rec]
+        if rec["lots"] != len(under) or rec["reserved"] != 0:
+            bad.append((root, f"counters {rec['lots']}/{rec['reserved']} for {len(under)} houses"))
+    if [p["slot"] for p in under] != sorted(set(p["slot"] for p in under)):
+        bad.append((root, "two houses in one slot"))
+    for p in under:
+        x, z = zw.underground_cell(p["slot"])
+        if p["parent"] != root or p["order"] != p["slot"] or (p["position"]["x"], p["position"]["z"]) != (x, z):
+            bad.append((p["article"], "an underground house is not on the cell of its slot"))
+        if p["slot"] < 89 and math.hypot(abs(x) + 0.5, abs(z) + 0.5) > lay.PLAZA_RADIUS + 1e-9:
+            bad.append((p["article"], "one of the first 89 cells is not inside the plaza"))
+    return bad
+
+
 def district_problems(doc, plan, tree):
     """Violations of the rule in a world with districts (empty: sound), read from the world document alone and from a fresh `World` (the lookup
     of the road of a topic is asked again, not remembered). A world only grows here, so the ribs of a road fill in order: a rib has houses only
@@ -220,28 +303,12 @@ def district_problems(doc, plan, tree):
             bad.append((pid, "its road is not a street of the world"))
         elif places[p["parent"]].get("lane_of", p["parent"]) != p["street"]:
             bad.append((pid, "stands in a rib that is not of its road"))
-        if bool(p.get("underground")) != (p["street"] == root):
+        if pv.ring is not None:  # the ring road is on the surface: nothing is underground
+            if "underground" in p:
+                bad.append((pid, "a house of a world with the ring road is not underground"))
+        elif bool(p.get("underground")) != (p["street"] == root):
             bad.append((pid, "a house is underground when and only when it stands in the root zone"))
-    # the root zone lies under the town hall: no road, no rib, lots on the cells of a grid in slot order (the first ones inside the plaza)
-    rec = places.get(root)
-    under = sorted((p for p in places.values() if p["kind"] == "lot" and p["street"] == root), key=lambda p: p["slot"])
-    if rec is None:
-        if under:
-            bad.append((root, "houses without a root zone"))
-    else:
-        want = {"kind": "street", "shape": "underground", "underground": True, "label": "根區", "address": ["根區"], "parent": lay.PLAZA_PLACE}
-        bad += [(root, f"{k} is {rec.get(k)!r}") for k, v in want.items() if rec.get(k) != v]
-        bad += [(root, f"the root zone has a {k}") for k in ("rib", "road", "lane", "lanes", "tag", "carrier") if k in rec]
-        if rec["lots"] != len(under) or rec["reserved"] != 0:
-            bad.append((root, f"counters {rec['lots']}/{rec['reserved']} for {len(under)} houses"))
-    if [p["slot"] for p in under] != sorted(set(p["slot"] for p in under)):
-        bad.append((root, "two houses in one slot"))
-    for p in under:
-        x, z = zw.underground_cell(p["slot"])
-        if p["parent"] != root or p["order"] != p["slot"] or (p["position"]["x"], p["position"]["z"]) != (x, z):
-            bad.append((p["article"], "an underground house is not on the cell of its slot"))
-        if p["slot"] < 89 and math.hypot(abs(x) + 0.5, abs(z) + 0.5) > lay.PLAZA_RADIUS + 1e-9:
-            bad.append((p["article"], "one of the first 89 cells is not inside the plaza"))
+    bad += ring_root_problems(places, pv) if pv.ring is not None else root_zone_problems(places)
     # no street of any other kind, and the topics a road holds are held once
     held = Counter()
     for pid, r in roads.items():
@@ -307,7 +374,7 @@ def simulate_districts(seed, *, max_houses=12, min_houses=4, trunk_min=40, batch
     Returns (problems, the final world, the number of steps, the plan, the tree view).
 
     `problems` is a list of (seed, step, what, detail): empty when the world was sound after every step. A call changes the lot of a house only
-    when the road of the house split in it."""
+    when the road of the house split in it - and not even then on the ring road: a house that is on the ring before and after the call stands."""
     tree, items = random_world(seed)
     tv = TreeView(tree)
     plan = plan_mod.build_plan(tv, items, mode=mode, max_houses=max_houses, min_houses=min_houses, trunk_min=trunk_min)
@@ -342,7 +409,11 @@ def simulate_districts(seed, *, max_houses=12, min_houses=4, trunk_min=40, batch
         placed += len(batch)
         after = zw.houses(doc)
         splitting = {e["from"] for e in doc["chronicle"][chron0:] if "from" in e}  # the houses of a road that split may change lot
-        problems += [(seed, step, "a house moved with no split of its road", aid) for aid, lot in before.items() if after[aid] != lot and lot["street"] not in splitting]
+
+        def may_change(lot, now):  # a house of a road that split may change lot, except a survivor of the ring road
+            return lot["street"] in splitting and not (plan["params"].get("ring") and lot["street"] == zw.ROOT_PLACE == now["street"])
+
+        problems += [(seed, step, "a house moved with no split of its road", aid) for aid, lot in before.items() if after[aid] != lot and not may_change(lot, after[aid])]
         if set(res["placements"]) != {a["id"] for a in batch} or any(res["placements"][a] != after[a] for a in res["placements"]):
             problems.append((seed, step, "placements are not the arrivals as they stand", sorted(res["placements"])[:3]))
         if any(e["event_id"] != event for e in doc["chronicle"][chron0:]):

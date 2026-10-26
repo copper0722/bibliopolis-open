@@ -23,7 +23,7 @@
         "added_at": {"type": "string", "minLength": 1, "description": "ISO 8601: a date, or a date and time with or without an offset (a time without one is read as UTC). Items arrive in this order, ties by id."},
         "type": {"type": "string", "minLength": 1, "description": "The kind of document, e.g. article, review, editorial, letter, news, erratum, retraction notice."},
         "tags": {"type": "array", "items": {"type": "string"}, "description": "Free tags: the residents of the house."},
-        "topics": {"type": "array", "items": {"type": "string"}, "description": "Ids of nodes of the topic tree: the topics the item is filed under. The address of the house is the deepest of them (ties: the lower id), and the house stands once, there. In mirror mode every topic listed is also a road. Empty: the house stands under the town hall."}
+        "topics": {"type": "array", "items": {"type": "string"}, "description": "Ids of nodes of the topic tree: the topics the item is filed under. The address of the house is the deepest of them (ties: the lower id), and the house stands once, there. In mirror mode every topic listed is also a road. Empty: the house stands on the ring road round the town hall."}
       }
     }
   }

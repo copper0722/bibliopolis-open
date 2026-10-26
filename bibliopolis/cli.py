@@ -18,7 +18,7 @@ from pathlib import Path
 
 from . import inputs, picture, store
 from ._version import __version__
-from .city import build_city, chronicle_lines, summary
+from .city import build_city, chronicle_lines, root_words, summary
 from .journal import dumps_world, load_world_file, world_document
 from .layout import render
 from .plan import GROW, MAX_HOUSES, MIN_HOUSES, MODES
@@ -34,7 +34,7 @@ def build_parser() -> argparse.ArgumentParser:
     b.add_argument("--library", required=True, metavar="L.json", help='the library: {"items": [...]} (docs/format.md)')
     b.add_argument("--tree", required=True, metavar="T.json", help='the topic tree: {"nodes": [...]} (docs/format.md)')
     b.add_argument("--mode", choices=MODES, default=GROW,
-                   help="grow: the roads open from the root zone by the district rule as the houses arrive; mirror: every topic that holds a "
+                   help="grow: the roads open from the ring road by the district rule as the houses arrive; mirror: every topic that holds a "
                         "house is a road from the start (default: %(default)s)")
     b.add_argument("--out", required=True, metavar="city.json", help="where to write the city")
     b.add_argument("--max-houses", type=int, default=MAX_HOUSES, metavar="N", help="a road holds this many houses directly (default: %(default)s)")
@@ -99,7 +99,7 @@ def build_command(args: argparse.Namespace) -> int:
     doc = build_city(library, tree, mode=args.mode, max_houses=args.max_houses, min_houses=args.min_houses, first=args.first)
     write_text_atomically(Path(args.out), render(doc))
     s = summary(doc)
-    print(f"wrote {args.out}: {s['houses']} houses on {s['roads']} roads, {s['underground']} under the town hall, "
+    print(f"wrote {args.out}: {s['houses']} houses on {s['roads']} roads, {root_words(s)}, "
           f"{s['splits']} splits, {s['over']} over (mode {s['mode']})", file=sys.stderr)
     return 0
 
@@ -157,7 +157,7 @@ def world_command(args: argparse.Namespace) -> int:
         doc = journal.state.city()
         store.publish_text(args.out, render(doc))
         s = summary(doc)
-        print(f"wrote {args.out}: {s['houses']} houses on {s['roads']} roads, {s['underground']} under the town hall, "
+        print(f"wrote {args.out}: {s['houses']} houses on {s['roads']} roads, {root_words(s)}, "
               f"{s['splits']} splits, {s['over']} over (mode {s['mode']})", file=sys.stderr)
     return 0
 

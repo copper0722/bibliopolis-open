@@ -72,8 +72,8 @@ def test_the_growing_city_opens_its_first_road_at_house_41_and_shows_a_split_an_
     assert "Humanities・History" in labels  # a chain of topics, one road
     streets = grown["composition"]["streets"]
     assert streets["total"] == len([p for p in grown["places"].values() if p["kind"] == "street" and "lane_of" not in p and not p.get("underground")]) >= 20
-    assert streets["continuations"] > 0 and streets["underground"] == 1
-    assert 0 < grown["composition"]["measure"]["underground_lots"] < 40  # the houses of topics too thin for a road, and those with no topic
+    assert streets["continuations"] > 0 and streets["ring"] == 1 and "underground" not in streets
+    assert 0 < grown["composition"]["measure"]["ring_lots"] < 40  # the houses of topics too thin for a road, and those with no topic: they stand on the ring road
     assert sum(1 for e in chronicle if "from" in e) >= 20 and [e["n"] for e in chronicle] == list(range(1, len(chronicle) + 1))
 
 
@@ -90,13 +90,13 @@ def test_the_mirror_city_has_a_road_for_every_topic_that_holds_a_house(sample, m
     assert roads == holders and len(roads) == 79 and "literature" not in roads  # a topic with nothing in it is no road
     assert not [e for e in mirrored["world"]["chronicle"] if "from" in e]
     assert [e["over"] for e in mirrored["world"]["chronicle"] if "over" in e] == ["place:tag:networks"]
-    assert mirrored["composition"]["measure"]["underground_lots"] == 15  # exactly the items with no topic
+    assert mirrored["composition"]["measure"]["ring_lots"] == 15  # exactly the items with no topic: they stand on the ring road
 
 
 def test_both_cities_are_sound_geometry(grown, mirrored):
     assert checks.document_problems(grown) == {} and checks.document_problems(mirrored) == {}
     for doc in (grown, mirrored):
-        assert doc["composition"]["measure"]["lots"] + doc["composition"]["measure"]["underground_lots"] == 600
+        assert doc["composition"]["measure"]["lots"] == 600 and "underground_lots" not in doc["composition"]["measure"]
         assert len([p for p in doc["places"].values() if p["kind"] == "lot"]) == 600  # one house per item
 
 

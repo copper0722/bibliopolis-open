@@ -22,20 +22,40 @@ def real_city():
 
 def worlds(mode):
     """A city of 72 houses with every kind of place the engine makes: roads on two levels, continuation ribs, an inner trunk, splits, roads that are over, and
-    houses with no topic under the town hall. The rule is small (12 houses to a road) to get all of that from few houses."""
+    houses with no topic on the ring road. The rule is small (12 houses to a road) to get all of that from few houses."""
     tree, items = make_tree({"r": T(0, a=T(3, c=T(0, c1=T(14), c2=T(14)), d=T(10)), b=T(8, e=T(6), f=T(14)))})
     items += [art(900 + k, []) for k in range(3)]
     doc = bibliopolis.build_city({"items": items}, tree, mode=mode, max_houses=12, min_houses=4, trunk_min=20)
     return json.loads(json.dumps(doc))
 
 
-def first_lot(doc, underground=False):
-    return next(pid for pid, p in doc["places"].items() if p["kind"] == "lot" and bool(p.get("underground")) == underground)
+def first_lot(doc):
+    return next(pid for pid, p in doc["places"].items() if p["kind"] == "lot")
 
 
 def a_street(doc, *keys):
-    """A road (not the root zone, not a continuation) that has all of `keys`."""
-    return next(pid for pid, p in doc["places"].items() if p["kind"] == "street" and not p.get("underground") and "lane_of" not in p and all(k in p for k in keys))
+    """A road (not the ring road, not a continuation) that has all of `keys`."""
+    return next(pid for pid, p in doc["places"].items() if p["kind"] == "street" and p.get("shape") != "ring" and "lane_of" not in p and all(k in p for k in keys))
+
+
+def the_ring(doc):
+    """The street of the ring road (lap 1)."""
+    return next(pid for pid, p in doc["places"].items() if p["kind"] == "street" and p.get("shape") == "ring" and "lane_of" not in p)
+
+
+def the_root(doc):
+    """The street the houses of no road stand on: the ring road (lap 1), or the root zone of a city with no ring road."""
+    return next(pid for pid, p in doc["places"].items() if p["kind"] == "street" and (p.get("shape") == "ring" or p.get("underground")) and "lane_of" not in p)
+
+
+def a_city_with_laps(mode):
+    """A city whose ring road is full and goes on as a lap: fourteen roots of nine houses (no group of ten anywhere) and 130 houses with no topic stand on the ring
+    road in both modes (in `grow` mode the roots' houses stand there too)."""
+    tree, items = make_tree({f"t{i}": T(9) for i in range(14)})
+    items += [art(900 + k, []) for k in range(130)]
+    doc = bibliopolis.build_city({"items": items}, tree, mode=mode)
+    assert any(p.get("lane_of") == "place:root" for p in doc["places"].values())
+    return json.loads(json.dumps(doc))
 
 
 def circle(doc):
@@ -64,7 +84,7 @@ def test_every_city_the_engine_makes_is_read_and_drawn_and_told(mode):
     docs = [bibliopolis.build_city(library, tree, mode=mode, first=n, with_coast=coast) for n in (None, 0, 1, 41, 150) for coast in (True, False)]
     docs += [bibliopolis.build_city({"items": items}, t, mode=mode) for t, items in (random_world(seed) for seed in range(12))]
     tree3, items3 = random_world(3)
-    docs += [worlds(mode), bibliopolis.build_city({"items": items3}, tree3, mode=mode, trunk_min=40, max_houses=15, min_houses=5)]
+    docs += [worlds(mode), a_city_with_laps(mode), bibliopolis.build_city({"items": items3}, tree3, mode=mode, trunk_min=40, max_houses=15, min_houses=5)]
     for doc in docs:
         inputs.read_city(json.loads(json.dumps(doc)))
         picture.render(doc)
@@ -117,6 +137,13 @@ MISTAKES = [
     ("a street whose road is a list", lambda d: d["places"][a_street(d)].update(road=["x"]), ".road: must be a road id"),
     ("a street whose name is a number", lambda d: d["places"][a_street(d)].update(label=5), ".label: must be a string"),
     ("a lane of radius 0", lambda d: d["places"][a_street(d, "rib")]["rib"].update(band=0, s=0), ".rib.s: must be a number above 0"),
+    ("a road hung on the ring road", lambda d: d["places"][a_street(d)].update(parent=the_ring(d)), "is no lap of it, a street of shape ring (a house on it:"),
+    ("a ring road with no ring", lambda d: d["places"][the_ring(d)].pop("ring"), ".ring: must be an object {radius, ...} for a street of shape ring"),
+    ("a ring road whose ring is a list", lambda d: d["places"][the_ring(d)].update(ring=[8.5]), ".ring: must be an object {radius, ...} for a street of shape ring"),
+    ("a ring road of radius 0", lambda d: d["places"][the_ring(d)]["ring"].update(radius=0), ".ring.radius: must be a number above 0 (the radius of the lane)"),
+    ("a ring road with no radius", lambda d: d["places"][the_ring(d)]["ring"].pop("radius"), ".ring: radius is missing (a number above 0"),
+    ("a ring road whose radius is a word", lambda d: d["places"][the_ring(d)]["ring"].update(radius="wide"), ".ring.radius: must be a number above 0"),
+    ("a count of houses on the ring that is a word", lambda d: d["composition"]["measure"].update(ring_lots="many"), "measure.ring_lots: must be a number"),
     ("a lane with no radius", lane_without_radius, "rib: s is missing"),
     ("a rib that is a list", lambda d: d["places"][a_street(d, "rib")].update(rib=[1]), ".rib: must be an object"),
     ("a sector that is no longer there", lambda d: d["composition"]["ring1"].pop(0), "which is not a sector in composition.ring1 (a house on it:"),
@@ -173,6 +200,7 @@ NUMBERS = [  # (the number, how to put a value there, what the message names)
     ("a bearing of a sector", lambda d, v: d["composition"]["ring1"][0].update({"from": v}), "ring1[0].from: must be a bearing in degrees"),
     ("the weight of a street", lambda d, v: d["places"][a_street(d)].update(weight=v), ".weight: must be a number"),
     ("the radius of a lane", lambda d, v: d["places"][a_street(d, "rib")]["rib"].update(band=0, s=v), ".rib.s: must be a number above 0"),
+    ("the radius of the ring road", lambda d, v: d["places"][the_ring(d)]["ring"].update(radius=v), ".ring.radius: must be a number above 0"),
     ("a corner of the coast", lambda d, v: d["coast"]["polygons"][0].__setitem__(0, [v, 0]), "coast.polygons[0]: must be a list of at least three"),
     ("the number of buildings", lambda d, v: d["composition"].update(buildings=v), "composition.buildings: must be a number"),
     ("the total of streets", lambda d, v: d["composition"]["streets"].update(total=v), "composition.streets.total: must be a number"),
@@ -259,14 +287,14 @@ LINKS = ("parent", "place", "road", "from", "over", "lane_of", "trunk", "carrier
 
 
 def targets(doc):
-    """The parts of the document to break: two places of every kind (kind, shape, continuation, level, underground), two roads of every kind, and every other
+    """The parts of the document to break: two places of every kind (kind, shape, continuation, level), two roads of every kind, and every other
     part that the two commands read."""
     paths: list[list] = [[], ["composition"], ["composition", "ring1", 0], ["composition", "measure"], ["composition", "streets"], ["world"], ["world", "districts"]]
     if "coast" in doc:
         paths += [["coast"], ["coast", "polygons", 0], ["coast", "polygons", 0, 0]]
     seen: collections.Counter = collections.Counter()
     for pid, p in doc["places"].items():
-        sig = (pid == "place:plaza", p["kind"], p.get("shape"), "lane_of" in p, p.get("level"), bool(p.get("underground")))
+        sig = (pid == "place:plaza", p["kind"], p.get("shape"), "lane_of" in p, p.get("level"))
         if seen[sig] < 2:
             seen[sig] += 1
             paths.append(["places", pid])
@@ -296,8 +324,7 @@ def fuzz(base, reader, stop_after=None):
     """Break `base` one field at a time (take a key away, or put each of WRONG there; a key that names a place gets a few places as well) and return what
     `reader` let through that then crashed `picture.render` or `city.chronicle_lines`, with how many documents were refused and how many accepted.
     `stop_after`: give up after that many findings."""
-    places = base["places"]
-    ids = ["place:plaza", next(pid for pid, p in places.items() if p.get("underground")), first_lot(base), base["composition"]["ring1"][0]["place"], a_street(base)]
+    ids = ["place:plaza", the_root(base), first_lot(base), base["composition"]["ring1"][0]["place"], a_street(base)]
     failures, tally = [], collections.Counter()
     for path in targets(base):
         node = at(base, path)
@@ -330,8 +357,9 @@ def fuzz(base, reader, stop_after=None):
 def test_no_single_wrong_field_gets_past_the_reader_to_crash_a_picture_or_the_chronicle(mode):
     base = worlds(mode)
     assert inputs.read_city(copy.deepcopy(base))
-    kinds = {(p["kind"], bool(p.get("underground")), "lane_of" in p) for p in base["places"].values()}
-    assert {("lot", True, False), ("lot", False, False), ("street", False, True), ("street", False, False), ("street", True, False)} <= kinds
+    kinds = {(p["kind"], p.get("shape"), "lane_of" in p) for p in base["places"].values()}
+    assert {("lot", None, False), ("street", "rib", True), ("street", "rib", False), ("street", "trunk", False), ("street", "ring", False)} <= kinds
+    assert not [p for p in base["places"].values() if p.get("underground")]  # (no house, no street under the town hall: the ring road is on the surface)
     failures, tally = fuzz(base, inputs.read_city)
     assert failures == [], failures[:5]
     assert tally["refused"] > 1_000 and tally["accepted"] > 1_000  # the documents that were broken, and refused or not worth refusing (a key nothing reads)
