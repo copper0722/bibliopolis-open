@@ -106,6 +106,8 @@ def test_the_check_is_red_when_a_rename_moves_a_house(monkeypatch):
     monkeypatch.setattr(hand.HandWorld, "relabel", shifting)
     found = stability_violations(h.journal.events, h.journal.rule)
     assert found and any("(rename_road)" in line for line in found), found
+    monkeypatch.undo()
+    assert stability_violations(h.journal.events, h.journal.rule) == []
 
 
 def test_the_check_is_red_when_an_arrival_swaps_two_houses_that_were_there(monkeypatch):
