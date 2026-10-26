@@ -106,7 +106,7 @@ the result.
 
 - One article, one house. Only articles are buildings; the town hall is a plaza.
 - No full text, abstracts, figures or media are stored: bibliographic metadata, your classification and your own notes only.
-- Text and code only in Git; no binary assets.
+- Text and code only in Git; the one exception is images in `docs/images/`.
 
 ## License
 
@@ -212,7 +212,7 @@ python -m pytest
 
 - 一篇文獻一棟房子。只有文獻是建築，市政廳是廣場。
 - 不存全文、摘要、圖表或影音；只存書目資料、你的分類與你自己的筆記。
-- Git 裡只有文字與程式，沒有二進位素材。
+- Git 裡只有文字與程式；唯一的例外是 `docs/images/` 裡的圖。
 
 ## 授權
 
