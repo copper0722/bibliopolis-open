@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 import bibliopolis
-from bibliopolis import canonical
+from bibliopolis import canonical, inputs, picture
 from bibliopolis import layout as lay
 
 EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
@@ -149,3 +149,39 @@ def test_the_sample_documents_are_pinned_by_their_sha256(sample):
             "mirror": lay.render(bibliopolis.build_city(library, tree, mode="mirror")),
             "grow, first 41": lay.render(bibliopolis.build_city(library, tree, mode="grow", first=41))}
     assert {name: hashlib.sha256(text.encode("utf-8")).hexdigest() for name, text in made.items()} == PINS
+
+
+# ------------------------------------------------------------------------- a picture from a file ----
+def city_from_text(city):
+    return inputs.read_city(json.loads(lay.render(city)))
+
+
+@pytest.mark.parametrize("mode", ["grow", "mirror"])
+def test_a_picture_drawn_from_the_text_of_a_city_is_the_picture_of_the_city(sample, mode):
+    """The text of a city has `55` where the city has `55.0`; the picture must not show the difference (the caption prints a measure as the float it is)."""
+    tree, library = sample
+    city = bibliopolis.build_city(library, tree, mode=mode)
+    assert picture.render(city_from_text(city)) == picture.render(city)
+
+
+def test_the_grown_sample_has_a_measure_that_is_a_whole_number_so_that_the_check_above_means_something(sample):
+    tree, library = sample
+    city = bibliopolis.build_city(library, tree)
+    assert city["composition"]["measure"]["walk_longest"] == 55.0 and ", the longest 55.0;" in picture.render(city)
+    text = lay.render(city)
+    assert '"walk_longest": 55,' in text and '"walk_longest": 55.0' not in text  # (the text of the city has 55, where the city has 55.0)
+
+
+def test_a_picture_drawn_from_the_text_of_a_hand_built_city_is_the_picture_of_the_city():
+    from hand_support import play
+
+    city = play(3, steps=120).state.city()
+    assert picture.render(city_from_text(city)) == picture.render(city)
+
+
+def test_the_line_of_numbers_of_a_picture_is_the_same_for_a_measure_that_is_a_whole_number_or_a_float():
+    city = {"composition": {"buildings": 3, "streets": {"total": 1}, "measure": {"underground_lots": 0, "max_radius": 8, "walk_mean": 4.5, "walk_longest": 55}}}
+    other = json.loads(json.dumps(city))
+    other["composition"]["measure"].update(max_radius=8.0, walk_longest=55.0)
+    want = "3 houses (0 under the town hall) on 1 roads; the farthest house is 8.0 cells from the centre, the mean walk 4.5, the longest 55.0"
+    assert picture.stats_line(city, (0, 0)) == picture.stats_line(other, (0, 0)) == want

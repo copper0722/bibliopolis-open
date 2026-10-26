@@ -117,6 +117,8 @@ the first ring is full by the 180th arrival.) A `set_rule` that switches `auto` 
 
 **Numbers.** Every document the package writes spells a number as `JSON.stringify` does: an integral value without a fraction (`40`, not `40.0`), any other value as its shortest text
 (`bibliopolis.canonical`). The in-memory documents keep their floats. A number that another language would spell differently (an exponent form, a value of 10**15 or more) is refused.
+The one line of numbers that is not JSON, the caption of `picture`, prints a measure as the float it is (`55.0`) whichever form the file has, so that a picture drawn from a city file has
+the same bytes as the picture of the city.
 
 ## Refusals
 

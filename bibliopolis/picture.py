@@ -328,9 +328,11 @@ def draw_legend(add, x: float, y: float, scale: float, cells: int = 50) -> None:
 
 
 def stats_line(city: dict, labels: tuple[int, int]) -> str:
+    """The line of numbers under the title. A measure is printed as the float it is (`55.0`), whether the file it was read from has `55.0` or `55` (the canonical form of a
+    document writes the second): a picture drawn from a city file has the same bytes as the picture of the city."""
     comp, m = city["composition"], city["composition"]["measure"]
     text = (f'{comp["buildings"]} houses ({m.get("underground_lots", 0)} under the town hall) on {comp["streets"]["total"]} roads; '
-            f'the farthest house is {m["max_radius"]} cells from the centre, the mean walk {m["walk_mean"]}, the longest {m["walk_longest"]}')
+            f'the farthest house is {float(m["max_radius"])} cells from the centre, the mean walk {float(m["walk_mean"])}, the longest {float(m["walk_longest"])}')
     if labels[1]:
         text += f"; road names drawn: {labels[0]} of {labels[1]}"
     return text
