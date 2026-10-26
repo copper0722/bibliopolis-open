@@ -278,11 +278,16 @@ def test_an_event_appended_to_a_store_is_there_when_it_is_read_again_and_only_th
     assert len(Store(path).journal().events) == 3
 
 
-def test_a_store_is_read_as_it_is_at_one_moment_while_another_call_appends_to_it(tmp_path, monkeypatch):
-    """The three tables are read in one read transaction. Another call that appends after the event table is read and before the item table is read must not give the reader the
-    old events and the new item (a false `item_table_differs`): the reader's transaction holds the file, and the writer waits for it."""
+@pytest.mark.parametrize("journal_mode", ["delete", "wal"])
+def test_a_store_is_read_as_it_is_at_one_moment_while_another_call_appends_to_it(journal_mode, tmp_path, monkeypatch):
+    """The three tables are read in one read transaction. Another call, on a connection of its own, that appends after the event table is read and before the item table is read must not
+    give the reader the old events and the new item (a false `item_table_differs`). In the default journal the reader's transaction holds the file and the writer waits for it (here:
+    "database is locked", since no waiting is asked); in WAL a writer is not held, and the reader keeps the file as it was when its first read began. Either way the reader has its three
+    events and the three items of them."""
     path = tmp_path / "w.sqlite"
     Store.create(path)
+    with closing(sqlite3.connect(path)) as db:
+        assert db.execute(f"PRAGMA journal_mode={journal_mode}").fetchone() == (journal_mode,)
     j = Store(path).journal()
     for i in range(1, 4):
         Store(path).append(j.append("add_item", {"item": item(i)}, stamp(i)))
@@ -313,8 +318,10 @@ def test_a_store_is_read_as_it_is_at_one_moment_while_another_call_appends_to_it
     monkeypatch.setattr(store, "_connect", spy_connect)
     seen = Store(path).journal()  # once the read is done, the writer may go on
     monkeypatch.undo()
-    assert said == ["database is locked"] and len(seen.events) == 3 and list(seen.state.items) == houses(1, 3)
-    Store(path).append(fourth)
+    assert said == [{"delete": "database is locked", "wal": "appended"}[journal_mode]]
+    assert len(seen.events) == 3 and list(seen.state.items) == houses(1, 3) and len(seen.items()) == 3
+    if journal_mode == "delete":
+        Store(path).append(fourth)  # the writer that had to wait goes on now
     assert len(Store(path).journal().events) == 4
 
 
