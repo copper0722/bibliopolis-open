@@ -21,11 +21,11 @@ coordinates are rounded to 3 decimals.
 
 from __future__ import annotations
 
-import json
 import math
 from dataclasses import dataclass
 
 from . import coast
+from .canonical import dumps
 
 LAYOUT_VERSION = "v4"
 SCHEMA_VERSION = "4"
@@ -353,18 +353,18 @@ def measure(layout: dict) -> dict:
 
 # ------------------------------------------------------------------------------------------------ the text ----
 def render(layout: dict) -> str:
-    """Stable text: header fields pretty-printed, then one road and one place per line."""
+    """Stable text: header fields pretty-printed, then one road and one place per line. Numbers are written in the canonical form (bibliopolis.canonical)."""
     head = {k: v for k, v in layout.items() if k not in ("roads", "coast", "places")}
-    head_text = json.dumps(head, ensure_ascii=False, indent=1)[:-2]
+    head_text = dumps(head, indent=1)[:-2]
 
     def lines(d: dict) -> str:
-        return ",\n".join(f"  {json.dumps(k, ensure_ascii=False)}: {json.dumps(v, ensure_ascii=False, separators=(',', ':'))}" for k, v in d.items())
+        return ",\n".join(f"  {dumps(k)}: {dumps(v)}" for k, v in d.items())
 
     parts = [head_text, ',\n "roads": {\n' + lines(layout["roads"]) + "\n }"]
     if "coast" in layout:
         c = layout["coast"]
-        polys = ",\n".join("   " + json.dumps(p, separators=(",", ":")) for p in c["polygons"])
-        parts.append(',\n "coast": {' + ",".join(f"{json.dumps(k)}:{json.dumps(v)}" for k, v in c.items() if k != "polygons")
+        polys = ",\n".join("   " + dumps(p) for p in c["polygons"])
+        parts.append(',\n "coast": {' + ",".join(f"{dumps(k)}:{dumps(v)}" for k, v in c.items() if k != "polygons")
                      + ',"polygons":[\n' + polys + "\n  ]}")
     parts.append(',\n "places": {\n' + lines(layout["places"]) + "\n }\n}\n")
     return "".join(parts)
