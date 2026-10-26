@@ -1,0 +1,21 @@
+# bibliopolis-open — repository card
+
+Public, MIT. The open extraction of Bibliopolis (文獻城邦): turn a literature collection into a city-state. Two modes: a Zotero
+library as a city (the collection tree is the street plan) and a city grown from zero (data-driven roads of 10 to 40 houses that
+split as they grow).
+
+## Owner and flow
+
+- Canonical development happens in a private repository; changes arrive here as re-extractions that pass the scrub gate. Do not
+  develop a feature here that the private engine lacks without saying so in the commit.
+- Everything here is public the moment it is pushed. Nothing private enters: no personal data, no host names, paths, service
+  names, database names, task or card numbers, credentials, private conversations, or content derived from paywalled full text.
+- Journal names appear only descriptively in data or docs, never in a product name, identifier, logo or package name.
+
+## Rules
+
+- Text and code only; no binary assets in Git.
+- Source-generic: no journal-specific assumption in the engine.
+- Fixtures are synthetic (`10.0000/...` DOIs, sample titles and authors).
+- Code and agent docs in English; human-facing copy in English and Traditional Chinese (Taiwan terms).
+- No GitHub Actions workflows. Run the local tests and the scrub gate before every push.

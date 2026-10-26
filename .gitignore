@@ -1,0 +1,29 @@
+# dependencies and builds
+node_modules/
+dist/
+build/
+.out/
+.vite/
+coverage/
+*.log
+__pycache__/
+*.pyc
+.venv/
+
+# local runtime, data and secrets
+var/
+.env
+.env.*
+*.local
+.DS_Store
+
+# binary payload never enters Git
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.avif
+*.glb
+*.bin
+*.blend
+*.pdf
