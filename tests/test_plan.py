@@ -152,3 +152,14 @@ def test_the_plan_is_json_and_a_plan_view_reads_it_back():
     assert zw.PlanView(again).districts == {"max": 40, "min": 10, "extract": "largest", "count": "direct"} and zw.PlanView(again).mode == "grow"
     with pytest.raises(ValueError, match="mode"):
         zw.PlanView({**plan, "mode": "both"})
+
+
+def test_the_minimum_sector_of_ring_one_fits_for_25_streets_and_not_for_26():
+    def spans(n):
+        plan, _t, _i = plan_of({f"r{i:02d}": T(5 + 7 * i) for i in range(n)})  # n roots of very different weight
+        return [round(r["wedge"][1] - r["wedge"][0], 2) for r in plan["ring1"]]
+
+    fits = spans(25)  # 25 x 14 = 350 degrees: every sector keeps its 14 degrees, the heavier ones share the rest
+    assert min(fits) == 14.0 and max(fits) > 14.0 and abs(sum(fits) - 360) < 0.1
+    crowded = spans(26)  # 26 x 14 = 364 does not fit: the minimums share the circle in proportion to themselves, so the sectors are equal whatever their weight
+    assert max(crowded) - min(crowded) <= 0.01 and max(crowded) < 14.0 and abs(sum(crowded) - 360) < 0.1

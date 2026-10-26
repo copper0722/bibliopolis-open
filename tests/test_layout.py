@@ -163,3 +163,15 @@ def test_the_land_grows_with_the_houses_and_the_underground_houses_do_not_count(
     assert under["coast"] == none["coast"] and under["composition"]["measure"]["underground_lots"] == 27
     tree, items = make_tree({"a": T(45), "b": T(9)})
     assert bibliopolis.build_city({"items": items}, tree)["composition"]["measure"]["land_area"] > none["composition"]["measure"]["land_area"]
+
+
+def test_a_wedge_too_narrow_for_the_minimums_scales_them_down_together_and_no_part_is_empty():
+    class S:
+        def __init__(self, weight):
+            self.weight = weight
+
+    wedge = lay.Wedge(0, 1000)  # 10 degrees: the minimums (4 per side, 8 central) alone would need 16 or more
+    central, left, right = lay.split_wedge(wedge, S(100), [S(50), S(50)], [S(50), S(50)])
+    parts = [central.span, *(w.span for w in left + right)]
+    assert all(p >= 1 for p in parts) and sum(w.span for w in left) + central.span + sum(w.span for w in right) == wedge.span
+    assert left[0].lo == wedge.lo and right[0].hi == wedge.hi and left[-1].hi == central.lo and right[-1].lo == central.hi  # (the heaviest child of a side is outermost: first)

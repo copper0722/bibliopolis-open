@@ -36,11 +36,15 @@ It has no radius and no coordinate; a road opens at the frontier of its trunk wh
 - the weight of a street is the lots and reserved lots of it and below it: `1 + n + max(2, ceil(n / 4))` for a rib of `n` lots.
 
 **Ring 1** is the topic roots (the children of the root when the tree has exactly one root). The circle is shared among them in proportion to their weight,
-none below 14 degrees, centred on north, in whole units of 1/100 degree.
+centred on north, in whole units of 1/100 degree. No sector is narrower than 14 degrees as long as the minimums fit in the circle, which they do for up to 25
+ring-1 streets (25 x 14 = 350 degrees). With 26 or more they do not fit: the circle is then shared in proportion to the minimums, which are equal, so every
+sector gets the same angle (360 / n degrees, less than 14) whatever its weight.
 
 **Trunks.** Every ring-1 street is a trunk (a spoke through the plaza along the bisector of its wedge). Below it, a container street of weight 300 or more
 under a trunk is a trunk too. Of the trunk children, the heaviest continues the spoke straight (the heavy path); the others take side wedges, alternately
-on the lighter side (the left on a tie), the heaviest outermost. Every other street hangs on the bands of the nearest trunk above it (its *carrier*).
+on the lighter side (the left on a tie), the heaviest outermost. A side wedge is not narrower than 4 degrees and the central wedge not narrower than 8; when the
+wedge of a trunk is too narrow for them, both minimums are scaled down together by the same factor. Every other street hangs on the bands of the nearest trunk
+above it (its *carrier*).
 
 **The rule.** `max` (40) and `min` (10), two whole numbers with `1 <= min <= max`.
 
@@ -107,10 +111,15 @@ The topic tree is the street plan.
 | rule | test file |
 |---|---|
 | the root zone, the 41st house, packing, a split in the middle of a call, again at once, ribs, continuation, over, no merge back, chains, ring 1 | `tests/test_districts.py` |
-| mirror | `tests/test_mirror.py` |
+| mirror, items filed under several topics, `complete` | `tests/test_mirror.py` |
+| the cut and the plan: leaf and container streets, chains, the sectors of ring 1, the heavy path and the sides | `tests/test_plan.py` |
+| angles, geometry, records, measures, the stable text, the coast | `tests/test_layout.py` |
 | the two input files and their checks | `tests/test_inputs.py`, `tests/test_schema.py` |
+| the pipeline and its summary (the streets that are over now) | `tests/test_city.py` |
 | the command line, the same bytes in separate processes | `tests/test_cli.py` |
-| the sample and what it shows | `tests/test_example.py` |
+| the sample and what it shows; what the format page says about the sample | `tests/test_example.py`, `tests/test_format_page.py` |
+| empty library, one root, many roots, a long chain | `tests/test_edges.py` |
+| the README does not drift from the program | `tests/test_readme.py` |
 | standard library only, Python 3.11 syntax | `tests/test_package.py` |
 
 `tests/checks.py` holds the geometry checks (no overlap, every lot beside the lane of its own street, a road tree that starts at the plaza rim, no road
