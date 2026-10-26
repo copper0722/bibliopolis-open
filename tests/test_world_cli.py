@@ -216,6 +216,19 @@ def test_a_command_writes_over_text_and_into_a_new_file_as_it_always_did(command
     assert everything_in(tmp_path)[0]["w.sqlite"] == before[0]["w.sqlite"]
 
 
+@pytest.mark.parametrize("command", list(WRITERS))
+def test_a_store_with_a_cell_that_is_not_what_the_column_holds_is_an_error_of_the_command_and_not_a_traceback(command, tmp_path, capsys):
+    path = tmp_path / "w.sqlite"
+    with closing(sqlite3.connect(path)) as db, db:
+        db.execute("CREATE TABLE world (id, format, version, rule)")
+        db.execute("CREATE TABLE event (seq, at, kind, payload)")
+        db.execute("CREATE TABLE item (seq, id, json)")
+        db.execute("INSERT INTO world VALUES (1, 'bibliopolis.world', 1, NULL)")
+    out = tmp_path / "out.json"
+    code, err, _ = run_main(capsys, *WRITERS[command](out, path))
+    assert code == 2 and err.strip() == f"bibliopolis: {path}: world.rule (row 1) must be text, got NoneType" and not out.exists()
+
+
 # ---------------------------------------------------------------------------------------------------- fold ----
 def test_fold_writes_the_city_as_build_does_and_the_picture_and_the_chronicle_read_it(tmp_path, capsys):
     source, journal = world_file(tmp_path)

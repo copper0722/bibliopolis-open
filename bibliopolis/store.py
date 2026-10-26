@@ -23,6 +23,7 @@ from pathlib import Path
 
 from .canonical import dumps
 from .events import Refusal
+from .inputs import _shown
 from .journal import FORMAT, VERSION, Journal, WorldFileError, dumps_world, world_document
 
 HOME_ENV = "BIBLIOPOLIS_HOME"
@@ -75,6 +76,29 @@ def check_output(path: str | Path, world: str | Path) -> None:
         with open(out, "rb") as f:
             if f.read(len(SQLITE_MAGIC)) == SQLITE_MAGIC:
                 raise Refusal(f"{out} is a SQLite database already; a world is not written over (choose another file, or move that one away)", "output_is_a_database", path=str(out))
+
+
+def _plain(value):
+    """A cell as it goes into the params of an error (plain JSON): null, text and whole numbers as they are, anything else (bytes, a real) as a short text."""
+    return value if value is None or isinstance(value, (str, int)) else _shown(value)
+
+
+def _cell(path: Path, table: str, column: str, row: int | None, value, expected: str) -> None:
+    """`WorldFileError` (`cell_wrong_type`) unless the cell `column` of the `row`-th row of `table` (`row` None: the largest of the column) is text (`expected` "text") or a whole number
+    (anything else): a store made elsewhere may hold any type of value in any column, and nothing is decoded or added to before its type is right."""
+    if not (isinstance(value, str) if expected == "text" else isinstance(value, int) and not isinstance(value, bool)):
+        raise WorldFileError(f"{path}: {table}.{column}{'' if row is None else f' (row {row})'} must be {expected}, got {type(value).__name__}", "cell_wrong_type", path=str(path),
+                             table=table, column=column, row=row, expected=expected, got=type(value).__name__)
+
+
+def _decode(path: Path, text: str):
+    """The JSON value of a cell of text. `WorldFileError` (`row_not_json`) when it is not JSON, holds a number of too many digits to read, or is nested too deeply to read."""
+    try:
+        return json.loads(text)
+    except RecursionError:
+        raise WorldFileError(f"{path}: a row does not hold JSON (nested too deeply to read)", "row_not_json", path=str(path), reason="nested too deeply to read") from None
+    except ValueError as exc:  # not JSON (`json.JSONDecodeError`), or a number of more digits than Python reads
+        raise WorldFileError(f"{path}: a row does not hold JSON ({exc})", "row_not_json", path=str(path), reason=str(exc)) from None
 
 
 def _connect(path: Path) -> sqlite3.Connection:
@@ -143,15 +167,21 @@ class Store:
                 db.rollback()
         except sqlite3.DatabaseError as exc:
             raise WorldFileError(f"{self.path}: not a world of this program ({exc})", "not_a_world", path=str(self.path), reason=str(exc)) from None
-        if len(head) != 1 or head[0][0] != FORMAT or head[0][1] != VERSION:
+        if len(head) != 1 or head[0][0] != FORMAT or type(head[0][1]) is not int or head[0][1] != VERSION:
             raise WorldFileError(f"{self.path}: not a world of this program: its world table must hold one row, {FORMAT!r} version {VERSION}", "world_table_wrong",
-                                 path=str(self.path), format=head[0][0] if len(head) == 1 else None, version=head[0][1] if len(head) == 1 else None)
-        try:
-            rule = json.loads(head[0][2])
-            log = [{"seq": seq, "at": at, "kind": kind, "payload": json.loads(payload)} for seq, at, kind, payload in events]
-            kept = [(seq, id_, json.loads(text)) for seq, id_, text in items]
-        except json.JSONDecodeError as exc:
-            raise WorldFileError(f"{self.path}: a row does not hold JSON ({exc})", "row_not_json", path=str(self.path), reason=str(exc)) from None
+                                 path=str(self.path), format=_plain(head[0][0]) if len(head) == 1 else None, version=_plain(head[0][1]) if len(head) == 1 else None)
+        _cell(self.path, "world", "rule", 1, head[0][2], "text")
+        for row, (seq, at, kind, payload) in enumerate(events, start=1):
+            _cell(self.path, "event", "seq", row, seq, "a whole number")
+            for column, value in (("at", at), ("kind", kind), ("payload", payload)):
+                _cell(self.path, "event", column, row, value, "text")
+        for row, (seq, id_, text) in enumerate(items, start=1):
+            _cell(self.path, "item", "seq", row, seq, "a whole number")
+            _cell(self.path, "item", "id", row, id_, "text")
+            _cell(self.path, "item", "json", row, text, "text")
+        rule = _decode(self.path, head[0][2])
+        log = [{"seq": seq, "at": at, "kind": kind, "payload": _decode(self.path, payload)} for seq, at, kind, payload in events]
+        kept = [(seq, id_, _decode(self.path, text)) for seq, id_, text in items]
         try:
             journal = Journal.replay(rule, log)
         except Refusal as why:
@@ -166,6 +196,7 @@ class Store:
         """Write one event, which a journal has taken (`Journal.append` returned it): the next number only, one transaction. `Refusal` for any other."""
         with closing(_connect(self.path)) as db, db:
             (last,) = db.execute("SELECT COALESCE(MAX(seq), 0) FROM event").fetchone()
+            _cell(self.path, "event", "seq", None, last, "a whole number")  # (the largest of a column that holds text is text)
             if event["seq"] != last + 1:
                 raise Refusal(f"{self.path} holds {last} events; the next is number {last + 1}, not {event['seq']}", "not_next_event", path=str(self.path), held=last,
                               next=last + 1, seq=event["seq"])

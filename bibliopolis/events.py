@@ -128,6 +128,7 @@ CODES = {
     "not_a_world": ("path", "reason"),
     "world_table_wrong": ("path", "format", "version"),
     "row_not_json": ("path", "reason"),
+    "cell_wrong_type": ("path", "table", "column", "row", "expected", "got"),
     "item_table_differs": ("path",),
 }
 

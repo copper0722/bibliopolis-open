@@ -467,6 +467,16 @@ def row_not_json(tmp):
     return raised(lambda: Store(path).journal())
 
 
+def cell_wrong_type(tmp):
+    path = tmp / "crafted.sqlite"
+    with sqlite3.connect(path) as db:  # a store made elsewhere: the tables of the program, with no type and no constraint
+        db.execute("CREATE TABLE world (id, format, version, rule)")
+        db.execute("CREATE TABLE event (seq, at, kind, payload)")
+        db.execute("CREATE TABLE item (seq, id, json)")
+        db.execute("INSERT INTO world VALUES (1, 'bibliopolis.world', 1, NULL)")
+    return raised(lambda: Store(path).journal())
+
+
 def item_table_differs(tmp):
     path = tmp / "w.sqlite"
     Store.import_journal(path, small_journal())

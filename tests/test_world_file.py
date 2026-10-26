@@ -4,6 +4,7 @@ import copy
 import hashlib
 import json
 import os
+import shutil
 import sqlite3
 from contextlib import closing
 from pathlib import Path
@@ -11,6 +12,7 @@ from pathlib import Path
 import pytest
 from hand_support import Hand, hid, item, play, scripted, scripted_merge, scripted_nodes, stamp, topic
 
+from bibliopolis import events as ev
 from bibliopolis import layout as lay
 from bibliopolis import store
 from bibliopolis.canonical import dumps
@@ -400,6 +402,96 @@ def test_a_file_that_is_not_a_world_is_refused(tmp_path):
         db.execute("CREATE TABLE item (seq INTEGER, id TEXT, json TEXT)")
     with pytest.raises(WorldFileError, match="its world table must hold one row"):
         Store(other).journal()
+
+
+def crafted(path, journal):
+    """The three tables of a store with no type, no constraint and no trigger: what a file made elsewhere may hold."""
+    with closing(sqlite3.connect(path)) as db, db:
+        db.execute("CREATE TABLE world (id, format, version, rule)")
+        db.execute("CREATE TABLE event (seq, at, kind, payload)")
+        db.execute("CREATE TABLE item (seq, id, json)")
+        db.execute("INSERT INTO world VALUES (1, ?, ?, ?)", (FORMAT, VERSION, dumps(journal.rule)))
+        for e in journal.events:
+            db.execute("INSERT INTO event VALUES (?, ?, ?, ?)", (e["seq"], e["at"], e["kind"], dumps(e["payload"])))
+            if e["kind"] == "add_item":
+                db.execute("INSERT INTO item VALUES (?, ?, ?)", (e["seq"], e["payload"]["item"]["id"], dumps(e["payload"]["item"])))
+    return path
+
+
+def registered(error):
+    """An error of a store is what the list of ids says: an id of the list, the params of that id and only plain JSON; the problems of an `invalid` the same."""
+    assert error.code in ev.CODES, error.code
+    assert set(error.params) == set(ev.CODES[error.code]), (error.code, sorted(error.params))
+    assert json.loads(json.dumps(error.as_dict())) == error.as_dict()
+    for problem in error.params.get("problems", ()):
+        assert problem["code"] in ev.CODES and set(problem["params"]) == set(ev.CODES[problem["code"]]), problem
+
+
+def test_a_store_with_a_cell_that_cannot_be_what_the_column_holds_is_refused_with_an_id_and_not_a_traceback(tmp_path):
+    """The case of the review: `world.rule` is NULL. `json.loads(None)` raised a TypeError that no command caught."""
+    j = small()
+    path = crafted(tmp_path / "w.sqlite", j)
+    assert text_of(Store(path).journal()) == text_of(j)  # (the control: the tables as they are read as the world)
+    with closing(sqlite3.connect(path)) as db, db:
+        db.execute("UPDATE world SET rule = NULL")
+    with pytest.raises(WorldFileError) as why:
+        Store(path).journal()
+    registered(why.value)
+    assert why.value.code == "cell_wrong_type"
+    assert why.value.params == {"path": str(path), "table": "world", "column": "rule", "row": 1, "expected": "text", "got": "NoneType"}
+    assert str(why.value) == f"{path}: world.rule (row 1) must be text, got NoneType"
+
+
+DEEP = "[" * 100_000 + "]" * 100_000
+BAD_CELLS = {"null": None, "a whole number": 7, "a real": 1.5, "bytes": b"\xff\xfe", "empty text": "", "text that is no JSON": "not json", "JSON null": "null", "a JSON number": "5",
+             "a JSON list": "[]", "a JSON text": '"x"', "a JSON object": "{}", "an object with another key": '{"a":1}', "a number of 5000 digits": "1" * 5000, "a list nested 100000 deep": DEEP}
+CELLS = {"world": (("format", "version", "rule"), (1,)), "event": (("seq", "at", "kind", "payload"), (1, 14, 17)), "item": (("seq", "id", "json"), (1, 14))}
+
+
+def test_whatever_a_cell_of_a_store_holds_the_store_is_read_or_refused_with_an_id_of_the_list(tmp_path):
+    """One cell at a time of a store made elsewhere is set to a null, a number, bytes, text that is no JSON, JSON of another shape, a number of 5000 digits and a list nested 100000 deep:
+    the store is read (when the cell can be what it is) or refused with a `WorldFileError` that has an id of the list; no other exception comes out."""
+    base = crafted(tmp_path / "base.sqlite", small())
+    seen = {}
+    for table, (columns, rows) in CELLS.items():
+        for column in columns:
+            for row in rows:
+                for what, bad in BAD_CELLS.items():
+                    path = tmp_path / "case.sqlite"
+                    shutil.copy(base, path)
+                    with closing(sqlite3.connect(path)) as db, db:
+                        db.execute(f"UPDATE {table} SET {column} = ? WHERE rowid = ?", (bad, row))
+                    try:
+                        Store(path).journal()
+                    except WorldFileError as error:
+                        registered(error)
+                        seen.setdefault(error.code, []).append(f"{table}.{column}[{row}] = {what}")
+    assert {"cell_wrong_type", "row_not_json"} <= set(seen) and len(seen["cell_wrong_type"]) >= 20, {code: len(cases) for code, cases in seen.items()}
+    assert any("5000 digits" in case for case in seen["row_not_json"]) and any("nested 100000 deep" in case for case in seen["row_not_json"])
+
+
+def test_an_event_is_not_appended_to_a_store_whose_numbers_are_not_numbers(tmp_path):
+    """`append` takes the next number from the largest `seq`; in a column that holds text the largest is text, and adding to it was a TypeError."""
+    j = small()
+    path = crafted(tmp_path / "w.sqlite", j)
+    with closing(sqlite3.connect(path)) as db, db:
+        db.execute("UPDATE event SET seq = 'last' WHERE seq = 17")
+    with pytest.raises(WorldFileError) as why:
+        Store(path).append(j.append("add_item", {"item": item(99)}, stamp(99)))
+    registered(why.value)
+    assert why.value.code == "cell_wrong_type" and why.value.params["row"] is None and str(why.value) == f"{path}: event.seq must be a whole number, got str"
+
+
+def test_a_number_of_too_many_digits_and_a_list_nested_too_deep_are_rows_that_do_not_hold_json(tmp_path):
+    for bad, reason in (("1" * 5000, "Exceeds the limit"), (DEEP, "nested too deeply to read")):
+        path = crafted(tmp_path / "w.sqlite", small())
+        with closing(sqlite3.connect(path)) as db, db:
+            db.execute("UPDATE event SET payload = ? WHERE seq = 5", (bad,))
+        with pytest.raises(WorldFileError) as why:
+            Store(path).journal()
+        registered(why.value)
+        assert why.value.code == "row_not_json" and reason in why.value.params["reason"] and str(why.value).startswith(f"{path}: a row does not hold JSON (")
+        path.unlink()
 
 
 def test_a_world_that_was_tampered_with_is_refused_where_the_log_stops_making_sense(tmp_path):

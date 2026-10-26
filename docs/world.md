@@ -275,7 +275,8 @@ that is read passes the refusal of an event on as a `WorldFileError` with the sa
 | `no_world` | `path` | a store that is not there | <folder>/none.sqlite: there is no world here (make one with `world new`, or read a world file with `world import`) |
 | `not_a_world` | `path`, `reason` | a file that is not a SQLite database | <folder>/text.sqlite: not a world of this program (file is not a database) |
 | `world_table_wrong` | `path`, `format`, `version` | a store whose `world` table is not one row of this format and version | <folder>/other.sqlite: not a world of this program: its world table must hold one row, 'bibliopolis.world' version 1 |
-| `row_not_json` | `path`, `reason` | a row of a store whose JSON text is not JSON | <folder>/w.sqlite: a row does not hold JSON (Expecting value: line 1 column 1 (char 0)) |
+| `row_not_json` | `path`, `reason` | a row of a store whose JSON text is not JSON, holds a number of more digits than can be read, or is nested too deeply to read | <folder>/w.sqlite: a row does not hold JSON (Expecting value: line 1 column 1 (char 0)) |
+| `cell_wrong_type` | `path`, `table`, `column`, `row`, `expected`, `got` | a store (made elsewhere: the tables of the program may hold any type) with a cell that is not text where the JSON text must be, or not a whole number where a number must be (`row` counts the rows of the table from 1, or is null for the largest `seq` that appending reads; `expected` is "text" or "a whole number", `got` the name of the type) | <folder>/crafted.sqlite: world.rule (row 1) must be text, got NoneType |
 | `item_table_differs` | `path` | a store whose `item` table is not the items of its add_item events | <folder>/w.sqlite: the item table is not the items of the add_item events |
 
 ## Suggestions
@@ -329,7 +330,8 @@ program for the rest. `tests/test_world_schema.py` holds the schema to the progr
 `payload` as JSON text) and `item` (`seq`, `id`, `json`: the item of each `add_item` event). The log is append-only: the file refuses an update, a delete or a replace of a row (a trigger
 guards each table; `INSERT OR REPLACE`, `OR IGNORE` and `ON CONFLICT` on a key that is there are refused too). Importing a world file and
 exporting it again gives the same bytes, and so does exporting a store and importing the file. A store is read in one read transaction, the three tables as they are at one moment, so a call
-that appends while another reads waits for the read and never gives it half a world.
+that appends while another reads waits for the read and never gives it half a world. A store made elsewhere is not trusted: every cell has its type checked before it is decoded
+(`cell_wrong_type`), and a row that is not JSON, has a number of too many digits or is nested too deeply is `row_not_json`; whatever a cell holds, the result is a world or a `WorldFileError`.
 
 **The home folder** is `$BIBLIOPOLIS_HOME`, else `~/Bibliopolis`; it is made on first use and printed. The world of a command without `--world` is `world.sqlite` in it. A world is never
 overwritten: `world new` and `world import` refuse a file that is there, even one that appears while they work (the file is made exclusively, so of two commands for one path one is refused,
