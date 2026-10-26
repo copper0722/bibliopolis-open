@@ -1,12 +1,15 @@
 """The journal (bibliopolis.journal): the one way an event enters a world, and what it keeps and what it gives back."""
 
+import copy
+import json
+
 import pytest
-from hand_support import Hand, hid, item, stamp, topic
+from hand_support import Hand, hid, item, scripted, scripted_merge, scripted_nodes, stamp, topic
 
 from bibliopolis import hand
 from bibliopolis import layout as lay
-from bibliopolis.events import Refusal
-from bibliopolis.journal import Journal
+from bibliopolis.events import KINDS, Refusal
+from bibliopolis.journal import Journal, dumps_world, read_world, world_document
 
 
 def test_a_journal_starts_with_the_rule_40_10_and_auto_off_or_the_one_it_is_given():
@@ -38,6 +41,69 @@ def test_the_event_a_journal_keeps_is_a_copy_in_canonical_order_not_the_dict_tha
     assert list(event["payload"]["item"]) == ["id", "title", "authors", "year", "doi", "type", "openalex"]
     given["item"]["authors"].append("B")
     assert j.events[0]["payload"]["item"]["authors"] == ["A"]
+
+
+def test_a_list_that_the_caller_goes_on_changing_does_not_change_the_road_that_was_opened():
+    j = Journal({"max": 40, "min": 3, "auto": False})
+    for i in range(1, 6):
+        j.append("add_item", {"item": item(i)}, stamp(i))
+    houses = [hid(1), hid(2), hid(3)]
+    event = j.append("open_road", {"road": "a", "name": "A", "parent": None, "houses": houses}, stamp(10))
+    houses.append("absent")  # the caller reuses its list
+    houses[0] = "another"
+    assert event["payload"]["houses"] == [hid(1), hid(2), hid(3)] and j.events[-1] is event
+    again = Journal.replay(j.rule, j.events)  # the log still replays: it was never changed
+    assert lay.render(again.state.city()) == lay.render(j.state.city())
+
+
+def test_a_list_that_the_caller_goes_on_changing_does_not_change_the_merge_that_was_made():
+    j = Journal({"max": 40, "min": 3, "auto": False})
+    for i in range(1, 10):
+        j.append("add_item", {"item": item(i)}, stamp(i))
+    for n, road in enumerate(("a", "b", "c")):
+        j.append("open_road", {"road": road, "name": road.upper(), "parent": None, "houses": [hid(3 * n + 1), hid(3 * n + 2), hid(3 * n + 3)]}, stamp(20 + n))
+    members = ["a", "b"]
+    event = j.append("merge_roads", {"road": "m", "name": "M", "parent": None, "members": members}, stamp(30))
+    members.append("c")
+    members[0] = "absent"
+    assert event["payload"]["members"] == ["a", "b"]
+    again = Journal.replay(j.rule, j.events)
+    assert lay.render(again.state.city()) == lay.render(j.state.city())
+
+
+def containers(value, path="payload"):
+    """Every list and dict inside `value`, with its place."""
+    if isinstance(value, (list, dict)):
+        yield path, value
+        for key, child in value.items() if isinstance(value, dict) else enumerate(value):
+            yield from containers(child, f"{path}[{key!r}]")
+
+
+def test_no_list_or_dict_that_a_payload_is_made_of_is_shared_with_the_event_that_is_kept_for_any_kind_of_event():
+    """Every event of the scripted worlds is appended again to a new journal with a payload of its own; whatever list or dict of it the journal keeps must be a copy."""
+    seen = set()
+    for world in (scripted, scripted_nodes, scripted_merge):
+        source = world().journal
+        fresh = Journal(source.rule)
+        for e in source.events:
+            payload = copy.deepcopy(e["payload"])
+            given = {id(value): place for place, value in containers(payload)}
+            kept = fresh.append(e["kind"], payload, e["at"])
+            assert [place for place, value in containers(kept["payload"]) if id(value) in given] == [], e["kind"]
+            seen.add(e["kind"])
+    assert seen == set(KINDS)
+
+
+def test_a_world_file_that_is_read_and_changed_afterwards_does_not_change_the_world_that_was_read():
+    doc = world_document(scripted_merge().journal)
+    text = dumps_world(doc)
+    parsed = json.loads(text)
+    journal = read_world(parsed)
+    for e in parsed["events"]:  # the reader's own document is changed in every list it has
+        for value in e["payload"].values():
+            if isinstance(value, list):
+                value.append("absent")
+    assert dumps_world(world_document(journal)) == text
 
 
 def test_the_items_are_those_of_the_add_item_events_in_log_order_the_undone_ones_too():

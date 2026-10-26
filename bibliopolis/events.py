@@ -387,6 +387,7 @@ def _payload(kind: str, payload, where: str, problems: Problems) -> dict | None:
     if _count(problems) != start:
         return None
     out = {k: payload.get(k) for k in keys}
+    out = {k: list(v) if isinstance(v, list) else v for k, v in out.items()}  # (the event is the log's: a list the caller gave is copied, so that the caller can go on with it)
     if kind in ("open_road", "merge_roads"):
         out["topic"] = node
     return out
