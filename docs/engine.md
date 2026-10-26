@@ -20,6 +20,10 @@ inputs ──> plan (directions, from the whole library) ──> world (the arri
 Items arrive in `added_at` order, ties by `id`. The n-th item to arrive has `seq` = n. The address of an item is its deepest topic (a root is depth 1,
 ties go to the lower id); an item with no topic has none.
 
+**Replay.** `build_city(..., first=n)` and `build --first n` place only the first `n` items of the arrival order. The plan is still cut from the whole library,
+so the sectors of ring 1 do not move: the document is the city that the whole library makes, at an earlier moment, and its chronicle is the start of the
+full chronicle. `first=0` is the plan with nothing built (in `mirror` mode, the street plan alone); a number above the count of items places them all.
+
 ## The plan
 
 The plan reads the whole library once, before any house stands, and pins what must be stable while the city grows: where the roads of the first ring go.

@@ -20,16 +20,21 @@ from .tree import TreeView
 
 
 def build_world(library: dict, tree: dict, *, mode: str = GROW, max_houses: int = MAX_HOUSES, min_houses: int = MIN_HOUSES,
-                trunk_min: int = lay.TRUNK_MIN) -> tuple[dict, TreeView, dict, list[dict]]:
+                trunk_min: int = lay.TRUNK_MIN, first: int | None = None) -> tuple[dict, TreeView, dict, list[dict]]:
     """(plan, tree view, world, items in arrival order) for a library document and a tree document (both are checked first: `InputError`).
 
-    Every chronicle entry of the world also says `at`, the `added_at` of the item whose arrival caused it."""
+    Every chronicle entry of the world also says `at`, the `added_at` of the item whose arrival caused it.
+
+    `first` replays the growth: only the first `first` items of the arrival order are placed, but the plan still reads the whole library, so the world
+    is the very city that the whole library makes, at an earlier moment (its chronicle is the start of the full chronicle). `items` holds them all."""
+    if first is not None and (not isinstance(first, int) or isinstance(first, bool) or first < 0):
+        raise ValueError(f"first must be a whole number >= 0, got {first!r}")
     tree_doc = inputs.read_tree(tree)
     items = inputs.read_library(library, tree_doc)
     tv = TreeView(tree_doc)
     plan = plan_mod.build_plan(tv, items, mode=mode, max_houses=max_houses, min_houses=min_houses, trunk_min=trunk_min)
     world = world_mod.new_world(plan)
-    result = world_mod.assign(plan, tv, world, items)
+    result = world_mod.assign(plan, tv, world, items if first is None else items[:first])
     world = world_mod.apply_delta(world, result["delta"])
     world = world_mod.apply_delta(world, world_mod.complete(plan, tv, world)["delta"])  # a mirror city: the roads no house stands on or below
     for entry in world["chronicle"]:  # `seq` is the arrival counter: the n-th item in arrival order caused the entry
@@ -38,9 +43,9 @@ def build_world(library: dict, tree: dict, *, mode: str = GROW, max_houses: int 
 
 
 def build_city(library: dict, tree: dict, *, mode: str = GROW, max_houses: int = MAX_HOUSES, min_houses: int = MIN_HOUSES,
-               trunk_min: int = lay.TRUNK_MIN, with_coast: bool = True) -> dict:
-    """The layout v4 document of the city that `library` and `tree` make in `mode` ("grow" or "mirror")."""
-    _plan, _tv, world, _items = build_world(library, tree, mode=mode, max_houses=max_houses, min_houses=min_houses, trunk_min=trunk_min)
+               trunk_min: int = lay.TRUNK_MIN, with_coast: bool = True, first: int | None = None) -> dict:
+    """The layout v4 document of the city that `library` and `tree` make in `mode` ("grow" or "mirror"); `first` as in `build_world`."""
+    _plan, _tv, world, _items = build_world(library, tree, mode=mode, max_houses=max_houses, min_houses=min_houses, trunk_min=trunk_min, first=first)
     return document.world_layout(world, with_coast=with_coast)
 
 
@@ -52,3 +57,4 @@ def summary(doc: dict) -> dict:
     chronicle = doc["world"]["chronicle"]
     return {"mode": doc["world"]["mode"], "houses": doc["world"]["houses"], "roads": streets["total"], "underground": doc["composition"]["measure"]["underground_lots"],
             "splits": sum(1 for e in chronicle if "from" in e), "over": sum(1 for p in doc["places"].values() if p["kind"] == "street" and p.get("over"))}
+

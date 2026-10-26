@@ -30,7 +30,7 @@ split as they grow).
 - The plan, the world of `grow` mode (roads, direct counts, root zone, chronicle, lots, ribs, lines) and the document it makes (places, roads, coast,
   measures) are an extraction of the private engine. A parity test in the private repository compares them with it on random libraries and on the
   sample (the whole document against a private plan without the journal sector). Not compared, because the private engine has nothing to compare
-  with: the input checks, the mirror mode (and `complete`), the command line and its summary, and the `at` dates of the chronicle. A change there
-  says so in its commit.
+  with: the input checks, the mirror mode (and `complete`), the command line and its summary, the `at` dates of the chronicle and the replay (`first`). A change
+  there says so in its commit.
 - No third-party code or data is copied in. Two textbook algorithms (largest-remainder apportionment, Douglas-Peucker simplification) are
   implemented here, and the sample is generated from invented word lists.

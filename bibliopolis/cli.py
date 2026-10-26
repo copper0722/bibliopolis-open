@@ -31,6 +31,9 @@ def build_parser() -> argparse.ArgumentParser:
     b.add_argument("--max-houses", type=int, default=MAX_HOUSES, metavar="N", help="a road holds this many houses directly (default: %(default)s)")
     b.add_argument("--min-houses", type=int, default=MIN_HOUSES, metavar="N",
                    help="the least size of a group of houses that opens a road of its own (grow mode; default: %(default)s)")
+    b.add_argument("--first", type=int, default=None, metavar="N",
+                   help="a replay: place only the first N items in arrival order. The plan still reads the whole library, so this is the same city at an "
+                        "earlier moment")
     return ap
 
 
@@ -54,7 +57,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         library = inputs.load_json(args.library)
         tree = inputs.load_json(args.tree)
-        doc = build_city(library, tree, mode=args.mode, max_houses=args.max_houses, min_houses=args.min_houses)
+        doc = build_city(library, tree, mode=args.mode, max_houses=args.max_houses, min_houses=args.min_houses, first=args.first)
         write_text_atomically(Path(args.out), render(doc))
     except (inputs.InputError, ValueError) as exc:
         print(f"bibliopolis: {exc}", file=sys.stderr)

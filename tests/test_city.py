@@ -74,3 +74,56 @@ def test_a_document_can_be_made_without_its_coast():
 def test_the_summary_of_a_town_hall_with_nothing_else_is_zeros(mode):
     doc = bibliopolis.build_city({"items": []}, TREE, mode=mode)
     assert bibliopolis.summary(doc) == {"mode": mode, "houses": 0, "roads": 0, "underground": 0, "splits": 0, "over": 0}
+
+
+# ----------------------------------------------------------------------------------------------- a replay ----
+def sample():
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1] / "examples"
+    return json.loads((root / "tree.json").read_text(encoding="utf-8")), json.loads((root / "library.json").read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize("mode", ["grow", "mirror"])
+def test_first_replays_the_growth_the_plan_still_reads_the_whole_library(mode):
+    tree, library = sample()
+    full = bibliopolis.build_city(library, tree, mode=mode)
+    for n in (0, 1, 40, 41, 150, 599):
+        part = bibliopolis.build_city(library, tree, mode=mode, first=n)
+        assert part["world"]["houses"] == n and part["world"]["seq"] == n
+        assert part["composition"]["ring1"] == full["composition"]["ring1"]  # the directions are pinned by the whole library: the same sectors at every moment
+        assert part["world"]["chronicle"] == [e for e in full["world"]["chronicle"] if e["seq"] <= n]  # the chronicle so far is the start of the chronicle
+    assert bibliopolis.render(bibliopolis.build_city(library, tree, mode=mode, first=600)) == bibliopolis.render(full)  # 600 = all of them
+    assert bibliopolis.render(bibliopolis.build_city(library, tree, mode=mode, first=10_000)) == bibliopolis.render(full)  # more than there are: all of them
+
+
+def test_the_first_forty_items_of_the_sample_are_all_under_the_town_hall_and_the_41st_opens_the_first_road():
+    tree, library = sample()
+    forty = bibliopolis.build_city(library, tree, first=40)
+    assert bibliopolis.summary(forty) == {"mode": "grow", "houses": 40, "roads": 0, "underground": 40, "splits": 0, "over": 0} and forty["roads"] == {}
+    forty_one = bibliopolis.build_city(library, tree, first=41)
+    (entry,) = forty_one["world"]["chronicle"]
+    assert (entry["seq"], entry["from"], entry["to"]) == (41, "place:root", "place:tag:computing") and bibliopolis.summary(forty_one)["roads"] == 1
+
+
+def test_a_mirror_replay_of_no_items_is_the_street_plan_alone():
+    tree, library = sample()
+    plan = bibliopolis.build_city(library, tree, mode="mirror", first=0)
+    assert plan["world"]["houses"] == 0 and bibliopolis.summary(plan)["roads"] == 79 and all(p["lots"] == 0 for p in plan["places"].values() if p["kind"] == "street")
+
+
+@pytest.mark.parametrize("first", [-1, 1.5, True, "3"])
+def test_first_must_be_a_whole_number_of_items(first):
+    tree, library = sample()
+    with pytest.raises(ValueError, match="first"):
+        bibliopolis.build_city(library, tree, first=first)
+
+
+def test_the_command_line_replays_with_first(tmp_path, capsys):
+    tree, library = sample()
+    (tmp_path / "t.json").write_text(json.dumps(tree), encoding="utf-8")
+    (tmp_path / "l.json").write_text(json.dumps(library), encoding="utf-8")
+    out = tmp_path / "city41.json"
+    assert cli.main(["build", "--library", str(tmp_path / "l.json"), "--tree", str(tmp_path / "t.json"), "--first", "41", "--out", str(out)]) == 0
+    assert capsys.readouterr().err.strip() == f"wrote {out}: 41 houses on 1 roads, 26 under the town hall, 1 splits, 0 over (mode grow)"
+    assert cli.main(["build", "--library", str(tmp_path / "l.json"), "--tree", str(tmp_path / "t.json"), "--first", "-3", "--out", str(tmp_path / "x.json")]) == 2
+    assert "first must be a whole number" in capsys.readouterr().err and not (tmp_path / "x.json").exists()
