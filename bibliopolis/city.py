@@ -45,8 +45,10 @@ def build_city(library: dict, tree: dict, *, mode: str = GROW, max_houses: int =
 
 
 def summary(doc: dict) -> dict:
-    """The numbers of a city document: houses, roads (continuations are not counted twice), houses under the town hall, splits and over roads."""
+    """The numbers of a city document: houses, roads (continuations are not counted twice), houses under the town hall, splits, and the streets that are
+    over now (a road or the root zone that holds more than `max` houses and cannot split). The chronicle remembers every road that was ever over; a road
+    that a later split brought back under `max` is in the chronicle and no longer counts here."""
     streets = doc["composition"]["streets"]
     chronicle = doc["world"]["chronicle"]
     return {"mode": doc["world"]["mode"], "houses": doc["world"]["houses"], "roads": streets["total"], "underground": doc["composition"]["measure"]["underground_lots"],
-            "splits": sum(1 for e in chronicle if "from" in e), "over": sum(1 for e in chronicle if "over" in e)}
+            "splits": sum(1 for e in chronicle if "from" in e), "over": sum(1 for p in doc["places"].values() if p["kind"] == "street" and p.get("over"))}
