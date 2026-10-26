@@ -9,6 +9,7 @@ import math
 import random
 from collections import Counter
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import checks
 
@@ -19,7 +20,13 @@ from bibliopolis.document import world_layout
 from bibliopolis.tree import TreeView
 
 ROOT = zw.ROOT_PLACE
+EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
 START = datetime(2024, 1, 1, tzinfo=timezone.utc)
+
+
+def sample():
+    """(tree, library) of examples/: the synthetic sample of the README."""
+    return (json.loads((EXAMPLES / "tree.json").read_text(encoding="utf-8")), json.loads((EXAMPLES / "library.json").read_text(encoding="utf-8")))
 
 
 def stamp(i):

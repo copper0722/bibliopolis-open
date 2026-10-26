@@ -28,8 +28,10 @@ def build_world(library: dict, tree: dict, *, mode: str = GROW, max_houses: int 
 
     Every chronicle entry of the world also says `at`, the `added_at` of the item whose arrival caused it.
 
-    `first` replays the growth: only the first `first` items of the arrival order are placed, but the plan still reads the whole library, so the world
-    is the very city that the whole library makes, at an earlier moment (its chronicle is the start of the full chronicle). `items` holds them all."""
+    `first` replays the growth: the build stops after the first `first` items of the arrival order, but the plan still reads the whole library, so the
+    world is the city that the whole library makes, at an earlier moment (its chronicle is the start of the full chronicle). `items` holds them all.
+    The last step of a build, `complete` (a mirror city's roads that no house stands on or below), runs only when every item is placed: a replay is the
+    build stopped early, so a road that the first `first` items have not reached is not there yet, and opens where the full build opens it."""
     if first is not None and (not isinstance(first, int) or isinstance(first, bool) or first < 0):
         raise ValueError(f"first must be a whole number >= 0, got {first!r}")
     tree_doc = inputs.read_tree(tree)
@@ -37,9 +39,11 @@ def build_world(library: dict, tree: dict, *, mode: str = GROW, max_houses: int 
     tv = TreeView(tree_doc)
     plan = plan_mod.build_plan(tv, items, mode=mode, max_houses=max_houses, min_houses=min_houses, trunk_min=trunk_min)
     world = world_mod.new_world(plan)
-    result = world_mod.assign(plan, tv, world, items if first is None else items[:first])
+    placed = items if first is None else items[:first]
+    result = world_mod.assign(plan, tv, world, placed)
     world = world_mod.apply_delta(world, result["delta"])
-    world = world_mod.apply_delta(world, world_mod.complete(plan, tv, world)["delta"])  # a mirror city: the roads no house stands on or below
+    if len(placed) == len(items):  # the last step of a build; a replay stops before it
+        world = world_mod.apply_delta(world, world_mod.complete(plan, tv, world)["delta"])  # a mirror city: the roads no house stands on or below
     for entry in world["chronicle"]:  # `seq` is the arrival counter: the n-th item in arrival order caused the entry
         entry["at"] = items[entry["seq"] - 1]["added_at"]
     return plan, tv, world, items

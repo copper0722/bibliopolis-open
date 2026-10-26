@@ -21,13 +21,18 @@ inputs ──> plan (directions, from the whole library) ──> world (the arri
 Items arrive in `added_at` order, ties by `id`. The n-th item to arrive has `seq` = n. The address of an item is its deepest topic (a root is depth 1,
 ties go to the lower id); an item with no topic has none.
 
-**Replay.** `build_city(..., first=n)` and `build --first n` place only the first `n` items of the arrival order. The plan is still cut from the whole library,
-so the sectors of ring 1 do not move: the document is the city that the whole library makes, at an earlier moment, and its chronicle is the start of the
-full chronicle. `first=0` is the plan with nothing built (in `mirror` mode, the street plan alone); a number above the count of items places them all.
+**Replay.** `build_city(..., first=n)` and `build --first n` stop the build after the first `n` items of the arrival order. The plan is still cut from the whole
+library, so the sectors of ring 1 do not move: the document is the city that the whole library makes, at an earlier moment, and its chronicle is the start of
+the full chronicle. `first=0` is the town hall alone; a number above the count of items places them all.
 
-What keeps its place: the bearing of every road, and the point where each spoke starts. What does not: a spoke grows longer as houses arrive, and a later split
-re-packs the houses of the road that split, so a lot can stand elsewhere in the full city. A continuation rib that a later split empties is in the earlier
-document and not in the later one.
+The last step of a build, `complete` (see "The world: mirror"), runs only when every item is placed. A `mirror` replay therefore shows the roads that the first
+`n` items reached and the roads above them, and no other: a road that no house stands on or below is not there yet, and a road that is reached later opens, when
+its first house arrives, where the full build opens it. Had a replay taken the last step as well, such a road would start nearer the plaza than it does in the
+full city, because it would open at the frontier of its trunk before the houses that push the frontier outward have arrived.
+
+What keeps its place, in both modes: the bearing of every road, and the point where each spoke starts. What does not: a spoke grows longer as houses arrive, and
+a later split re-packs the houses of the road that split, so a lot can stand elsewhere in the full city. A continuation rib that a later split empties is in the
+earlier document and not in the later one.
 
 ## The plan
 
@@ -102,8 +107,9 @@ The topic tree is the street plan.
 - Houses are placed exactly as in `grow`: arrival order, the lowest empty lot, continuation ribs.
 - A mirror road that no house stands on or below (a topic an item is filed under while the house stands elsewhere) has no street record until the world is
   completed (`bibliopolis.world.complete`): it appears in the document only then. `build_city`, and so the command line, completes the world after the last
-  arrival; code that calls `assign` by itself gets the world without those roads. `complete` is a step of its own, so that a world does not depend on how its
-  arrivals were cut into calls: a record made early would open the trunks of the plan before their first house, nearer the plaza.
+  arrival, and a replay (`first`, see above) stops before that; code that calls `assign` by itself gets the world without those roads. `complete` is a step of
+  its own, so that a world does not depend on how its arrivals were cut into calls: a record made early would open the trunks of the plan before their first
+  house, nearer the plaza.
 
 ## The pictures
 
@@ -144,7 +150,8 @@ them again and compares them with the committed files byte for byte.
 | the cut and the plan: leaf and container streets, chains, the sectors of ring 1, the heavy path and the sides | `tests/test_plan.py` |
 | angles, geometry, records, measures, the stable text, the coast | `tests/test_layout.py` |
 | the two input files and their checks | `tests/test_inputs.py`, `tests/test_schema.py` |
-| the pipeline, its summary (the streets that are over now), the replay with `first`, the chronicle as sentences | `tests/test_city.py` |
+| the pipeline, its summary (the streets that are over now), the basics of the replay with `first`, the chronicle as sentences | `tests/test_city.py` |
+| a replay: what keeps its place and what does not, what a mirror replay leaves out, a case that crosses `trunk_min` | `tests/test_replay.py` |
 | the command line (`build`, `picture`, `chronicle`), the same bytes in separate processes | `tests/test_cli.py` |
 | the picture: what is drawn and left out, the frame of a sheet, valid XML | `tests/test_picture.py` |
 | the pictures of the README are what the script makes, byte for byte | `tests/test_images.py` |

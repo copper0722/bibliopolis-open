@@ -3,7 +3,7 @@
 import json
 
 import pytest
-from support import ROOT, art, stamp
+from support import ROOT, art, sample, stamp
 
 import bibliopolis
 from bibliopolis import cli
@@ -77,12 +77,6 @@ def test_the_summary_of_a_town_hall_with_nothing_else_is_zeros(mode):
 
 
 # ----------------------------------------------------------------------------------------------- a replay ----
-def sample():
-    from pathlib import Path
-    root = Path(__file__).resolve().parents[1] / "examples"
-    return json.loads((root / "tree.json").read_text(encoding="utf-8")), json.loads((root / "library.json").read_text(encoding="utf-8"))
-
-
 @pytest.mark.parametrize("mode", ["grow", "mirror"])
 def test_first_replays_the_growth_the_plan_still_reads_the_whole_library(mode):
     tree, library = sample()
@@ -105,10 +99,14 @@ def test_the_first_forty_items_of_the_sample_are_all_under_the_town_hall_and_the
     assert (entry["seq"], entry["from"], entry["to"]) == (41, "place:root", "place:tag:computing") and bibliopolis.summary(forty_one)["roads"] == 1
 
 
-def test_a_mirror_replay_of_no_items_is_the_street_plan_alone():
+@pytest.mark.parametrize("mode", ["grow", "mirror"])
+def test_a_replay_of_no_items_is_the_town_hall_alone_and_the_plan_is_there(mode):
     tree, library = sample()
-    plan = bibliopolis.build_city(library, tree, mode="mirror", first=0)
-    assert plan["world"]["houses"] == 0 and bibliopolis.summary(plan)["roads"] == 79 and all(p["lots"] == 0 for p in plan["places"].values() if p["kind"] == "street")
+    full = bibliopolis.build_city(library, tree, mode=mode)
+    nothing = bibliopolis.build_city(library, tree, mode=mode, first=0)
+    assert set(nothing["places"]) == {"place:plaza"} and nothing["roads"] == {} and nothing["world"]["houses"] == 0 and nothing["world"]["chronicle"] == []
+    assert bibliopolis.summary(nothing)["roads"] == 0 and nothing["composition"]["ring1"] == full["composition"]["ring1"]  # the sectors are pinned all the same
+    assert bibliopolis.summary(full)["roads"] > 0
 
 
 @pytest.mark.parametrize("first", [-1, 1.5, True, "3"])
@@ -188,20 +186,3 @@ def test_the_chronicle_of_a_mirror_city_is_the_roads_that_became_crowded():
     lines = bibliopolis.city.chronicle_lines(doc)
     assert len(lines) == 1 and lines[0].startswith("house 41") and "A holds 41 houses, more than 40" in lines[0] and "marked over" in lines[0]
     assert bibliopolis.city.chronicle_lines(bibliopolis.build_city({"items": items[:5]}, tree, mode="mirror")) == []
-
-
-@pytest.mark.parametrize("mode", ["grow", "mirror"])
-def test_a_replay_keeps_the_bearing_and_the_start_of_every_road_which_then_only_grows_longer(mode):
-    tree, library = sample()
-    full = bibliopolis.build_city(library, tree, mode=mode)
-    for n in (41, 150, 300):
-        part = bibliopolis.build_city(library, tree, mode=mode, first=n)
-        axes = {pid: p["axis"] for pid, p in part["places"].items() if p["kind"] == "street" and p.get("axis") is not None}
-        assert axes and all(full["places"][pid]["axis"] == axis for pid, axis in axes.items()), (mode, n)
-        spokes = [(rid, road) for rid, road in part["roads"].items() if road["kind"] == "spoke"]
-        assert spokes
-        for rid, road in spokes:
-            later = full["roads"][rid]
-            assert later["axis"] == road["axis"] and later["points"][0] == road["points"][0] and later["length"] >= road["length"], (mode, n, rid)
-    if mode == "grow":  # the first road of the sample is 9.67 cells long at house 41, and longer in the whole city
-        assert bibliopolis.build_city(library, tree, first=41)["roads"]["road:place:tag:computing"]["length"] < full["roads"]["road:place:tag:computing"]["length"]
