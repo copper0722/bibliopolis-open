@@ -171,6 +171,18 @@ def test_an_item_filed_under_two_branches_makes_a_road_on_each_and_its_house_sta
     assert [r["place"] for r in doc["composition"]["ring1"]] == [tag_street("a"), tag_street("b")]
 
 
+def test_two_roots_and_one_item_filed_under_both_make_two_roads_and_one_house():
+    tree = {"nodes": [{"id": "a", "label": "A", "parent": None}, {"id": "b", "label": "B", "parent": None}]}
+    doc = bibliopolis.build_city({"items": [art(1, ["a", "b"])]}, tree, mode="mirror")
+    roads = {p["tag"]: p for p in doc["places"].values() if p["kind"] == "street" and p.get("tag")}
+    assert sorted(roads) == ["a", "b"] and doc["world"]["houses"] == 1 and bibliopolis.summary(doc)["roads"] == 2
+    assert roads["a"]["lots"] == 1 and (roads["b"]["lots"], roads["b"]["reserved"]) == (0, 0) and "rib" not in roads["b"]
+    assert next(p for p in doc["places"].values() if p["kind"] == "lot")["parent"] == tag_street("a")  # both topics are depth 1: the lower id
+    assert checks.document_problems(doc) == {}
+    flipped = bibliopolis.build_city({"items": [art(1, ["b", "a"])]}, tree, mode="mirror")  # the order of the topics in the item does not matter
+    assert bibliopolis.render(flipped) == bibliopolis.render(doc)
+
+
 def test_in_grow_mode_the_same_item_makes_no_road_at_all():
     tree, items = two_branches()
     doc = bibliopolis.build_city({"items": items}, tree, mode="grow")
