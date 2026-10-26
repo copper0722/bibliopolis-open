@@ -229,3 +229,14 @@ def test_a_sheet_of_one_city_and_of_an_odd_number_is_laid_out(cities):
 def test_a_picture_is_small_enough_to_sit_in_a_readme(cities):
     assert len(picture.render(cities[600]).encode("utf-8")) < 100_000
     assert len(sheet_of(cities, [600, "mirror"], panel_px=500).encode("utf-8")) < 100_000
+
+
+def test_a_circle_of_parents_is_an_error_and_not_a_loop():
+    for parents in ({"a": "a"}, {"a": "b", "b": "a"}, {"a": "b", "b": "c", "c": "a"}):
+        places = {"place:plaza": {"kind": "plaza"}, **{pid: {"kind": "street", "parent": parent} for pid, parent in parents.items()}}
+        with pytest.raises(ValueError, match="round in a circle"):
+            picture.ring1_place(places, "a")
+        with pytest.raises(ValueError, match="round in a circle"):
+            picture.ring2_of(places, "a")
+    places = {"place:plaza": {"kind": "plaza"}, "a": {"kind": "street", "parent": "place:plaza", "level": 2}}  # the ways out stay what they were
+    assert picture.ring1_place(places, "a") == "a" and picture.ring2_of(places, "a") == "a" and picture.ring2_of(places, None) is None

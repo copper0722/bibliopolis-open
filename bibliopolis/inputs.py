@@ -60,6 +60,8 @@ def load_json(path: str | Path):
         raise InputError(f"{path}: not valid JSON ({exc})") from exc
     except UnicodeDecodeError as exc:
         raise InputError(f"{path}: not UTF-8 text ({exc})") from exc
+    except RecursionError as exc:
+        raise InputError(f"{path}: nested too deeply to read") from exc
 
 
 def _encodable(s: str) -> bool:
@@ -234,54 +236,235 @@ def read_library(doc, tree: dict) -> list[dict]:
 # ----------------------------------------------------------------------------------------------------- city ----
 ROAD_CLASSES = ("大道", "路", "巷", "弄")
 PLACE_KINDS = ("plaza", "street", "lot", "reserved")
+PLAZA = "place:plaza"
+REACH = 1e7  # cells: far beyond any city, and small enough that the arithmetic of a picture stays finite
 
 
-def _number(value) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+def _number(value, limit: float = REACH) -> bool:
+    """A finite number (not a bool) of magnitude at most `limit`."""
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and abs(value) <= limit
+
+
+def _whole(value) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _pair(value) -> bool:
+    return isinstance(value, list) and len(value) == 2 and all(_number(v) for v in value)
+
+
+def _typed(problems: _Problems, where: str, record: dict, key: str, test, wanted: str, *, required: bool = True) -> None:
+    """Add a problem unless `record[key]` passes `test`; a missing key is a problem only when it is `required`."""
+    if key not in record:
+        if required:
+            problems.add(where, f"{key} is missing ({wanted})")
+    elif not test(record[key]):
+        problems.add(f"{where}.{key}", f"must be {wanted}, got {record[key]!r:.40}")
+
+
+def _is_text(value) -> bool:
+    return isinstance(value, str)
+
+
+def _check_street(problems: _Problems, where: str, p: dict) -> None:
+    _typed(problems, where, p, "shape", _is_text, "a string")
+    _typed(problems, where, p, "parent", _is_text, "the id of the street above, or of the plaza")
+    _typed(problems, where, p, "address", lambda v: isinstance(v, list) and bool(v) and all(isinstance(x, str) for x in v), "a list of names, the last one the name of the road")
+    _typed(problems, where, p, "level", _whole, "a whole number", required=False)
+    _typed(problems, where, p, "weight", lambda v: _number(v, 1e12), "a number", required=False)
+    _typed(problems, where, p, "road", _is_text, "a road id (a string)", required=False)
+    _typed(problems, where, p, "label", _is_text, "a string", required=False)
+    _typed(problems, where, p, "s_end", _number, "a number", required=False)
+    rib = p.get("rib")
+    if rib is not None:
+        if not isinstance(rib, dict):
+            problems.add(f"{where}.rib", f"must be an object, got {rib!r:.40}")
+        elif rib.get("band") is not None:  # a cell of a band is the polar cell of its lane: `s`, the radius of the lane, divides
+            _typed(problems, f"{where}.rib", rib, "band", _whole, "a whole number or null")
+            _typed(problems, f"{where}.rib", rib, "s", lambda v: _number(v) and v > 0, "a number above 0 (the radius of the lane)")
+
+
+def _check_house(problems: _Problems, where: str, p: dict) -> None:
+    _typed(problems, where, p, "parent", _is_text, "the id of the street it stands on")
+    if p["kind"] == "lot":
+        _typed(problems, where, p, "article", _is_text, "the item id (a string)")
+    _typed(problems, where, p, "facing", _number, "a bearing in degrees", required=False)
+
+
+def _check_places(problems: _Problems, name: str, places: dict) -> None:
+    plaza = places.get(PLAZA)
+    if not isinstance(plaza, dict) or plaza.get("kind") != "plaza":
+        problems.add(f"{name}.places[{PLAZA!r}]", "the town hall plaza is missing (a place of kind plaza)")
+    else:
+        where = f"{name}.places[{PLAZA!r}]"
+        _typed(problems, where, plaza, "label", _is_text, "a string")
+        _typed(problems, where, plaza, "radius", lambda v: _number(v) and v >= 0, "a number, 0 or more")
+        _typed(problems, where, plaza, "position", lambda v: isinstance(v, dict), "{x, z}")
+    for pid, p in places.items():
+        where = f"{name}.places[{pid!r}]"
+        if not isinstance(p, dict) or p.get("kind") not in PLACE_KINDS:
+            problems.add(where, f"must be an object whose kind is one of {', '.join(PLACE_KINDS)}")
+            continue
+        surface = not p.get("underground")
+        if "position" in p or (p["kind"] in ("lot", "reserved") and surface):
+            pos = p.get("position")
+            if surface and (not isinstance(pos, dict) or not _number(pos.get("x")) or not _number(pos.get("z"))):
+                problems.add(f"{where}.position", "must be {x, z}: two numbers")
+        if p["kind"] == "street":
+            _check_street(problems, where, p)
+        elif p["kind"] in ("lot", "reserved"):
+            _check_house(problems, where, p)
+
+
+def _check_roads(problems: _Problems, name: str, roads: dict) -> None:
+    for rid, r in roads.items():
+        where = f"{name}.roads[{rid!r}]"
+        if not isinstance(r, dict) or r.get("class") not in ROAD_CLASSES:
+            problems.add(where, f"must be an object whose class is one of {', '.join(ROAD_CLASSES)}")
+        elif not isinstance(r.get("points"), list) or len(r["points"]) < 2 or not all(_pair(q) for q in r["points"]):
+            problems.add(f"{where}.points", "must be a list of at least two [x, z] pairs")
+
+
+def _check_composition(problems: _Problems, name: str, comp: dict) -> None:
+    where = f"{name}.composition"
+    ring1 = comp.get("ring1")
+    if not isinstance(ring1, list):
+        problems.add(f"{where}.ring1", "must be a list of sectors {place, label, from, to}")
+    else:
+        for i, sector in enumerate(ring1):
+            here = f"{where}.ring1[{i}]"
+            if not isinstance(sector, dict):
+                problems.add(here, "must be an object {place, label, from, to}")
+                continue
+            _typed(problems, here, sector, "place", _is_text, "a place id (a string)")
+            _typed(problems, here, sector, "label", _is_text, "a string")
+            _typed(problems, here, sector, "from", _number, "a bearing in degrees")
+            _typed(problems, here, sector, "to", _number, "a bearing in degrees")
+    _typed(problems, where, comp, "buildings", _number, "a number")
+    for key in ("measure", "streets"):
+        if not isinstance(comp.get(key), dict):
+            problems.add(f"{where}.{key}", "must be an object")
+    if isinstance(comp.get("measure"), dict):
+        for key in ("max_radius", "walk_mean", "walk_longest"):
+            _typed(problems, f"{where}.measure", comp["measure"], key, _number, "a number")
+        _typed(problems, f"{where}.measure", comp["measure"], "underground_lots", _number, "a number", required=False)
+    if isinstance(comp.get("streets"), dict):
+        _typed(problems, f"{where}.streets", comp["streets"], "total", _number, "a number")
+
+
+def _check_coast(problems: _Problems, name: str, coast) -> None:
+    if not isinstance(coast, dict):
+        problems.add(f"{name}.coast", "must be an object {polygons: [...]}")
+        return
+    polygons = coast.get("polygons", [])
+    if not isinstance(polygons, list):
+        problems.add(f"{name}.coast.polygons", "must be a list of polygons")
+        return
+    for i, polygon in enumerate(polygons):
+        if not isinstance(polygon, list) or len(polygon) < 3 or not all(_pair(q) for q in polygon):
+            problems.add(f"{name}.coast.polygons[{i}]", "must be a list of at least three [x, z] corners")
+
+
+def _check_world(problems: _Problems, name: str, world: dict) -> None:
+    where = f"{name}.world"
+    rule = world.get("districts")
+    if not isinstance(rule, dict) or not _whole(rule.get("max")) or not _whole(rule.get("min")):
+        problems.add(f"{where}.districts", "must be an object with whole numbers max and min")
+    chronicle = world.get("chronicle")
+    if not isinstance(chronicle, list):
+        problems.add(f"{where}.chronicle", "must be a list of entries")
+        return
+    for i, e in enumerate(chronicle):
+        here = f"{where}.chronicle[{i}]"
+        if not isinstance(e, dict):
+            problems.add(here, "must be an object")
+            continue
+        _typed(problems, here, e, "seq", lambda v: _whole(v) and v >= 1, "a whole number, 1 or more (the arrival that caused it)")
+        if "from" in e:  # a split
+            _typed(problems, here, e, "from", _is_text, "a place id (a string)")
+            _typed(problems, here, e, "label", _is_text, "the name of the new road (a string)")
+            _typed(problems, here, e, "houses", lambda v: isinstance(v, list), "the list of the houses that moved")
+            _typed(problems, here, e, "count_before", _whole, "a whole number")
+            _typed(problems, here, e, "count_after", _whole, "a whole number")
+        elif "over" in e:  # a road that became over
+            _typed(problems, here, e, "over", _is_text, "a place id (a string)")
+            _typed(problems, here, e, "count", _whole, "a whole number")
+        else:
+            problems.add(here, "must be a split (from, label, houses, count_before, count_after) or an over (over, count)")
+
+
+def _check_links(problems: _Problems, name: str, doc: dict) -> None:
+    """The places point at each other: a street at the street above it or at the plaza, a house at the street it stands on. Follow every street up to the
+    plaza (a street that is its own ancestor would make a picture loop for ever), and find the street of ring 1 that each house on the surface stands under."""
+    places = doc["places"]
+    sectors = doc["composition"]["ring1"]
+    for i, sector in enumerate(sectors):
+        place = places.get(sector["place"])
+        if place is not None and place["kind"] != "street":
+            problems.add(f"{name}.composition.ring1[{i}].place", f"{sector['place']!r} is a place of kind {place['kind']}, not a street")
+    top: dict[str, str | None] = {}  # street -> the street of ring 1 above it (itself, when its parent is the plaza); None: its line of parents is broken
+    for start, p in places.items():
+        if p["kind"] != "street" or start in top:
+            continue
+        line: list[str] = []
+        on_line: set[str] = set()
+        cur, found = start, None
+        while True:
+            if cur in top:
+                found = top[cur]
+                break
+            if cur in on_line:
+                problems.add(f"{name}.places[{cur!r}].parent", "the parents lead round in a circle")
+                break
+            line.append(cur)
+            on_line.add(cur)
+            parent = places[cur]["parent"]
+            if parent == PLAZA:
+                found = cur
+                break
+            above = places.get(parent)
+            if above is None or above["kind"] != "street":
+                problems.add(f"{name}.places[{cur!r}].parent", f"{parent!r} is not a street, and not the plaza")
+                break
+            cur = parent
+        for pid in line:
+            top[pid] = found
+    ring1 = {sector["place"] for sector in sectors}
+    outside: dict[str, str] = {}  # a street that houses stand on, under a street that is no sector of ring 1 -> the first of those houses
+    for pid, p in places.items():
+        if p["kind"] not in ("lot", "reserved"):
+            continue
+        above = places.get(p["parent"])
+        if above is None or above["kind"] != "street":
+            problems.add(f"{name}.places[{pid!r}].parent", f"{p['parent']!r} is not a street")
+        elif not p.get("underground") and top.get(p["parent"]) is not None and top[p["parent"]] not in ring1:
+            outside.setdefault(p["parent"], pid)
+    for street, house in outside.items():
+        problems.add(f"{name}.places[{street!r}]", f"it stands under {top[street]!r}, which is not a sector in composition.ring1 (a house on it: {house!r})")
 
 
 def read_city(doc, name: str = "city") -> dict:
-    """The city document, if it is the layout v4 file that `build` writes and has what `picture` and `chronicle` read; else `InputError` with the places of
-    the problems. It does not re-check the geometry: a city that was edited by hand can still be wrong in ways this does not see."""
-    problems = _Problems()
+    """The city document, if it is the layout v4 file that `build` writes and every field that `picture` and `chronicle` read is there and of the right type;
+    else `InputError` with the place of each problem. First the shapes (every place, road, sector, measure, coast polygon and chronicle entry), then the links:
+    the parent of a street or a house is a place that exists, the parents of a street lead to the plaza without a circle, and every house on the surface
+    stands under a sector of ring 1. The geometry itself is not re-checked: a city edited by hand can still be wrong in ways this does not see."""
     if not isinstance(doc, dict):
         raise InputError(f"{name}: not a city document: the file does not hold a JSON object")
     if doc.get("layout_version") != "v4":
         raise InputError(f"{name}: not a city document: expected the layout v4 file that `bibliopolis build` writes "
                          f"(layout_version is {doc.get('layout_version')!r}, not 'v4'); a library or a tree file is not a city")
+    problems = _Problems()
     for key in ("places", "roads", "composition", "world"):
         if not isinstance(doc.get(key), dict):
             problems.add(f"{name}.{key}", "must be an object")
     problems.raise_if_any()
-    places, roads, comp, world = doc["places"], doc["roads"], doc["composition"], doc["world"]
-    plaza = places.get("place:plaza")
-    if not isinstance(plaza, dict) or not isinstance(plaza.get("label"), str) or not _number(plaza.get("radius")):
-        problems.add(f"{name}.places.place:plaza", "must be an object with a label and a radius")
-    for pid, p in places.items():
-        where = f"{name}.places[{pid!r}]"
-        if not isinstance(p, dict) or p.get("kind") not in PLACE_KINDS:
-            problems.add(where, f"must be an object whose kind is one of {', '.join(PLACE_KINDS)}")
-        elif p["kind"] in ("lot", "reserved") and not p.get("underground"):
-            pos = p.get("position")
-            if not isinstance(pos, dict) or not _number(pos.get("x")) or not _number(pos.get("z")) or p.get("parent") not in places:
-                problems.add(where, "a house on the surface needs a position {x, z} and a parent that is a place")
-    for rid, r in roads.items():
-        where = f"{name}.roads[{rid!r}]"
-        points = r.get("points") if isinstance(r, dict) else None
-        if not isinstance(r, dict) or r.get("class") not in ROAD_CLASSES:
-            problems.add(where, f"must be an object whose class is one of {', '.join(ROAD_CLASSES)}")
-        elif not isinstance(points, list) or len(points) < 2 or not all(isinstance(q, list) and len(q) == 2 and all(_number(v) for v in q) for q in points):
-            problems.add(where, "points must be a list of at least two [x, z] pairs")
-    ring1 = comp.get("ring1")
-    if not isinstance(ring1, list) or not all(isinstance(r, dict) and isinstance(r.get("place"), str) and isinstance(r.get("label"), str)
-                                              and _number(r.get("from")) and _number(r.get("to")) for r in ring1):
-        problems.add(f"{name}.composition.ring1", "must be a list of {place, label, from, to}")
-    if not isinstance(comp.get("measure"), dict) or not isinstance(comp.get("streets"), dict) or not _number(comp.get("buildings")):
-        problems.add(f"{name}.composition", "needs buildings, measure and streets")
-    chronicle, districts = world.get("chronicle"), world.get("districts")
-    if not isinstance(chronicle, list) or not all(isinstance(e, dict) and _number(e.get("seq")) for e in chronicle):
-        problems.add(f"{name}.world.chronicle", "must be a list of entries that have a seq")
-    if not isinstance(districts, dict) or not _number(districts.get("max")) or not _number(districts.get("min")):
-        problems.add(f"{name}.world.districts", "must be an object with max and min")
+    _check_places(problems, name, doc["places"])
+    _check_roads(problems, name, doc["roads"])
+    _check_composition(problems, name, doc["composition"])
+    if "coast" in doc:
+        _check_coast(problems, name, doc["coast"])
+    _check_world(problems, name, doc["world"])
+    problems.raise_if_any()
+    _check_links(problems, name, doc)
     problems.raise_if_any()
     return doc

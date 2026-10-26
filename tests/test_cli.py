@@ -103,9 +103,9 @@ def test_an_option_the_command_does_not_know_stops_the_parser(files, tmp_path):
     assert stop.value.code == 2
 
 
-def run_module(*args, hashseed="0"):
+def run_module(*args, hashseed="0", timeout=None):
     env = {**os.environ, "PYTHONHASHSEED": hashseed, "PYTHONDONTWRITEBYTECODE": "1"}
-    return subprocess.run([sys.executable, "-m", "bibliopolis", *args], cwd=ROOT, env=env, capture_output=True, text=True, check=False)
+    return subprocess.run([sys.executable, "-m", "bibliopolis", *args], cwd=ROOT, env=env, capture_output=True, text=True, check=False, timeout=timeout)
 
 
 def test_the_module_runs_as_a_program_and_prints_its_version():
@@ -228,3 +228,62 @@ def test_picture_and_chronicle_give_the_same_bytes_whatever_the_hash_seed(city_f
         assert done.returncode == 0, done.stderr
         outs.append((tmp_path / f"{seed}.svg").read_bytes() if command == "picture" else done.stdout.encode("utf-8"))
     assert outs[0] == outs[1] == outs[2] and outs[0].endswith(b"\n") and b"\r" not in outs[0]
+
+
+# ------------------------------------------------------------------------------------ a city file that is wrong ----
+def own_parent(doc):
+    street = next(pid for pid, p in doc["places"].items() if p["kind"] == "street" and not p.get("underground"))
+    doc["places"][street]["parent"] = street  # `picture` once looped for ever on this
+
+
+def each_others_parent(doc):
+    above = doc["composition"]["ring1"][0]["place"]
+    below = next(pid for pid, p in doc["places"].items() if p["kind"] == "street" and p.get("parent") == above)
+    doc["places"][above]["parent"] = below
+
+
+def lane_of_no_radius(doc):
+    street = next(pid for pid, p in doc["places"].items() if p["kind"] == "street" and p.get("rib") and p["rib"].get("band") is not None)
+    doc["places"][street]["rib"]["s"] = 0  # a division by zero
+
+
+WRONG_CITIES = [
+    ("a chronicle entry that is neither a split nor an over", lambda d: d["world"].update(chronicle=[{"seq": 1}]), "must be a split"),
+    ("an empty measure", lambda d: d["composition"].update(measure={}), "measure: max_radius is missing"),
+    ("a plaza with no position", lambda d: d["places"]["place:plaza"].pop("position"), "position is missing"),
+    ("a plaza position with no x", lambda d: d["places"]["place:plaza"].update(position={"z": 0}), "position: must be {x, z}"),
+    ("a street that is its own parent", own_parent, "the parents lead round in a circle"),
+    ("two streets that are each other's parent", each_others_parent, "the parents lead round in a circle"),
+    ("a house on a street that is not there", lambda d: next(p for p in d["places"].values() if p["kind"] == "lot").update(parent="place:nowhere"), "is not a street"),
+    ("a lane of radius 0", lane_of_no_radius, "must be a number above 0"),
+    ("a coast that is null", lambda d: d.update(coast=None), "coast: must be an object"),
+    ("a count that is text", lambda d: d["world"]["chronicle"][0].update(count_before="41"), "count_before: must be a whole number"),
+    ("a street with an empty address", lambda d: next(p for p in d["places"].values() if p["kind"] == "street").update(address=[]), "address: must be a list of names"),
+    ("a street with no shape", lambda d: next(p for p in d["places"].values() if p["kind"] == "street").pop("shape"), "shape is missing"),
+    ("a rule with no max", lambda d: d["world"].update(districts={"min": 10}), "whole numbers max and min"),
+    ("a road with a point that is a word", lambda d: next(iter(d["roads"].values())).update(points=[[0, 0], [1, "x"]]), "points: must be a list of at least two"),
+]
+
+
+@pytest.mark.parametrize("command", ["picture", "chronicle"])
+@pytest.mark.parametrize("what, wrong, names", WRONG_CITIES, ids=[w[0] for w in WRONG_CITIES])
+def test_a_city_file_that_is_wrong_is_refused_by_both_commands_with_the_place_and_never_hangs(city_file, tmp_path, command, what, wrong, names):
+    doc = json.loads(city_file.read_text(encoding="utf-8"))
+    wrong(doc)
+    path = tmp_path / "wrong.json"
+    path.write_text(json.dumps(doc), encoding="utf-8")
+    out = tmp_path / "out.svg"
+    args = ["--city", str(path), "--out", str(out)] if command == "picture" else ["--city", str(path)]
+    done = run_module(command, *args, timeout=30)  # a loop would be a TimeoutExpired here
+    assert done.returncode == 2, done.stderr
+    assert done.stderr.startswith("bibliopolis: city") and names in done.stderr and "Traceback" not in done.stderr and done.stdout == ""
+    assert not out.exists()
+
+
+@pytest.mark.parametrize("command", ["picture", "chronicle"])
+def test_a_city_file_nested_too_deeply_to_read_is_refused_by_both_commands(tmp_path, command):
+    deep = tmp_path / "deep.json"
+    deep.write_text("[" * 200_000 + "]" * 200_000, encoding="utf-8")
+    args = ["--city", str(deep), "--out", str(tmp_path / "out.svg")] if command == "picture" else ["--city", str(deep)]
+    done = run_module(command, *args, timeout=60)
+    assert done.returncode == 2 and "nested too deeply to read" in done.stderr and "Traceback" not in done.stderr

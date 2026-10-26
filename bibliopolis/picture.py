@@ -55,10 +55,13 @@ def underground_count(city: dict) -> int:
 
 
 def ring1_place(places: dict[str, dict], pid: str) -> str:
-    """The street of ring 1 that a place stands under."""
-    while places[pid].get("parent") not in (None, PLAZA):
-        pid = places[pid]["parent"]
-    return pid
+    """The street of ring 1 that a place stands under. Parents that never lead to the plaza are an error (`ValueError`), not a loop."""
+    for _ in range(len(places)):
+        parent = places[pid].get("parent")
+        if parent in (None, PLAZA):
+            return pid
+        pid = parent
+    raise ValueError(f"the parents of {pid!r} lead round in a circle")
 
 
 def cell_path(x: float, z: float, lane_radius: float, digits: int) -> str:
@@ -159,13 +162,15 @@ def draw_roads(city: dict, add, look: Look) -> None:
 
 
 def ring2_of(places: dict[str, dict], pid: str | None) -> str | None:
-    """The street of ring 2 (not a continuation) that a place stands in or under, if any."""
-    while pid and pid != PLAZA:
+    """The street of ring 2 (not a continuation) that a place stands in or under, if any. A circle of parents is an error (`ValueError`), not a loop."""
+    for _ in range(len(places)):
+        if not pid or pid == PLAZA:
+            return None
         q = places[pid]
         if q["kind"] == "street" and q.get("level") == 2 and "lane_of" not in q:
             return pid
         pid = q.get("parent")
-    return None
+    raise ValueError(f"the parents of {pid!r} lead round in a circle")
 
 
 def ring2_centres(places: dict[str, dict]) -> dict[str, tuple[float, float]]:

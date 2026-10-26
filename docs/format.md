@@ -68,7 +68,10 @@ Every problem found is reported at once (up to 20), each with the place it was f
 library file, and the house of an item is `place:article:<id>`.
 
 Two commands read it: `python -m bibliopolis picture --city city.json --out city.svg` draws it, and `python -m bibliopolis chronicle --city city.json`
-prints its chronicle as sentences. They refuse a file that is not a city (a library or a tree, say) and name what is missing.
+prints its chronicle as sentences. They refuse a file that is not a city (a library or a tree, say), and a city in which a field they read is missing or of the
+wrong type, a street or a house points at a place that is not there, the parents of a street lead round in a circle instead of to the plaza, or a house on the
+surface stands under a street that is no sector of ring 1. Each problem is named with its place (`city.places['place:tag:a'].parent: ...`), up to 20 at a time.
+The geometry is not re-checked: a city edited by hand can still be wrong in ways the commands do not see.
 
 The text is stable: header fields pretty-printed, then one road, one place per line. The same input gives the same bytes on every run (the angles are
 integers of 1/100 degree, the coordinates are rounded to three decimals, everything is written in sorted order). The tests build the sample in separate

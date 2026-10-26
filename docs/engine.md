@@ -150,6 +150,7 @@ them again and compares them with the committed files byte for byte.
 | the cut and the plan: leaf and container streets, chains, the sectors of ring 1, the heavy path and the sides | `tests/test_plan.py` |
 | angles, geometry, records, measures, the stable text, the coast | `tests/test_layout.py` |
 | the two input files and their checks | `tests/test_inputs.py`, `tests/test_schema.py` |
+| reading a city file: what is accepted, what is refused and where, and that no single wrong field gets past the reader to crash or loop `picture` or `chronicle` | `tests/test_cityfile.py`, `tests/test_cli.py` |
 | the pipeline, its summary (the streets that are over now), the basics of the replay with `first`, the chronicle as sentences | `tests/test_city.py` |
 | a replay: what keeps its place and what does not, what a mirror replay leaves out, a case that crosses `trunk_min` | `tests/test_replay.py` |
 | the command line (`build`, `picture`, `chronicle`), the same bytes in separate processes | `tests/test_cli.py` |
