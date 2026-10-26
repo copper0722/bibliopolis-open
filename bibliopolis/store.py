@@ -6,6 +6,7 @@
     Store(path).append(event)       one more event, one transaction
     Store(path).export_text()       the world file text of the world in the file
     check_output(path, world)       before a file is written at `path`: `Refusal` when `path` is the world at `world`, a SQLite file, or anything else that is there
+    check_replace(path, inputs)     before `build` or `picture` replace the file at `path`: `Refusal` when it is a file they read, a SQLite file or a world file
     publish_text(path, text)        write `text` to a new file at `path`, never over a file that is there (`world export`, `world fold`)
 
 The SQLite file holds the same content as a world file in three tables: `world` (one row: format, version and the rule the world started with), `event` (one row for
@@ -19,6 +20,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import stat
 import tempfile
 from contextlib import closing
 from pathlib import Path
@@ -80,12 +82,57 @@ def check_output(path: str | Path, world: str | Path) -> None:
     out, source = Path(path), Path(world)
     if _same_file(out, source):
         raise Refusal(f"{out} is the world that is being read ({source}); a world is not written over (choose another file)", "output_is_the_world", path=str(out), world=str(source))
-    if out.is_file():
-        with open(out, "rb") as f:
-            if f.read(len(SQLITE_MAGIC)) == SQLITE_MAGIC:
-                raise Refusal(f"{out} is a SQLite database already; a world is not written over (choose another file, or move that one away)", "output_is_a_database", path=str(out))
+    found = _open_regular(out)
+    if found is not None:
+        with found:
+            if found.read(len(SQLITE_MAGIC)) == SQLITE_MAGIC:
+                raise database_taken(out)
     if os.path.lexists(out):
         raise output_taken(out)
+
+
+def database_taken(path: Path) -> Refusal:
+    """The refusal when a file is to be written at `path` and a SQLite database is there (a world or not)."""
+    return Refusal(f"{path} is a SQLite database already; a world is not written over (choose another file, or move that one away)", "output_is_a_database", path=str(path))
+
+
+def _open_regular(path: Path):
+    """The file at `path`, opened for reading in binary, if it is a regular file; None when nothing is there or what is there is not one (a folder, a named pipe, a device). It is opened
+    without blocking, so that a named pipe that has taken the name is not waited on."""
+    try:
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0))
+    except (FileNotFoundError, NotADirectoryError):
+        return None
+    if not stat.S_ISREG(os.fstat(fd).st_mode):
+        os.close(fd)
+        return None
+    return os.fdopen(fd, "rb")
+
+
+def check_replace(path: str | Path, inputs: list) -> None:
+    """Call this before `build` or `picture` put their output in place of the file at `path`. They replace a file that is there (a city or a picture is made again whenever it is
+    wanted), but not any file: `Refusal` (`output_is_an_input`) when `path` is one of the files `inputs` that the command reads, under any name for it, since it would be replaced by what is
+    made from it; `Refusal` (`output_is_a_database`) when it is a SQLite database; `Refusal` (`output_is_a_world_file`) when it is a world file, a JSON object whose `format` is that of a
+    world file. Nothing is touched. A look, not a lock (the threat model of docs/world.md, "The files")."""
+    out = Path(path)
+    for given in inputs:
+        if _same_file(out, Path(given)):
+            raise Refusal(f"{out} is read to make it ({given}); a file is not replaced by what is made from it (choose another file)", "output_is_an_input", path=str(out), input=str(given))
+    found = _open_regular(out)
+    if found is None:
+        return
+    with found:
+        head = found.read(64)
+        if head.startswith(SQLITE_MAGIC):
+            raise database_taken(out)
+        if not head.lstrip(b"\xef\xbb\xbf \t\r\n").startswith(b"{"):
+            return
+        try:
+            doc = json.loads((head + found.read()).decode("utf-8-sig"))
+        except (ValueError, RecursionError):
+            return
+    if isinstance(doc, dict) and doc.get("format") == FORMAT:
+        raise Refusal(f"{out} is a world file; a world file is not replaced by a city or a picture (choose another file, or move that one away)", "output_is_a_world_file", path=str(out))
 
 
 def _new_file_mode(base: int) -> int:

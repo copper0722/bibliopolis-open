@@ -9,10 +9,13 @@ import sys
 from pathlib import Path
 
 import pytest
+from hand_support import play
 from support import T, art, make_tree, stamp
 
 import bibliopolis
 from bibliopolis import cli, picture
+from bibliopolis.journal import dumps_world, world_document
+from bibliopolis.store import Store
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = {"med": T(0, a=T(25), b=T(16)), "pub": T(14), "x": T(3)}
@@ -189,6 +192,98 @@ def test_build_and_picture_need_no_hard_links(files, tmp_path, capsys, monkeypat
     out = tmp_path / "city.json"
     assert run_main(capsys, "build", "--library", str(lib), "--tree", str(t), "--out", str(out))[0] == 0
     assert run_main(capsys, "picture", "--city", str(out), "--out", str(tmp_path / "city.svg"))[0] == 0
+
+
+# ----------------------------------------------------------------------------------- what build and picture replace ----
+def the_files_that_must_not_be_replaced(tmp_path):
+    """name -> (the file, the words of the refusal): a world (SQLite), a world file (JSON), and the world file with a byte order mark and white space in front of it."""
+    journal = play(3, steps=40)
+    Store.import_journal(tmp_path / "world.sqlite", journal)
+    text = dumps_world(world_document(journal))
+    (tmp_path / "world.json").write_text(text, encoding="utf-8")
+    (tmp_path / "bom.json").write_text("\ufeff\n  " + text, encoding="utf-8")
+    return {"a world": (tmp_path / "world.sqlite", "is a SQLite database already"), "a world file": (tmp_path / "world.json", "is a world file"),
+            "a world file that begins with a byte order mark": (tmp_path / "bom.json", "is a world file")}
+
+
+def commands_of(files, tmp_path, capsys):
+    """The two commands that replace their output, each as a function of the output: build reads the library and the tree, picture the city."""
+    t, lib, *_ = files
+    city = tmp_path / "the-city.json"
+    assert run_main(capsys, "build", "--library", str(lib), "--tree", str(t), "--out", str(city))[0] == 0
+    return {"build": (lambda out: ("build", "--library", str(lib), "--tree", str(t), "--out", str(out)), [lib, t]),
+            "picture": (lambda out: ("picture", "--city", str(city), "--out", str(out)), [city])}
+
+
+@pytest.mark.parametrize("command", ["build", "picture"])
+def test_build_and_picture_never_replace_a_world_or_a_world_file(command, files, tmp_path, capsys):
+    """They replace their own output (a city, a picture), which is made again whenever it is wanted; a world, as a SQLite file or as a world file, is never theirs to replace."""
+    argv, _ = commands_of(files, tmp_path, capsys)[command]
+    for what, (out, words) in the_files_that_must_not_be_replaced(tmp_path).items():
+        before = out.read_bytes()
+        code, err = run_main(capsys, *argv(out))
+        assert code == 2 and err.startswith("bibliopolis: ") and str(out) in err and words in err, (what, err)
+        assert out.read_bytes() == before and not [p for p in tmp_path.iterdir() if p.name.endswith(".part")], what
+
+
+@pytest.mark.parametrize("command", ["build", "picture"])
+def test_build_and_picture_never_replace_what_they_read_whatever_the_name_of_it(command, files, tmp_path, capsys):
+    argv, reads = commands_of(files, tmp_path, capsys)[command]
+    for read in reads:
+        before = read.read_bytes()
+        names = {"the name itself": read, "another spelling": read.parent / "." / read.name, "a path from where the command runs": Path(os.path.relpath(read))}
+        try:
+            (tmp_path / f"link-to-{read.name}").symlink_to(read)
+            os.link(read, tmp_path / f"hard-link-to-{read.name}")
+            names["a link"], names["a hard link"] = tmp_path / f"link-to-{read.name}", tmp_path / f"hard-link-to-{read.name}"
+        except OSError:
+            pass
+        for what, out in names.items():
+            code, err = run_main(capsys, *argv(out))
+            assert code == 2 and "is read to make it" in err and err.startswith("bibliopolis: "), (what, err)
+            assert read.read_bytes() == before, what
+
+
+@pytest.mark.parametrize("command", ["build", "picture"])
+def test_build_and_picture_still_replace_a_json_file_that_is_not_a_world_and_any_other_output(command, files, tmp_path, capsys):
+    """The controls: a city, a picture, a JSON object of another kind, an object whose format is another, text, a list, a file of nothing: all are theirs to replace."""
+    argv, _ = commands_of(files, tmp_path, capsys)[command]
+    others = {"a city": '{"schema_version": 4, "layout_version": "v4"}', "another format": '{"format": "something.else", "version": 1}', "text": "an old file", "a list": "[1, 2]",
+              "nothing": "", "a broken object": '{"format": "bibliopolis.world", '}
+    for what, text in others.items():
+        out = tmp_path / "out.txt"
+        out.write_text(text, encoding="utf-8")
+        code, err = run_main(capsys, *argv(out))
+        assert code == 0 and out.read_text(encoding="utf-8") != text, (what, err)
+
+
+def test_build_and_picture_do_not_wait_for_a_named_pipe_that_has_the_name(files, tmp_path, capsys):
+    """The look at the output opens it without blocking: a named pipe on the name is not read (and is replaced as any file is)."""
+    import signal
+
+    if not hasattr(os, "mkfifo") or not hasattr(signal, "alarm"):
+        pytest.skip("this system has no named pipes or no alarm")
+    commands = commands_of(files, tmp_path, capsys)
+    signal.signal(signal.SIGALRM, lambda *args: (_ for _ in ()).throw(TimeoutError("the command waited for the named pipe")))
+    for command, (argv, _) in commands.items():
+        pipe = tmp_path / f"{command}.pipe"
+        os.mkfifo(pipe)
+        signal.alarm(20)
+        try:
+            code, err = run_main(capsys, *argv(pipe))
+        finally:
+            signal.alarm(0)
+        assert code == 0, (command, err)
+
+
+@pytest.mark.parametrize("command", ["build", "picture"])
+def test_the_program_as_run_refuses_the_same_way(command, files, tmp_path, capsys):
+    argv, _ = commands_of(files, tmp_path, capsys)[command]
+    out, words = the_files_that_must_not_be_replaced(tmp_path)["a world"]
+    before = out.read_bytes()
+    done = run_module(*argv(out))
+    assert done.returncode == 2 and done.stderr.startswith("bibliopolis: ") and words in done.stderr and "Traceback" not in done.stderr
+    assert out.read_bytes() == before
 
 
 # ------------------------------------------------------------------------------------- picture and chronicle ----

@@ -90,6 +90,7 @@ def write_text_atomically(path: Path, text: str) -> None:
 
 
 def build_command(args: argparse.Namespace) -> int:
+    store.check_replace(args.out, [args.library, args.tree])
     library = inputs.load_json(args.library)
     tree = inputs.load_json(args.tree)
     doc = build_city(library, tree, mode=args.mode, max_houses=args.max_houses, min_houses=args.min_houses, first=args.first)
@@ -103,6 +104,7 @@ def build_command(args: argparse.Namespace) -> int:
 def picture_command(args: argparse.Namespace) -> int:
     if args.size < MIN_PICTURE:
         raise ValueError(f"--size must be at least {MIN_PICTURE} pixels, got {args.size}")
+    store.check_replace(args.out, [args.city])
     city = inputs.read_city(inputs.load_json(args.city))
     text = picture.render(city, args.title, size=args.size)
     write_text_atomically(Path(args.out), text)

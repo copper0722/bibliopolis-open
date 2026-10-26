@@ -17,7 +17,7 @@ from hand_support import Hand, hid, item, stamp, topic
 from bibliopolis import events as ev
 from bibliopolis.events import Problems, Refusal
 from bibliopolis.journal import Journal, WorldFileError, dumps_world, read_world, world_document
-from bibliopolis.store import Store, check_output, publish_text
+from bibliopolis.store import Store, check_output, check_replace, publish_text
 from bibliopolis.suggest import suggest_file, suggest_road
 
 
@@ -281,6 +281,15 @@ def output_exists(tmp):
 def no_hard_links(tmp):
     with mock.patch("os.link", side_effect=OSError(errno.EPERM, "Operation not permitted")):  # a disk with no hard links
         return raised(lambda: publish_text(tmp / "city.json", "the text"))
+
+
+def output_is_a_world_file(tmp):
+    (tmp / "world.json").write_text(dumps_world(world_document(small_journal())), encoding="utf-8")
+    return raised(lambda: check_replace(tmp / "world.json", [tmp / "library.json"]))
+
+
+def output_is_an_input(tmp):
+    return raised(lambda: check_replace(tmp / "library.json", [tmp / "tree.json", tmp / "library.json"]))
 
 
 def invalid(tmp):
