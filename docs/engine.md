@@ -25,6 +25,10 @@ ties go to the lower id); an item with no topic has none.
 so the sectors of ring 1 do not move: the document is the city that the whole library makes, at an earlier moment, and its chronicle is the start of the
 full chronicle. `first=0` is the plan with nothing built (in `mirror` mode, the street plan alone); a number above the count of items places them all.
 
+What keeps its place: the bearing of every road, and the point where each spoke starts. What does not: a spoke grows longer as houses arrive, and a later split
+re-packs the houses of the road that split, so a lot can stand elsewhere in the full city. A continuation rib that a later split empties is in the earlier
+document and not in the later one.
+
 ## The plan
 
 The plan reads the whole library once, before any house stands, and pins what must be stable while the city grows: where the roads of the first ring go.

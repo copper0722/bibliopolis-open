@@ -39,8 +39,8 @@ house 85, 2020-01-26: The root zone held 41 houses. Life sciences opens as a roa
 house 130, 2020-08-12: Computing held 41 houses. Systems opens as a road with 20 of them; 21 stay.
 ```
 
-To see the city as it was at house 41, build it again with `--first 41` and draw it. The roads do not move: the plan reads the whole library before the first
-house is built, so this is the same city at an earlier moment.
+To see the city as it was at house 41, build it again with `--first 41` and draw it. The directions do not change: the plan reads the whole library before the
+first house is built, so every road points the same way as in the full city. This is the same city at an earlier moment.
 
 ```
 python -m bibliopolis build --library examples/library.json --tree examples/tree.json --mode grow --first 41 --out city-41.json
@@ -151,7 +151,7 @@ house 85, 2020-01-26: The root zone held 41 houses. Life sciences opens as a roa
 house 130, 2020-08-12: Computing held 41 houses. Systems opens as a road with 20 of them; 21 stay.
 ```
 
-想看蓋到第 41 棟時的城邦，加上 `--first 41` 再蓋一次，然後把它畫出來。路的方向不會變：規劃在蓋第一棟房子之前，就已經讀過整份文獻庫，所以這是同一座城邦在較早的時刻。
+想看蓋到第 41 棟時的城邦，加上 `--first 41` 再蓋一次，然後把它畫出來。路的方向不會變：規劃在蓋第一棟房子之前，就已經讀過整份文獻庫，所以每條路的方向都和完整城邦相同。這是同一座城邦在較早的時刻。
 
 ```
 python -m bibliopolis build --library examples/library.json --tree examples/tree.json --mode grow --first 41 --out city-41.json

@@ -188,3 +188,20 @@ def test_the_chronicle_of_a_mirror_city_is_the_roads_that_became_crowded():
     lines = bibliopolis.city.chronicle_lines(doc)
     assert len(lines) == 1 and lines[0].startswith("house 41") and "A holds 41 houses, more than 40" in lines[0] and "marked over" in lines[0]
     assert bibliopolis.city.chronicle_lines(bibliopolis.build_city({"items": items[:5]}, tree, mode="mirror")) == []
+
+
+@pytest.mark.parametrize("mode", ["grow", "mirror"])
+def test_a_replay_keeps_the_bearing_and_the_start_of_every_road_which_then_only_grows_longer(mode):
+    tree, library = sample()
+    full = bibliopolis.build_city(library, tree, mode=mode)
+    for n in (41, 150, 300):
+        part = bibliopolis.build_city(library, tree, mode=mode, first=n)
+        axes = {pid: p["axis"] for pid, p in part["places"].items() if p["kind"] == "street" and p.get("axis") is not None}
+        assert axes and all(full["places"][pid]["axis"] == axis for pid, axis in axes.items()), (mode, n)
+        spokes = [(rid, road) for rid, road in part["roads"].items() if road["kind"] == "spoke"]
+        assert spokes
+        for rid, road in spokes:
+            later = full["roads"][rid]
+            assert later["axis"] == road["axis"] and later["points"][0] == road["points"][0] and later["length"] >= road["length"], (mode, n, rid)
+    if mode == "grow":  # the first road of the sample is 9.67 cells long at house 41, and longer in the whole city
+        assert bibliopolis.build_city(library, tree, first=41)["roads"]["road:place:tag:computing"]["length"] < full["roads"]["road:place:tag:computing"]["length"]
