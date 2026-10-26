@@ -199,3 +199,31 @@ def test_references_are_the_roads_and_the_houses_a_payload_names_other_than_the_
 
 def test_the_clock_of_the_examples_grows_so_a_test_can_tell_log_order_from_the_clock():
     assert stamp(1) < stamp(2) < stamp(11)
+
+
+# ------------------------------------------------------------------------------------- huge integers ----
+HUGE = [10**400, -(10**400), 10**5000]  # (a Python integer of more than 4300 digits has no repr: the message must not need one)
+
+
+@pytest.mark.parametrize("value", HUGE, ids=["10**400", "-10**400", "10**5000"])
+def test_an_integer_too_large_for_the_field_is_a_problem_with_its_place_and_not_an_overflow_or_a_crash(value):
+    cases = [(ev.check_item, {**item(1), "year": value}, "item.year"),
+             (ev.check_rule, {"max": value, "min": 1, "auto": False}, "rule.max"),
+             (ev.check_rule, {"max": 5, "min": value, "auto": False}, "rule.min"),
+             (ev.check_rule, {"max": 5, "min": 1, "auto": value}, "rule.auto"),
+             (ev.check_event, event("undo", {"seq": value}), "event.payload.seq"),
+             (ev.check_event, event("file", {"house": "a", "road": "b"}, seq=value), "event.seq"),
+             (ev.check_event, event(value, {}), "event.kind")]
+    for check, doc, place in cases:
+        out, found = checked(check, doc, place.split(".")[0])
+        assert out is None and any(line.startswith(place) and "an integer of about" in line for line in found), (place, found)
+        assert all(len(line) < 160 for line in found)
+
+
+def test_a_world_file_with_a_huge_integer_for_its_version_or_format_is_refused_with_a_short_message():
+    from bibliopolis.journal import WorldFileError, read_world
+
+    for key, value in (("version", 10**5000), ("format", 10**5000)):
+        doc = {"format": "bibliopolis.world", "version": 1, "rule": {"max": 40, "min": 10, "auto": False}, "items": [], "events": [], key: value}
+        with pytest.raises(WorldFileError, match=rf"world\.{key}: .*an integer of about 5001 digits"):
+            read_world(doc)

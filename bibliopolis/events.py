@@ -21,7 +21,7 @@ already, ...) is `Refusal`, raised by the fold.
 
 from __future__ import annotations
 
-from .inputs import _LANE_LIKE, _Problems, _text, _whole, parse_added_at
+from .inputs import _LANE_LIKE, _Problems, _shown, _text, _whole, parse_added_at
 from .plan import MAX_HOUSES, MIN_HOUSES
 
 KINDS = ("add_item", "open_road", "file", "rename_road", "move_road", "undo", "set_rule")
@@ -132,7 +132,7 @@ def check_item(item, where: str, problems: _Problems) -> dict | None:
             _text(problems, f"{where}.authors[{j}]", name, nonempty=False)
     year = item["year"]
     if year is not None and (not _whole(year) or abs(year) > YEAR_LIMIT):
-        problems.add(f"{where}.year", f"must be a whole number (at most {YEAR_LIMIT} either way) or null, got {year!r:.40}")
+        problems.add(f"{where}.year", f"must be a whole number (at most {YEAR_LIMIT} either way) or null, got {_shown(year)}")
     doi = item.get("doi")
     if doi is not None:
         _text(problems, f"{where}.doi", doi)
@@ -153,9 +153,9 @@ def check_rule(rule, where: str, problems: _Problems) -> dict | None:
         return None
     for name in ("max", "min"):
         if not _whole(rule[name]) or not 1 <= rule[name] <= RULE_LIMIT:
-            problems.add(f"{where}.{name}", f"must be a whole number from 1 to {RULE_LIMIT}, got {rule[name]!r:.40}")
+            problems.add(f"{where}.{name}", f"must be a whole number from 1 to {RULE_LIMIT}, got {_shown(rule[name])}")
     if not isinstance(rule["auto"], bool):
-        problems.add(f"{where}.auto", f"must be true or false, got {rule['auto']!r:.40}")
+        problems.add(f"{where}.auto", f"must be true or false, got {_shown(rule['auto'])}")
     if _count(problems) == start and rule["min"] > rule["max"]:
         problems.add(where, f"min ({rule['min']}) is more than max ({rule['max']})")
     return {k: rule[k] for k in RULE_KEYS} if _count(problems) == start else None
@@ -190,7 +190,7 @@ def _payload(kind: str, payload, where: str, problems: _Problems) -> dict | None
         return check_rule(payload, where, problems)
     if kind == "undo":
         if not _whole(payload["seq"]) or payload["seq"] < 1:
-            problems.add(f"{where}.seq", f"must be the number of an event (1 or more), got {payload['seq']!r:.40}")
+            problems.add(f"{where}.seq", f"must be the number of an event (1 or more), got {_shown(payload['seq'])}")
     elif kind == "open_road":
         _road_id(problems, f"{where}.road", payload["road"], new=True)
         _text(problems, f"{where}.name", payload["name"], plain=True)
@@ -224,7 +224,7 @@ def check_event(event, where: str, problems: _Problems) -> dict | None:
     if not _keys(problems, where, event, ("seq", "at", "kind", "payload"), ("seq", "at", "kind", "payload")):
         return None
     if not _whole(event["seq"]) or event["seq"] < 1:
-        problems.add(f"{where}.seq", f"must be a whole number, 1 or more, got {event['seq']!r:.40}")
+        problems.add(f"{where}.seq", f"must be a whole number, 1 or more, got {_shown(event['seq'])}")
     if _text(problems, f"{where}.at", event["at"]):
         try:
             parse_added_at(event["at"])
@@ -232,7 +232,7 @@ def check_event(event, where: str, problems: _Problems) -> dict | None:
             problems.add(f"{where}.at", f"{event['at']!r} is not an ISO 8601 date or date and time")
     kind = event["kind"]
     if kind not in KINDS:
-        problems.add(f"{where}.kind", f"{kind!r:.40} is not a kind of event ({', '.join(KINDS)})")
+        problems.add(f"{where}.kind", f"{_shown(kind)} is not a kind of event ({', '.join(KINDS)})")
         return None
     payload = _payload(kind, event["payload"], f"{where}.payload", problems)
     if _count(problems) != start or payload is None:

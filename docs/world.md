@@ -5,11 +5,11 @@ and moves houses onto it, files a house, renames a road, moves a road, takes an 
 are the **fold** of the log (same log, same bytes). The log is kept in a SQLite file or in a world file (JSON), and the same content moves between them.
 
 ```
-python -m bibliopolis world new                                      a new, empty world in the home folder (printed)
-python -m bibliopolis world import city.world.json                   read a world file into a new world
-python -m bibliopolis world export city.world.json                   write the world as a world file
-python -m bibliopolis world fold --out city.json                     the city that the log folds to, as `build` writes it
-python -m bibliopolis picture --city city.json --out city.svg        ... and the picture and the chronicle read it as any city
+python3 -m bibliopolis world new                                      a new, empty world in the home folder (printed)
+python3 -m bibliopolis world import city.world.json                   read a world file into a new world
+python3 -m bibliopolis world export city.world.json                   write the world as a world file
+python3 -m bibliopolis world fold --out city.json                     the city that the log folds to, as `build` writes it
+python3 -m bibliopolis picture --city city.json --out city.svg        ... and the picture and the chronicle read it as any city
 ```
 
 Nothing here touches the network. An item brings its own metadata (and its OpenAlex topics when it has them); fetching them is not part of the engine.
@@ -106,7 +106,7 @@ event), `seq` (the houses that have arrived), `trigger` (the kind of the event) 
 | an undo | `undone`, `of` (the number and the kind of the event) |
 | a change of rule | `rule` |
 
-An event that an undo takes back writes no entry (it does not count); the undo writes one. `python -m bibliopolis chronicle` reads them as sentences.
+An event that an undo takes back writes no entry (it does not count); the undo writes one. `python3 -m bibliopolis chronicle` reads them as sentences.
 
 **The rule `auto`.** After an arrival (`add_item`) that leaves the root zone above `max`, the rule opens a road for the largest group of houses of the root zone that share an OpenAlex topic
 at the most specific level that gives a group of at least `min` (see `suggest_road`), named after that topic, below the town hall: `auto:<seq>` (`auto:<seq>.2` for a second road of the

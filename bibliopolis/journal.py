@@ -19,7 +19,7 @@ from __future__ import annotations
 from .canonical import dumps
 from .events import DEFAULT_RULE, Refusal, check_event, check_item, check_rule, references, standing
 from .hand import State, fold
-from .inputs import InputError, _Problems, load_json
+from .inputs import InputError, _Problems, _shown, load_json
 
 FORMAT = "bibliopolis.world"
 VERSION = 1
@@ -132,9 +132,9 @@ def read_world(doc) -> Journal:
         raise WorldFileError("world: not a world file" + (f": missing {', '.join(missing)}" if missing else "") + (f": unknown {', '.join(sorted(map(str, extra)))}" if extra else "")
                              + f" (it has {', '.join(FILE_KEYS)})")
     if doc["format"] != FORMAT:
-        raise WorldFileError(f"world.format: must be {FORMAT!r}, got {doc['format']!r:.60}")
+        raise WorldFileError(f"world.format: must be {FORMAT!r}, got {_shown(doc['format'])}")
     if doc["version"] != VERSION or isinstance(doc["version"], bool):
-        raise WorldFileError(f"world.version: this program reads version {VERSION}, got {doc['version']!r:.40}")
+        raise WorldFileError(f"world.version: this program reads version {VERSION}, got {_shown(doc['version'])}")
     rule = check_rule(doc["rule"], "world.rule", problems)
     items, events = [], []
     for name, rows, check in (("items", doc["items"], check_item), ("events", doc["events"], check_event)):

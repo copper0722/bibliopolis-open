@@ -106,7 +106,7 @@ def test_the_table_of_chronicle_entries_has_the_keys_the_engine_writes_in_that_o
 
 
 def test_the_commands_of_the_page_are_commands_of_the_program():
-    lines = [line.strip() for block in blocks("") for line in block.splitlines() if line.strip().startswith("python -m bibliopolis ")]
+    lines = [line.strip() for block in blocks("") for line in block.splitlines() if line.strip().startswith("python3 -m bibliopolis ")]
     assert len(lines) == 5
     parser = cli.build_parser()
     for line in lines:

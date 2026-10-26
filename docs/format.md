@@ -79,7 +79,7 @@ processes with different hash seeds and compare the bytes.
 
 Coordinates: cells, `x` east, `z` south, the centre of the town hall plaza is the origin. Angles: degrees clockwise from north.
 
-Numbers are written in one form: an integral value has no fraction (`40`, not `40.0`), any other value is its shortest text (`12.345`). A city that `python -m bibliopolis world fold`
+Numbers are written in one form: an integral value has no fraction (`40`, not `40.0`), any other value is its shortest text (`12.345`). A city that `python3 -m bibliopolis world fold`
 writes from a world built by hand is the same document, with `world.mode` `hand` and more kinds of chronicle entry: see [world.md](world.md).
 
 ### Top level
