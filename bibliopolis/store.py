@@ -18,9 +18,7 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import sqlite3
-import stat
 import tempfile
 from contextlib import closing
 from pathlib import Path
@@ -114,40 +112,19 @@ def temp_file(folder: Path, name: str, base: int = 0o666) -> tuple[int, Path]:
     return fd, temp
 
 
-def _remove_if_ours(path: Path, made: os.stat_result) -> None:
-    """Remove `path` if it is still the file that was made (`made` is the stat of its descriptor: the same device and inode); a file that has taken the name since is not ours to remove.
-    (The name could change hands once more between the look and the removal; no system call removes a file by what it is.)"""
-    try:
-        now = os.stat(path, follow_symlinks=False)
-    except FileNotFoundError:
-        return
-    if os.path.samestat(made, now):
-        path.unlink(missing_ok=True)
-
-
 def _publish(temp: Path, dest: Path) -> None:
     """Make the finished file `temp` the file `dest` without ever replacing a file that is there: `FileExistsError` when something is (a file, a folder, a link, a link that leads
-    nowhere), however late it came. A hard link does it in one step, whole or not at all, and the caller removes `temp` after. On a file system that has no hard links (`os.link` fails
-    with anything but `FileExistsError`) `dest` is made with `O_CREAT | O_EXCL`, so it is still never a file that was there, and `temp` is copied into it with its permissions; that takes
-    time, so a reader can see part of the file, and a failed copy removes `dest` if it is still the file that was made here, and nothing else."""
+    nowhere), however late it came. A hard link does it in one step, whole or not at all, and the caller removes `temp` after. There is no second way. Where a hard link cannot be made
+    (`os.link` fails with anything but `FileExistsError`: a disk with no hard links, such as a FAT or exFAT volume, or a network share) nothing is published, and `Refusal`
+    (`no_hard_links`) says so: a copy into a name made for it can be overtaken by another party's file and then removed, which is what this function is for never doing."""
     try:
         os.link(temp, dest)
-        return
     except FileExistsError:
         raise
-    except OSError:
-        pass
-    with open(temp, "rb") as src:
-        fd = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0), 0o666)
-        made = os.fstat(fd)
-        try:
-            with os.fdopen(fd, "wb") as out:
-                if hasattr(os, "fchmod"):
-                    os.fchmod(out.fileno(), stat.S_IMODE(os.fstat(src.fileno()).st_mode))
-                shutil.copyfileobj(src, out)
-        except BaseException:
-            _remove_if_ours(dest, made)
-            raise
+    except OSError as exc:
+        reason = exc.strerror or str(exc)
+        raise Refusal(f"{dest} cannot be published: a hard link could not be made in {dest.parent} ({reason}); choose a folder on a disk that supports hard links",
+                      "no_hard_links", path=str(dest), folder=str(dest.parent), reason=reason) from None
 
 
 def publish_text(path: str | Path, text: str) -> None:

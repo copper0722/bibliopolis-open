@@ -154,6 +154,15 @@ def test_the_note_on_the_rule_of_a_hand_city_says_what_the_page_says_and_a_grown
     assert grown == NOTES_DISTRICTS["world.districts"] and "a crowded road opens a road for its largest group" in grown  # (a grown city is as it was)
 
 
+def test_the_threat_model_of_the_files_is_on_the_page_and_in_the_card():
+    """What the publishing of a file defends against, and what it does not (a hostile process in the same folder), is said in one way on the page and in the card; the tests of publishing follow it."""
+    page = " ".join(PAGE.split("## The files")[1].split("## In Python")[0].split())
+    card = " ".join((ROOT / "AGENTS.md").read_text(encoding="utf-8").split())
+    for phrase in ("several runs of this tool by one user at once", "a hostile process with write access to the same folder", "no way of publishing"):
+        assert phrase in page and phrase in card, phrase
+    assert "(`no_hard_links`" in page and "no_hard_links" not in card and "refused where there are no hard links" in card
+
+
 def test_the_limits_the_page_states_are_the_limits_of_the_program():
     h = Hand()
     h.add(10)

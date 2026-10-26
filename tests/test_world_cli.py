@@ -1,5 +1,6 @@
 """The command `world` (bibliopolis.cli): new, import, export and fold, on a store in the home folder or in a file of the caller, and the chain from the log to the picture."""
 
+import errno
 import json
 import os
 import sqlite3
@@ -262,6 +263,24 @@ def test_a_file_that_appears_between_the_check_and_the_write_is_never_written_ov
     assert code == 2 and f"{out} is there already" in err, err
     assert made and out.read_bytes() == made[0]  # the other party's file is as it was made
     assert sorted(p.name for p in tmp_path.iterdir()) == ["out.json", "w.sqlite"]  # no temporary file is left
+
+
+@pytest.mark.parametrize("command", ["new", "import", *WRITERS])
+def test_where_there_are_no_hard_links_a_command_that_makes_a_file_is_refused_and_leaves_nothing(command, tmp_path, capsys, monkeypatch):
+    """A disk with no hard links (a FAT volume, some network shares): nothing is published, the temporary file is removed, and the user is told what to do."""
+    world = a_world(tmp_path)
+    source, _ = world_file(tmp_path)
+    argv = {"new": ("world", "new", "--world", str(tmp_path / "made.sqlite")), "import": ("world", "import", str(source), "--world", str(tmp_path / "made.sqlite")),
+            "export": WRITERS["export"](tmp_path / "made.json", world), "fold": WRITERS["fold"](tmp_path / "made.json", world)}[command]
+    before = everything_in(tmp_path)
+
+    def no_links(*args, **kw):
+        raise OSError(errno.EPERM, "Operation not permitted")
+
+    monkeypatch.setattr(os, "link", no_links)
+    code, err, _ = run_main(capsys, *argv)
+    assert code == 2 and "cannot be published: a hard link could not be made in " in err and err.strip().endswith("choose a folder on a disk that supports hard links"), err
+    assert everything_in(tmp_path) == before  # nothing made, no temporary file left
 
 
 @pytest.mark.parametrize("command", list(WRITERS))

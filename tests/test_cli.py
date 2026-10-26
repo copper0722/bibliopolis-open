@@ -178,6 +178,19 @@ def test_an_output_that_is_there_is_still_replaced_by_build_and_picture(files, t
     assert run_main(capsys, "picture", "--city", str(out), "--out", str(svg))[0] == 0 and svg.read_text(encoding="utf-8").startswith("<svg ")
 
 
+def test_build_and_picture_need_no_hard_links(files, tmp_path, capsys, monkeypatch):
+    """They put their output in place with a rename, not a link: a disk with no hard links is no reason to refuse them."""
+    t, lib, *_ = files
+
+    def no_links(*args, **kw):
+        raise OSError(1, "Operation not permitted")
+
+    monkeypatch.setattr(os, "link", no_links)
+    out = tmp_path / "city.json"
+    assert run_main(capsys, "build", "--library", str(lib), "--tree", str(t), "--out", str(out))[0] == 0
+    assert run_main(capsys, "picture", "--city", str(out), "--out", str(tmp_path / "city.svg"))[0] == 0
+
+
 # ------------------------------------------------------------------------------------- picture and chronicle ----
 @pytest.fixture
 def city_file(files, tmp_path, capsys):

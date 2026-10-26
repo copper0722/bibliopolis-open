@@ -31,6 +31,9 @@ split as they grow).
   `docs/images/*.svg` from the sample; a test compares them with the committed files byte for byte, so run it after a change to the engine or the sample.
   `make_worlds.py` makes the three golden world files (`scripted.world.json`, `scripted_nodes.world.json`, `scripted_merge.world.json`) and their index `worlds.json`
   (the sha256 of each file and of the city it folds to), which a port folds; a test compares them byte for byte and with the pins. No city is committed.
+- Files the tool writes: `world new`, `import`, `export` and `fold` publish a finished temporary file by a hard link and never write over a name (refused where there are no hard links);
+  `build` and `picture` replace their own output. Threat model: several runs of this tool by one user at once, a wrong name, a fault or an interrupt in the middle of a call and a disk with no hard
+  links are in scope; a hostile process with write access to the same folder is out (it could delete or replace the world itself, and no way of publishing stops that). See `docs/world.md`, "The files".
 - `tests/`: `python3 -m pytest` from the repository root. Every test is offline and synthetic.
 - The plan, the world of `grow` mode (roads, direct counts, root zone, chronicle, lots, ribs, lines) and the document it makes (places, roads, coast,
   measures) are an extraction of the private engine. A parity test in the private repository compares them with it on random libraries and on the

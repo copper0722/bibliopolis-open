@@ -84,6 +84,7 @@ CODES = {
     "output_is_the_world": ("path", "world"),
     "output_is_a_database": ("path",),
     "output_exists": ("path",),
+    "no_hard_links": ("path", "folder", "reason"),
     # ---- the shape of an event, a rule or a world file is wrong: `invalid` holds the problems, each `{where, code, params}` with one of the codes that follow
     "invalid": ("problems", "more"),
     "keys_missing": ("keys",),

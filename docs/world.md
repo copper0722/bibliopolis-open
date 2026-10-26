@@ -224,6 +224,7 @@ that is read passes the refusal of an event on as a `WorldFileError` with the sa
 | `output_is_the_world` | `path`, `world` | `world export` or `world fold` asked to write a file that is the world being read, under any name for it (another spelling, a link, a hard link): the world would be replaced by text | <folder>/w.sqlite is the world that is being read (<folder>/w.sqlite); a world is not written over (choose another file) |
 | `output_is_a_database` | `path` | `world export` or `world fold` asked to write a file that is a SQLite database already (a world or not; found by the first 16 bytes) | <folder>/other.sqlite is a SQLite database already; a world is not written over (choose another file, or move that one away) |
 | `output_exists` | `path` | `world export` or `world fold` asked to write a file, and something is there already (a file, a folder, a link, a link that leads nowhere), when the command began or when the file was to be published: these commands write a new file and never replace one | <folder>/w.sqlite is there already; a file is not written over (choose another file, or move that one away) |
+| `no_hard_links` | `path`, `folder`, `reason` | `world new`, `world import`, `world export` or `world fold` where a hard link cannot be made in the folder of the file (a disk with no hard links, such as a FAT or exFAT volume, or a network share; `reason` is the text of the system): nothing is published | <folder>/city.json cannot be published: a hard link could not be made in <folder> (Operation not permitted); choose a folder on a disk that supports hard links |
 
 ### The shape of an event, a rule or a world file is wrong
 
@@ -336,13 +337,19 @@ that appends while another reads waits for the read and never gives it half a wo
 
 **The home folder** is `$BIBLIOPOLIS_HOME`, else `~/Bibliopolis`; it is made on first use and printed. The world of a command without `--world` is `world.sqlite` in it.
 
-**A file is never written over by a command that makes a new one.** `world new` and `world import` build the world in a file of its own in the folder of the world (made by
-`tempfile.mkstemp`: exclusively, under a random name, so never a file that was there) and publish it to the path by a hard link, which fails when the path is taken: the path has the world only
-when it is whole, a world that another command put there meanwhile is refused (`world_exists`) and not written over, and a command that fails removes its own file and never the path, which may
-by then be another command's world. `world export` and `world fold` do the same with their text (`output_exists`); a look before the world is read says what is there: the world itself under any
-name (`output_is_the_world`) or a SQLite database (`output_is_a_database`). On a file system with no hard links the path is made with `O_EXCL` and the finished file is copied into it (a reader can
-see part of it; a failed copy removes the path only while it is still the file that was made). Only `build` and `picture` replace their output, which is made again whenever it is wanted; they use a
-file of their own with a random name too, so an input that is called what a temporary file used to be called is never opened for writing.
+**A file is never written over by a command that makes a new one.** `world new` and `world import` build the world in a file of their own in the folder of the world (made exclusively, under a
+random name, so never a file that was there) and publish it to the path by a hard link, which fails when the path is taken: the path has the world only when it is whole, a world that another
+command put there meanwhile is refused (`world_exists`) and not written over, and a command that fails removes its own file and never the path, which may by then be another command's world.
+`world export` and `world fold` do the same with their text (`output_exists`); a look before the world is read says what is there: the world itself under any name (`output_is_the_world`) or a
+SQLite database (`output_is_a_database`). Where a hard link cannot be made at all (a disk with no hard links, such as a FAT or exFAT volume or some network shares) nothing is published and the
+command is refused (`no_hard_links`; choose a folder on a disk that has them): a copy into a name made for it could be overtaken by another party's file and then removed, which is the one thing
+this is for never doing. Only `build` and `picture` replace their output, which is made again whenever it is wanted; they use a file of their own with a random name too, so an input that is
+called what a temporary file used to be called is never opened for writing.
+
+**Threat model.** In scope: several runs of this tool by one user at once, a wrong name given to a command (a mistyped `--out`), a fault or an interrupt in the middle of a call, and a disk with no
+hard links. Out of scope: a hostile process with write access to the same folder. It could delete or replace the world itself, and no way of publishing a file stops that. So a call removes the
+temporary file it made by its name (random, made by that call alone), and the looks that come before a write (`output_is_the_world`, `output_is_a_database`) tell the user what is there and are not
+locks. The tests follow this: they put another party's file in the way at chosen moments of a call, and they do not try to defend against a process that changes a name while the call runs.
 
 ## In Python
 

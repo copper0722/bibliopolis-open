@@ -7,8 +7,10 @@ The test of the ids (tests/test_refusals.py) and the test of the page (tests/tes
 `CODES` gives, and the table of docs/world.md shows the messages that these scenarios make. Not collected by pytest (the name has no test_ prefix)."""
 
 import copy
+import errno
 import json
 import sqlite3
+from unittest import mock
 
 from hand_support import Hand, hid, item, stamp, topic
 
@@ -274,6 +276,11 @@ def output_is_a_database(tmp):
 def output_exists(tmp):
     Store.create(tmp / "w.sqlite")
     return raised(lambda: publish_text(tmp / "w.sqlite", "the text"))
+
+
+def no_hard_links(tmp):
+    with mock.patch("os.link", side_effect=OSError(errno.EPERM, "Operation not permitted")):  # a disk with no hard links
+        return raised(lambda: publish_text(tmp / "city.json", "the text"))
 
 
 def invalid(tmp):
