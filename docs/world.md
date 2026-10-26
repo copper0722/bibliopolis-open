@@ -429,7 +429,7 @@ The TypeScript engine must give the same bytes as this one. What is easy to get 
 | the golden world files of `examples/` and their index: byte for byte, the pinned cities, the schema | `tests/test_world_examples.py` |
 | the schema of the world file (`schema/world.schema.json`) | `tests/test_world_schema.py` |
 | the command `world` | `tests/test_world_cli.py` |
-| publishing a file without ever replacing one: the temporary file, the hard link and its fallback, the interleavings | `tests/test_publish.py` |
+| publishing a file without ever replacing one: the temporary file, the hard link and its refusal where there is none, the syncs, the interleavings | `tests/test_publish.py` |
 | the city file of a world built by hand: the reader, the chronicle and the picture against one wrong field at a time | `tests/test_hand_cityfile.py` |
 | the number form and the pinned hashes | `tests/test_canonical.py`, `tests/test_world_file.py` |
 | this page: its examples load through the readers and its numbers are the program's | `tests/test_world_page.py` |
