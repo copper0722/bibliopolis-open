@@ -91,7 +91,8 @@ def check_output(path: str | Path, world: str | Path) -> None:
 
 
 def _new_file_mode(base: int) -> int:
-    """The permissions that a file gets when it is made asking for `base` (0o666 for text, 0o644 for a SQLite file): the umask of this user takes its bits away."""
+    """The permissions that a file gets when it is made asking for `base` (0o666 for text, 0o644 for a SQLite file): the umask of this user takes its bits away. (The umask can only be read by
+    setting it, for an instant; the commands of this package make one file at a time.)"""
     umask = os.umask(0)
     os.umask(umask)
     return base & ~umask
