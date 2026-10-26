@@ -40,9 +40,9 @@ def check_districts(districts: dict) -> None:
     """ValueError unless `params.districts` is a rule the engine implements: whole numbers 1 <= min <= max, and the two named rules."""
     mx, mn = districts.get("max"), districts.get("min")
     if not (isinstance(mx, int) and isinstance(mn, int) and not isinstance(mx, bool) and not isinstance(mn, bool) and 1 <= mn <= mx):
-        raise ValueError(f"params.districts needs whole numbers 1 <= min <= max, got max={mx!r} min={mn!r}")
+        raise ValueError(f"the district rule needs whole numbers 1 <= min <= max, got max={mx!r} min={mn!r}")
     if districts.get("extract") != DISTRICT_EXTRACT or districts.get("count") != DISTRICT_COUNT:
-        raise ValueError(f"params.districts knows extract={DISTRICT_EXTRACT!r} and count={DISTRICT_COUNT!r} only")
+        raise ValueError(f"the district rule knows extract={DISTRICT_EXTRACT!r} and count={DISTRICT_COUNT!r} only")
 
 
 def deg(units: int) -> float:
