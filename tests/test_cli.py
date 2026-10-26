@@ -181,6 +181,28 @@ def test_an_output_that_is_there_is_still_replaced_by_build_and_picture(files, t
     assert run_main(capsys, "picture", "--city", str(out), "--out", str(svg))[0] == 0 and svg.read_text(encoding="utf-8").startswith("<svg ")
 
 
+def test_build_and_picture_sync_their_file_before_the_rename_and_the_folder_after_it(files, tmp_path, capsys, monkeypatch):
+    t, lib, *_ = files
+    seen, real_fsync, real_replace = [], os.fsync, os.replace
+
+    def fsync(fd):
+        seen.append("sync folder" if stat.S_ISDIR(os.fstat(fd).st_mode) else "sync file")
+        return real_fsync(fd)
+
+    def replace(src, dst):
+        seen.append("replace")
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(os, "fsync", fsync)
+    monkeypatch.setattr(os, "replace", replace)
+    out = tmp_path / "city.json"
+    assert run_main(capsys, "build", "--library", str(lib), "--tree", str(t), "--out", str(out))[0] == 0
+    assert seen == ["sync file", "replace", "sync folder"]
+    seen.clear()
+    assert run_main(capsys, "picture", "--city", str(out), "--out", str(tmp_path / "city.svg"))[0] == 0
+    assert seen == ["sync file", "replace", "sync folder"]
+
+
 def test_build_and_picture_need_no_hard_links(files, tmp_path, capsys, monkeypatch):
     """They put their output in place with a rename, not a link: a disk with no hard links is no reason to refuse them."""
     t, lib, *_ = files
