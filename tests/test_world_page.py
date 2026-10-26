@@ -8,8 +8,11 @@ from pathlib import Path
 import pytest
 import refusal_cases as rc
 from hand_support import Hand, every_entry, hid, item, sample_world_items, stamp, topic
+from support import sample
 
+import bibliopolis
 from bibliopolis import cli, hand
+from bibliopolis.document import NOTES_DISTRICTS
 from bibliopolis.suggest import suggest_file, suggest_road
 from bibliopolis import events as ev
 
@@ -136,6 +139,19 @@ def test_the_notes_of_a_city_say_that_the_rule_auto_splits_a_road_by_itself_and_
     mode = state.city()["world"]["notes"]["world.mode"]
     assert "nothing splits by itself except under `auto`" in mode and "under the rule `auto`, a road that the rule opened for a node of OpenAlex" in mode
     assert "nothing splits by itself, except under `auto`" in PAGE and "nothing is marked over" in mode  # (the page says it in its Limits)
+
+
+def test_the_note_on_the_rule_of_a_hand_city_says_what_the_page_says_and_a_grown_city_keeps_its_own():
+    """The note `world.districts` said, for a city of a world built by hand too, that a crowded road opens a road for its largest group: only the rule `auto` does, and `max` and `min`
+    are what the page says they are."""
+    rule = " ".join(PAGE.split("### The rule")[1].split("## What the fold does")[0].split())
+    note = Hand({"max": 5, "min": 2, "auto": False}).state.city()["world"]["notes"]["world.districts"]
+    for phrase in ("is how many houses a road is meant to hold", "is the least a new road takes"):
+        assert phrase in rule and phrase in note, phrase
+    assert "a crowded road opens a road" not in note and "only under the rule `auto` does a place that holds more than `max` open a road" in note
+    tree, library = sample()
+    grown = bibliopolis.build_city(library, tree)["world"]["notes"]["world.districts"]
+    assert grown == NOTES_DISTRICTS["world.districts"] and "a crowded road opens a road for its largest group" in grown  # (a grown city is as it was)
 
 
 def test_the_limits_the_page_states_are_the_limits_of_the_program():

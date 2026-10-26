@@ -98,11 +98,11 @@ def test_a_file_with_a_byte_order_mark_or_that_is_not_json_is_read_or_refused_by
 
 
 PIN_WORLD = "d4ac8dbde73d982905bf7f4505bbed1dc8e9c3807472e662fba73c2d53e23da4"  # the sha256 of the world file of the scripted log (hand_support.scripted)
-PIN_CITY = "34e96b316c7e7cb391b3d8e70dfe610c5d1ff321259a65774a3e5d63f59faff3"  # ... and of the text of the city that it folds to; change them on purpose, with the engine
+PIN_CITY = "4c6285059b51ec8e3583a7cb00f69efe3adf5c2f7c4c7d6d0ce16cb768f42d1a"  # ... and of the text of the city that it folds to; change them on purpose, with the engine
 PIN_NODES_WORLD = "fee2dd7f74da8af729f2193e61122ecd74cead594bfad049dafce5a9f8361252"  # the same for the log with OpenAlex topics (hand_support.scripted_nodes): roads for nodes, the rule auto
-PIN_NODES_CITY = "3cd548f04c35d06c900a1bc1383c7d5b8d53d81968a1edc250290e1f939721fc"
+PIN_NODES_CITY = "09638ab236de4f9f193e46cfeeacdabb9626975aa1b48489ad1cd0e3de1e1b9f"
 PIN_MERGE_WORLD = "02ae4cc1706d3befd8671bf3438ed9b183b94ab6cbfa07f2b6008fc217b94870"  # ... and for the log in which the first ring fills and is merged (hand_support.scripted_merge)
-PIN_MERGE_CITY = "9a305068bd4144b12f9b8e05c7717ccfd85c1b74a8a10211e0f6d80fde12197b"
+PIN_MERGE_CITY = "81daf2b55c0960c29e608a2838395d93f00f8b2c21e51d9e58d615fddce935c6"
 
 
 def test_the_scripted_world_and_its_city_are_pinned_by_their_sha256():

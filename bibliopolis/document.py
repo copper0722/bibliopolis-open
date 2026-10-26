@@ -68,6 +68,8 @@ NOTES_DISTRICTS = {
 NOTES_HAND = {
     "world.mode": "hand: the world is the fold of a log of events that the player appended (docs/world.md); a road is a category the player opened or, under the rule `auto`, a road "
                   "that the rule opened for a node of OpenAlex; nothing is marked over, and nothing splits by itself except under `auto`",
+    "world.districts": "the rule of the player (docs/world.md): `max` is how many houses a road is meant to hold, `min` is the least a new road takes; the world marks nothing over, "
+                       "and only under the rule `auto` does a place that holds more than `max` open a road, for its largest group of at least `min`",
     "world.chronicle": "every road opened, house filed, road renamed or moved, avenues merged, undo and change of rule, in the order of the log (`event_id` is the number of the event, "
                        "`seq` the arrivals so far, `at` the `at` of the event)",
 }
