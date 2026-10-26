@@ -32,3 +32,8 @@ var/
 *.bin
 *.blend
 *.pdf
+
+# ... except the pictures of the README: images in docs/images/ only (under 1 MB each)
+!docs/images/*.png
+!docs/images/*.jpg
+!docs/images/*.webp

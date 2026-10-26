@@ -112,8 +112,12 @@ The topic tree is the street plan.
   another name.
 - **One sheet** (`sheet`): several cities on the same frame at the same scale, so that growth shows as growth. The frame leaves room for every name of every
   city. A road is never drawn thicker than at 3.5 pixels to the cell, so a small city is not made of fat lines. Coordinates have one decimal on a sheet and two
-  in a single picture, which keeps a sheet small (a test keeps the sheets under 100 KB).
+  in a single picture, which keeps a sheet small (the sheets of the README are under 100 KB, and a test says so).
 - The same document gives the same bytes. A character that XML 1.0 cannot carry (a control character) in a name is replaced, so a picture is always valid XML.
+
+The pictures of the README (`docs/images/`) are made by `examples/make_pictures.py`: `growth.svg` is the sample in `grow` mode after 40, 41, 150 and 600 items
+(`first=n`), `modes.svg` is the sample in both modes, `concept.svg` is a tiny invented city with labels laid over it at places the document gives. A test makes
+them again and compares them with the committed files byte for byte.
 
 ## Limits and known quirks
 
@@ -138,6 +142,7 @@ The topic tree is the street plan.
 | the pipeline, its summary (the streets that are over now), the replay with `first`, the chronicle as sentences | `tests/test_city.py` |
 | the command line (`build`, `picture`, `chronicle`), the same bytes in separate processes | `tests/test_cli.py` |
 | the picture: what is drawn and left out, the frame of a sheet, valid XML | `tests/test_picture.py` |
+| the pictures of the README are what the script makes, byte for byte | `tests/test_images.py` |
 | the sample and what it shows; what the format page says about the sample | `tests/test_example.py`, `tests/test_format_page.py` |
 | empty library, one root, many roots, a long chain | `tests/test_edges.py` |
 | the README does not drift from the program | `tests/test_readme.py` |
