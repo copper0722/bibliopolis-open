@@ -1,0 +1,120 @@
+"""What docs/world.md says is true of the program: its examples load through the readers, its tables are the program's tables, its commands parse, its Python runs."""
+
+import json
+import re
+import shlex
+from pathlib import Path
+
+import pytest
+from hand_support import Hand, hid, item, stamp, topic
+
+from bibliopolis import cli, hand
+from bibliopolis import events as ev
+from bibliopolis.inputs import _Problems
+
+ROOT = Path(__file__).resolve().parents[1]
+PAGE = (ROOT / "docs" / "world.md").read_text(encoding="utf-8")
+
+
+def blocks(language):
+    return re.findall(rf"^```{language}\n(.*?)^```", PAGE, flags=re.S | re.M)
+
+
+def json_values(block):
+    decoder, i, out = json.JSONDecoder(), 0, []
+    while True:
+        while i < len(block) and block[i].isspace():
+            i += 1
+        if i >= len(block):
+            return out
+        value, i = decoder.raw_decode(block, i)
+        out.append(value)
+
+
+def test_every_json_example_of_the_page_is_an_item_or_an_event_that_the_readers_take():
+    values = [v for block in blocks("json") for v in json_values(block)]
+    assert len(values) >= 2
+    for value in values:
+        problems = _Problems()
+        if "kind" in value:
+            assert ev.check_event(value, "example", problems) == value, problems.found
+        else:
+            assert "openalex" in value and ev.check_item(value, "example", problems) == value, problems.found
+        assert problems.found == []
+
+
+def test_the_sector_table_is_the_table_of_the_program():
+    rows = re.findall(r"\|\s*(\d+)\s*\|\s*([\d.]+)\s*\|\s*(-?[\d.]+) \.\. (-?[\d.]+)\s*(?=\|)", PAGE)  # (two roads to a line: the left half, then the right half)
+    assert sorted(int(k) for k, *_ in rows) == list(range(13))
+    given = []
+    for k in range(13):
+        given.append(hand.ring1_wedge(given, k))
+    for k, bearing, lo, hi in rows:
+        k = int(k)
+        assert round(float(bearing) * 100) == hand.bearing(k), k
+        assert (round(float(lo) * 100), round(float(hi) * 100)) == given[k], k
+    assert "| 13 | 347.60 | none: inside the sector of k = 0 |" in PAGE and f"{hand.bearing(13) / 100:.2f}" == "347.60"
+    assert "**the first ring holds 13 roads**" in PAGE and str(hand.GOLDEN) in PAGE and "% 36000" in PAGE and "// 10**12" in PAGE
+
+
+def test_the_table_of_events_names_the_kinds_and_the_payloads_of_the_program():
+    rows = re.findall(r"^\| `(\w+)` \| `\{([\w, ]+)\}` \|", PAGE, flags=re.M)
+    assert [kind for kind, _ in rows] == list(ev.KINDS)
+    for kind, keys in rows:
+        assert tuple(k.strip() for k in keys.split(",")) == ev.PAYLOAD_KEYS[kind], kind
+
+
+def entries_of_a_world():
+    h = Hand()
+    h.add(30, topic(1, 1, 1, 1))
+    h.open("a", "A", None, [hid(i) for i in range(1, 13)])
+    h.open("b", "B", None, [hid(i) for i in range(13, 25)])
+    h.file(hid(26), "a")
+    h.rename("a", "Alpha")
+    h.open("a1", "A one", "a", [hid(i) for i in range(1, 11)])
+    h.move("a1", "b")
+    h.rule(30, 5)
+    h.add(1)
+    h.undo()
+    return {tuple(sorted(set(e) - {"n", "event_id", "seq", "trigger", "at"})): e for e in h.state.city()["world"]["chronicle"]}
+
+
+def test_the_table_of_chronicle_entries_has_the_keys_the_engine_writes_in_that_order():
+    rows = re.findall(r"^\| (?:a |an )(.+?) \| (.+?) \|$", PAGE.split("The chronicle.")[1].split("An event that an undo")[0], flags=re.M)
+    assert len(rows) == 6
+    entries = list(entries_of_a_world().values())
+    kinds = {"road opened": "from", "house filed": "filed", "road renamed": "renamed", "road moved": "moved", "undo": "undone", "change of rule": "rule"}
+    for what, cell in rows:
+        shown = re.findall(r"`(\w+)`", cell)
+        marker = next(v for k, v in kinds.items() if what.startswith(k))
+        entry = next(e for e in entries if marker in e)
+        assert list(entry) == ["n", "event_id", "seq", "trigger", *shown, "at"], what
+
+
+def test_the_commands_of_the_page_are_commands_of_the_program():
+    lines = [line.strip() for block in blocks("") for line in block.splitlines() if line.strip().startswith("python -m bibliopolis ")]
+    assert len(lines) == 5
+    parser = cli.build_parser()
+    for line in lines:
+        words = shlex.split(line.split("   ")[0])
+        args = parser.parse_args(words[3:])
+        assert args.command in ("world", "picture"), line
+    assert {shlex.split(line.split("   ")[0])[4] for line in lines if " world " in line} == {"new", "import", "export", "fold"}
+
+
+def test_the_python_of_the_page_runs():
+    (code,) = blocks("python")
+    scope = {"item": item(1, topic(1, 1, 1, 1))}
+    exec(compile(code, "docs/world.md", "exec"), scope)  # noqa: S102 - the page is the repository's own
+    assert scope["journal"].state.items and scope["suggest_road"]
+
+
+def test_the_limits_the_page_states_are_the_limits_of_the_program():
+    h = Hand()
+    h.add(10)
+    h.open("a", "A", None, [hid(i) for i in range(1, 11)])
+    with pytest.raises(ev.Refusal):
+        h.journal.append("move_road", {"road": "a", "parent": None}, stamp(99))  # a road is not made a ring-1 road by a move
+    assert "A road never becomes a ring-1 road by moving" in PAGE and "No trunk is promoted" in PAGE
+    assert "never marked over" in PAGE and "Under `auto` an arrival is not filed" in PAGE
+    assert (ROOT / "docs" / "engine.md").is_file() and "[engine.md](engine.md)" in PAGE

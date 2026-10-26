@@ -69,16 +69,18 @@ def check_topics(value, where: str, problems: _Problems) -> list[dict] | None:
         problems.add(where, f"holds {len(value)} topics; the most an item carries is {MAX_TOPICS} (its primary topic and two more)")
     for i, entry in enumerate(value[:MAX_TOPICS]):
         here = f"{where}[{i}]"
-        if not isinstance(entry, dict) or not _keys(problems, here, entry, ORDER, ORDER):
-            if not isinstance(entry, dict):
-                problems.add(here, "must be an object with domain, field, subfield and topic")
+        if not isinstance(entry, dict):
+            problems.add(here, "must be an object with domain, field, subfield and topic")
+            continue
+        if not _keys(problems, here, entry, ORDER, ORDER):
             continue
         topic = {}
         for level in ORDER:
             node = entry[level]
-            if not isinstance(node, dict) or not _keys(problems, f"{here}.{level}", node, ("id", "name"), ("id", "name")):
-                if not isinstance(node, dict):
-                    problems.add(f"{here}.{level}", "must be an object {id, name}")
+            if not isinstance(node, dict):
+                problems.add(f"{here}.{level}", "must be an object {id, name}")
+                continue
+            if not _keys(problems, f"{here}.{level}", node, ("id", "name"), ("id", "name")):
                 continue
             ok = _text(problems, f"{here}.{level}.id", node["id"], plain=True)
             ok = _text(problems, f"{here}.{level}.name", node["name"], plain=True) and ok

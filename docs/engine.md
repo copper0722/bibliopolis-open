@@ -15,6 +15,8 @@ inputs ──> plan (directions, from the whole library) ──> world (the arri
 | document | `bibliopolis.document`, `bibliopolis.layout`, `bibliopolis.coast` | writes the world as the layout v4 document: records, measures, the coast, the stable text |
 | glue | `bibliopolis.city`, `bibliopolis.cli` | `build_city()`, `chronicle_lines()` and the commands `python3 -m bibliopolis build`, `picture` and `chronicle` |
 | picture | `bibliopolis.picture` | draws a city document as SVG: one city, or several on one sheet (see "The pictures") |
+| by hand | `bibliopolis.events`, `hand`, `journal`, `suggest`, `store` | a world made one act at a time from a log of events, through the same world and document steps: see [world.md](world.md) |
+| numbers | `bibliopolis.canonical` | the one number form of every document the package writes: an integral value without a fraction |
 
 ## Arrival and address
 
@@ -160,6 +162,8 @@ them again and compares them with the committed files byte for byte.
 | empty library, one root, many roots, a long chain | `tests/test_edges.py` |
 | the README does not drift from the program: its commands run, the lines and pictures it shows are real | `tests/test_readme.py` |
 | standard library only, Python 3.11 syntax (also the f-strings that only 3.12 can read) | `tests/test_package.py` |
+| the world built by hand, its files and its command | the table at the end of [world.md](world.md) |
+| the number form, and the sha256 of the sample cities | `tests/test_canonical.py` |
 
 `tests/checks.py` holds the geometry checks (no overlap, every lot beside the lane of its own street, a road tree that starts at the plaza rim, no road
 through a lot, every lot inside the wedge of its trunk) that the random worlds of `tests/support.py` run after every step.

@@ -1,13 +1,14 @@
 """The world file (JSON) and the SQLite store (bibliopolis.journal, bibliopolis.store): what they hold, that they round-trip byte for byte, and what they refuse."""
 
 import copy
+import hashlib
 import json
 import os
 import sqlite3
 from pathlib import Path
 
 import pytest
-from hand_support import Hand, hid, item, play, stamp, topic
+from hand_support import Hand, hid, item, play, scripted, stamp, topic
 
 from bibliopolis import layout as lay
 from bibliopolis import store
@@ -90,6 +91,37 @@ def test_a_file_with_a_byte_order_mark_or_that_is_not_json_is_read_or_refused_by
     path.write_text("{not json", encoding="utf-8")
     with pytest.raises(InputError, match="not valid JSON"):
         load_world_file(path)
+
+
+PIN_WORLD = "524fc3dd497c8ef028c6d2c37d0c6828439c83d8d7cc9d6117af3ccf5c15ebb6"  # the sha256 of the world file of the scripted log (hand_support.scripted)
+PIN_CITY = "6ae1fc769cc15fb10763efc23f79d4c1775c3e871c3aec3356d4a4687ed4d89a"  # ... and of the text of the city that it folds to; change them on purpose, with the engine
+
+
+def test_the_scripted_world_and_its_city_are_pinned_by_their_sha256():
+    """A port in another language has these bytes to match: the file of a fixed log of every kind of event, and the city that the fold makes of it."""
+    journal = scripted().journal
+    assert hashlib.sha256(text_of(journal).encode("utf-8")).hexdigest() == PIN_WORLD
+    assert hashlib.sha256(lay.render(journal.state.city()).encode("utf-8")).hexdigest() == PIN_CITY
+
+
+def test_titles_and_names_in_any_script_are_written_as_they_are_and_read_back(tmp_path):
+    h = Hand()
+    h.add_items([item(1, title="文獻城邦: 市政廳 \U0001d4b3 \u00e9", authors=["王小明", "Zoë Müller"]), item(2, title='quote " backslash \\ tab \t')])
+    h.add(10)
+    h.open("a", "大道 \"A\"", None, [hid(i) for i in range(1, 11)])
+    text = text_of(h.journal)
+    assert "文獻城邦" in text and "\\u" not in text.replace("\\u0009", "")  # written as characters, not as escapes (a tab is the one escape here)
+    path = tmp_path / "w.sqlite"
+    Store.import_journal(path, read_world(json.loads(text)))
+    assert Store(path).export_text() == text and Store(path).journal().state.nodes["a"]["name"] == '大道 "A"'
+
+
+def test_a_lone_surrogate_is_refused_because_it_cannot_be_written_as_text():
+    from bibliopolis import events as ev
+    from bibliopolis.inputs import _Problems
+
+    problems = _Problems()
+    assert ev.check_item(item(1, title="\ud800"), "item", problems) is None and "cannot be written as UTF-8" in problems.found[0]
 
 
 # ---------------------------------------------------------------------------------------------- refusals ----

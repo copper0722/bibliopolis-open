@@ -113,6 +113,32 @@ class Hand:
         return self.event("set_rule", {"max": max_houses, "min": min_houses, "auto": auto})
 
 
+def houses(first: int, last: int) -> list[str]:
+    return [hid(i) for i in range(first, last + 1)]
+
+
+def scripted():
+    """A log in which every kind of event leaves holes in front of houses that stay: roads opened from the middle of the root zone, houses filed out of a road and out
+    of the root zone, a road with roads below it moved, a rename, a rule, and an undo from the middle."""
+    h = Hand()
+    h.add(60)
+    h.open("a", "A", None, houses(3, 20))  # holes at the front of the root zone
+    h.open("b", "B", None, [hid(i) for i in range(21, 41) if i % 2])  # ... and in the middle of it
+    h.add(20)
+    h.file(hid(1), "a")
+    h.file(hid(30), "b")  # (house 30 is in the root zone: b took the odd ones)
+    h.file(hid(5), "b")  # out of a road, with houses after it
+    h.open("a1", "A one", "a", houses(6, 17))
+    h.rename("a", "Alpha")
+    h.rule(30, 5)
+    h.move("a1", "b")
+    h.add(5)
+    h.undo(len(h.journal.events) - 3)  # from the middle: nothing names the house it added
+    h.file(hid(2), "a1")
+    h.move("b", "a")
+    return h
+
+
 # ------------------------------------------------------------------------------------------ a random player ----
 def play(seed: int, steps: int = 120, *, auto: bool = False, rule: dict | None = None) -> Journal:
     """A random player: items arrive, roads open below the root zone and below roads, houses are filed, roads renamed and moved, the rule changes, events are undone.

@@ -24,8 +24,9 @@ split as they grow).
 ## Layout and checks
 
 - `bibliopolis/` the package (Python 3.11+, standard library only): `inputs` (read and check the files), `cut` and `plan` (the directions),
-  `world` (the growing city), `document` and `layout` and `coast` (the document), `picture` (the SVG), `city` and `cli`. Rules: `docs/engine.md`;
-  formats: `docs/format.md` and `schema/`.
+  `world` (the growing city), `document` and `layout` and `coast` (the document), `picture` (the SVG), `city` and `cli`; `canonical` (the one number form of
+  every document written). The world built by hand: `events` (the log and its checks), `hand` (the fold), `journal` (append, the world file), `suggest`,
+  `store` (SQLite, the home folder). Rules: `docs/engine.md` and `docs/world.md`; formats: `docs/format.md` and `schema/`.
 - `examples/` the seeded generator of the synthetic sample (`make_example.py`) and its output; a derived city is never committed. `make_pictures.py` makes
   `docs/images/*.svg` from the sample; a test compares them with the committed files byte for byte, so run it after a change to the engine or the sample.
 - `tests/`: `python3 -m pytest` from the repository root. Every test is offline and synthetic.
@@ -33,8 +34,9 @@ split as they grow).
   measures) are an extraction of the private engine. A parity test in the private repository compares them with it on random libraries and on the
   sample (the whole document against a private plan without the journal sector). Not compared, because the private engine has nothing to compare
   with: the input checks (and the checks of a city file), the mirror mode (and `complete`), the command line and its summary, the `at` dates of the
-  chronicle, the replay (`first`) and the chronicle sentences. `picture` is a rewrite of the private SVG renderer (the plan view of a layout v4 document),
-  not an extraction, and it is not under parity either; the pictures of the README are made here, from the sample. A change to any of these says so in
-  its commit.
+  chronicle, the replay (`first`), the chronicle sentences, and the whole world built by hand (the event log and its fold, the golden-angle sectors,
+  undo, the suggestions, the world file and the SQLite store; its tests pin the sha256 of a scripted world and of the sample cities). `picture` is a
+  rewrite of the private SVG renderer (the plan view of a layout v4 document), not an extraction, and it is not under parity either; the pictures of the
+  README are made here, from the sample. A change to any of these says so in its commit.
 - No third-party code or data is copied in. Two textbook algorithms (largest-remainder apportionment, Douglas-Peucker simplification) are
   implemented here, and the sample is generated from invented word lists.

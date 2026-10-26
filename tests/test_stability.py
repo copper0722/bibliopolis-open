@@ -5,37 +5,11 @@ The check itself is `stability_violations` of hand_support. It reads what an eve
 so a fault that moves one house too many shows. The mutation controls below plant such faults in the engine and see that the check turns red."""
 
 import pytest
-from hand_support import Hand, hid, play, stability_violations
+from hand_support import play, scripted, stability_violations
 
 from bibliopolis import hand
 from bibliopolis import layout as lay
 from bibliopolis.events import standing
-
-
-def houses(first, last):
-    return [hid(i) for i in range(first, last + 1)]
-
-
-def scripted():
-    """A log in which every kind of event leaves holes in front of houses that stay: roads opened from the middle of the root zone, houses filed out of a road and out
-    of the root zone, a road with roads below it moved, a rename, a rule, and an undo from the middle."""
-    h = Hand()
-    h.add(60)
-    h.open("a", "A", None, houses(3, 20))  # holes at the front of the root zone
-    h.open("b", "B", None, [hid(i) for i in range(21, 41) if i % 2])  # ... and in the middle of it
-    h.add(20)
-    h.file(hid(1), "a")
-    h.file(hid(30), "b")  # (house 30 is in the root zone: b took the odd ones)
-    h.file(hid(5), "b")  # out of a road, with houses after it
-    h.open("a1", "A one", "a", houses(6, 17))
-    h.rename("a", "Alpha")
-    h.rule(30, 5)
-    h.move("a1", "b")
-    h.add(5)
-    h.undo(len(h.journal.events) - 3)  # from the middle: nothing names the house it added
-    h.file(hid(2), "a1")
-    h.move("b", "a")
-    return h
 
 
 def test_a_scripted_log_with_every_kind_of_event_is_stable():

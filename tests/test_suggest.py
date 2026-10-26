@@ -11,7 +11,6 @@ from hand_support import Hand, hand_problems, hid, play, stability_violations, t
 from support import sample
 
 from bibliopolis import inputs
-from bibliopolis import suggest as sg
 from bibliopolis.events import LEVELS, Refusal
 from bibliopolis.suggest import Group, crowded, largest_group, suggest_file, suggest_road
 from bibliopolis.tree import TreeView, major_tag
