@@ -362,5 +362,6 @@ suggest_road(journal.state, None)
 | the world file, the SQLite file, the home folder | `tests/test_world_file.py` |
 | the schema of the world file (`schema/world.schema.json`) | `tests/test_world_schema.py` |
 | the command `world` | `tests/test_world_cli.py` |
+| the city file of a world built by hand: the reader, the chronicle and the picture against one wrong field at a time | `tests/test_hand_cityfile.py` |
 | the number form and the pinned hashes | `tests/test_canonical.py`, `tests/test_world_file.py` |
 | this page: its examples load through the readers and its numbers are the program's | `tests/test_world_page.py` |

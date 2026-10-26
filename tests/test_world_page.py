@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 import refusal_cases as rc
-from hand_support import Hand, hid, item, sample_world_items, stamp, topic
+from hand_support import Hand, every_entry, hid, item, sample_world_items, stamp, topic
 
 from bibliopolis import cli, hand
 from bibliopolis import events as ev
@@ -82,19 +82,7 @@ def test_the_table_of_events_names_the_kinds_and_the_payloads_of_the_program():
 
 
 def entries_of_a_world():
-    h = Hand()
-    h.add(30, topic(1, 1, 1, 1))
-    h.open("a", "A", None, [hid(i) for i in range(1, 13)])
-    h.open("b", "B", None, [hid(i) for i in range(13, 25)])
-    h.file(hid(26), "a")
-    h.rename("a", "Alpha")
-    h.open("a1", "A one", "a", [hid(i) for i in range(1, 11)])
-    h.move("a1", "b")
-    h.merge("m", "M", ["a", "b"])
-    h.rule(30, 5)
-    h.add(1)
-    h.undo()
-    return {tuple(sorted(set(e) - {"n", "event_id", "seq", "trigger", "at"})): e for e in h.state.city()["world"]["chronicle"]}
+    return {tuple(sorted(set(e) - {"n", "event_id", "seq", "trigger", "at"})): e for e in every_entry().state.city()["world"]["chronicle"]}
 
 
 def test_the_table_of_chronicle_entries_has_the_keys_the_engine_writes_in_that_order():

@@ -247,6 +247,23 @@ def scripted_merge():
     return h
 
 
+def every_entry():
+    """A world whose chronicle has an entry of each kind: a road opened, a house filed, a road renamed, a road moved, avenues merged, a change of rule and an undo."""
+    h = Hand()
+    h.add(30, topic(1, 1, 1, 1))
+    h.open("a", "A", None, houses(1, 12))
+    h.open("b", "B", None, houses(13, 24))
+    h.file(hid(26), "a")
+    h.rename("a", "Alpha")
+    h.open("a1", "A one", "a", houses(1, 10))
+    h.move("a1", "b")
+    h.merge("m", "M", ["a", "b"])
+    h.rule(30, 5)
+    h.add(1)
+    h.undo()
+    return h
+
+
 # ------------------------------------------------------------------------------------------ a random player ----
 def play(seed: int, steps: int = 120, *, auto: bool = False, rule: dict | None = None, suggested: bool = False, arrivals: float = 0.46, merging: bool = False) -> Journal:
     """A random player: items arrive, roads open below the root zone and below roads, houses are filed, roads renamed and moved, the rule changes, events are undone.
