@@ -108,9 +108,9 @@ def test_the_directions_freed_by_moves_and_by_a_merge_are_taken_lowest_first():
     h = avenues(13)
     h.move("r9", "r0")
     h.move("r3", "r0")
-    h.merge("m", "M", ["r6", "r7"])  # as wide: r6 holds 6, the sector of 7 is a hundredth of a degree wider: 7 is kept
-    assert sorted(set(range(13)) - set(h.state.held)) == [3, 6, 9] and h.state.held[7] == "m"
-    for want in (3, 6, 9):
+    h.merge("m", "M", ["r6", "r7"])  # 32.46 and 32.47 degrees are as wide (32.5), and so are the houses: the lower number is kept
+    assert sorted(set(range(13)) - set(h.state.held)) == [3, 7, 9] and h.state.held[6] == "m"
+    for want in (3, 7, 9):
         h.add(10)
         h.open(f"n{want}", f"New {want}", None, h.state.houses_at(None))
         assert h.state.direction_of(f"n{want}") == want
@@ -144,8 +144,10 @@ def test_the_move_of_a_road_that_is_not_an_avenue_changes_no_direction():
 
 
 # ------------------------------------------------------------------------------------------------ the merge ----
-def test_the_sectors_of_the_directions_have_the_widths_the_page_gives():
+def test_the_sectors_of_the_directions_have_the_widths_the_page_gives_and_the_merge_compares_them_in_whole_tenths_of_a_degree_rounded_half_up():
     assert [hi - lo for lo, hi in SECTORS] == [4000] * 5 + [3246, 3246, 3247] + [1252, 1252, 1252, 1253, 1252]  # in units of 1/100 degree
+    assert [hand.tenths(hi - lo) for lo, hi in SECTORS] == [400] * 5 + [325] * 3 + [125] * 5  # in tenths of a degree: the hundredths are the tiling, not a difference
+    assert [hand.tenths(n) for n in (3244, 3245, 3246, 3249, 3250, 1249, 1250, 4000, 5)] == [324, 325, 325, 325, 325, 125, 125, 400, 1]  # a half goes up
 
 
 def test_a_merge_gives_the_new_avenue_the_direction_of_the_member_with_the_widest_sector_and_frees_the_others():
@@ -174,7 +176,10 @@ def test_of_two_members_with_sectors_as_wide_the_one_with_the_most_houses_on_it_
     for x in houses(98, 103):
         h.file(x, "r1a")  # r1 has 18 on the road below it
     assert h.state.widest_avenue(["r3", "r1"]) == "r1" and h.state.widest_avenue(["r3", "r1", "r5"]) == "r1"  # the sector of r5 is narrower
-    assert h.state.widest_avenue(["r5", "r6"]) == "r5" and h.state.widest_avenue(["r5", "r6", "r7"]) == "r7"  # 32.46, 32.46 and 32.47 degrees: a hundredth of a degree decides
+    assert h.state.widest_avenue(["r5", "r6"]) == "r5" and h.state.widest_avenue(["r7", "r6", "r5"]) == "r5"  # 32.46, 32.46 and 32.47 degrees are as wide: 12 houses each, the lower number
+    for x in houses(104, 108):
+        h.file(x, "r7")  # r7 has 17 houses now: as wide as r5 and r6, and with the most
+    assert h.state.widest_avenue(["r5", "r6", "r7"]) == "r7" and h.state.widest_avenue(["r5", "r7", "r2"]) == "r2"  # the sector of r2 is the wider (40 degrees), whatever the houses
     h.merge("m", "M", ["r5", "r3", "r1"])
     assert h.state.held[1] == "m" and 3 not in h.state.held and 5 not in h.state.held
     sound(h)
@@ -580,7 +585,7 @@ def test_the_widest_sector_keeps_the_merged_avenue_nearer_the_town_hall_than_a_n
 def merge_log(kind="width"):
     """Thirteen avenues with 12 houses each and a road below r2, and a merge that the planted faults go wrong on. `width`: r2 (40 degrees), r5 (32.46, with 15 houses, the most) and
     r9 (12.52): the sector of r2 is the widest. `houses`: r0 and r1, both 40 degrees, r1 with 15 houses: the one with the most houses. `number`: r0 and r1, both 40 degrees,
-    with 12 houses each: the lower number."""
+    with 12 houses each: the lower number. `hundredths`: r5 (32.46, with 15 houses) and r7 (32.47): as wide in tenths of a degree, so r5, which has the most houses."""
     h = avenues(13, each=12)
     h.open("r2a", "R2 A", "r2", houses(25, 36))
     if kind == "width":
@@ -588,6 +593,11 @@ def merge_log(kind="width"):
         for x in houses(157, 159):
             h.file(x, "r5")
         h.merge("m", "M", ["r2", "r5", "r9"])
+    elif kind == "hundredths":
+        h.add(3)
+        for x in houses(157, 159):
+            h.file(x, "r5")
+        h.merge("m", "M", ["r5", "r7"])
     else:
         if kind == "houses":
             h.add(3)
@@ -625,6 +635,12 @@ def test_the_stability_check_has_to_know_the_event_or_a_merge_looks_like_houses_
 
 
 def width(state, road):
+    """The width of the sector of an avenue, in whole tenths of a degree (rounded half up)."""
+    lo, hi = SECTORS[state.direction_of(road)]
+    return (hi - lo + 5) // 10
+
+
+def hundredths(state, road):
     lo, hi = SECTORS[state.direction_of(road)]
     return hi - lo
 
@@ -634,6 +650,7 @@ FAULTS = {
     "the most houses and not the widest sector": ("width", lambda self, ms: min(ms, key=lambda m: (-len(self.houses_below(m)), self.direction_of(m)))),
     "the fewest houses of two as wide": ("houses", lambda self, ms: min(ms, key=lambda m: (-width(self, m), len(self.houses_below(m)), self.direction_of(m)))),
     "the higher number of two as wide and as large": ("number", lambda self, ms: min(ms, key=lambda m: (-width(self, m), -len(self.houses_below(m)), -self.direction_of(m)))),
+    "the hundredths of a degree decide": ("hundredths", lambda self, ms: min(ms, key=lambda m: (-hundredths(self, m), -len(self.houses_below(m)), self.direction_of(m)))),
 }
 
 

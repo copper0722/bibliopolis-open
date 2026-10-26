@@ -544,8 +544,8 @@ def landing_violations(events: list[dict], rule: dict) -> list[str]:
 def direction_violations(events: list[dict], rule: dict) -> list[str]:
     """Replay the log one event at a time and check which avenue holds which direction, from the event and the world before it (not from what the engine says): a new
     avenue (an `open_road` below the town hall, an avenue that the rule `auto` opens, in the order it opens them) takes the lowest direction that no avenue holds; a merge
-    gives the new avenue the direction of the member whose sector is the widest (of two as wide, the one with the most houses on it and below it, then the lower number) and
-    frees the directions of the other members; an avenue that moves below another road frees its direction; no other event changes who holds a direction. An undo is
+    gives the new avenue the direction of the member whose sector is the widest, the widths compared in whole tenths of a degree rounded half up (of two as wide, the one with
+    the most houses on it and below it, then the lower number) and frees the directions of the other members; an avenue that moves below another road frees its direction; no other event changes who holds a direction. An undo is
     excepted: the world is folded again."""
     bad = []
     state, seen = State(rule), []
@@ -564,7 +564,7 @@ def direction_violations(events: list[dict], rule: dict) -> list[str]:
         elif e["kind"] == "merge_roads":
             direction = {m: next(k for k, road in held.items() if road == m) for m in p["members"]}
             size = {m: sum(1 for h in state.items if state.road_of[h] in set(state.subtree(m))) for m in p["members"]}
-            width = {m: SECTORS[direction[m]][1] - SECTORS[direction[m]][0] for m in p["members"]}
+            width = {m: (SECTORS[direction[m]][1] - SECTORS[direction[m]][0] + 5) // 10 for m in p["members"]}  # in whole tenths of a degree, rounded half up
             took = min(p["members"], key=lambda m: (-width[m], -size[m], direction[m]))
             for m in p["members"]:
                 del want[direction[m]]

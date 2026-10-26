@@ -137,10 +137,13 @@ def test_the_numbers_the_page_gives_for_the_sample_are_the_numbers_of_the_progra
 
 
 # ------------------------------------------------------------------------------------------ for a port ----
-def test_the_widths_of_the_sectors_the_page_gives_for_the_merge_are_the_widths_of_the_table():
-    spans = [f"{(hi - lo) / 100:.2f}" for lo, hi in hand.SECTORS]
-    assert spans == ["40.00"] * 5 + ["32.46", "32.46", "32.47"] + ["12.52", "12.52", "12.52", "12.53", "12.52"]
-    assert "(40.00 for the numbers 0 to 4, 32.46, 32.46 and 32.47 for 5 to 7, 12.52, 12.52, 12.52, 12.53 and 12.52 for 8 to 12)" in " ".join(PAGE.split())
+def test_the_widths_of_the_sectors_the_page_gives_for_the_merge_are_the_widths_of_the_table_in_whole_tenths_of_a_degree():
+    spans = [hi - lo for lo, hi in hand.SECTORS]
+    assert [f"{n / 100:.2f}" for n in spans] == ["40.00"] * 5 + ["32.46", "32.46", "32.47"] + ["12.52", "12.52", "12.52", "12.53", "12.52"]
+    assert [hand.tenths(n) / 10 for n in spans] == [40.0] * 5 + [32.5] * 3 + [12.5] * 5
+    page = " ".join(PAGE.split())
+    assert "40.0 for the numbers 0 to 4, 32.5 for 5 to 7 (32.46, 32.46 and 32.47) and 12.5 for 8 to 12 (12.52, 12.52, 12.52, 12.53 and 12.52)" in page
+    assert "whole tenths of a degree, rounded half up (`(span + 5) // 10` for a span in units of 1/100 degree)" in page and "so 32.46 and 32.47 are both 325 and 12.52 and 12.53 both 125" in page
 
 
 def test_the_check_the_page_names_for_a_port_is_in_the_repository():

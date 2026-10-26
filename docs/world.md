@@ -128,9 +128,10 @@ An event that an undo takes back writes no entry (it does not count); the undo w
 **Merging avenues.** A full first ring is a signal to group upward, not a dead end. `merge_roads {road, name, parent, members, topic}` takes two or more avenues of the first ring (`members`;
 a road below another road is no avenue) and opens the new avenue `road` under the town hall (`parent` is null) above them:
 
-- The new avenue takes **the direction of the member with the widest sector**: its sector and its bearing. It carries the houses of all the members and needs the room. The sectors are
-  compared in units of 1/100 degree (40.00 for the numbers 0 to 4, 32.46, 32.46 and 32.47 for 5 to 7, 12.52, 12.52, 12.52, 12.53 and 12.52 for 8 to 12). Of two members whose sectors are as
-  wide, the one with the most houses on it and below it; then the lower number.
+- The new avenue takes **the direction of the member with the widest sector**: its sector and its bearing. It carries the houses of all the members and needs the room. The widths are
+  compared in whole tenths of a degree, rounded half up (`(span + 5) // 10` for a span in units of 1/100 degree): 40.0 for the numbers 0 to 4, 32.5 for 5 to 7 (32.46, 32.46 and 32.47) and
+  12.5 for 8 to 12 (12.52, 12.52, 12.52, 12.53 and 12.52). The hundredths come of how the sectors tile the circle; they are no real difference. Of two members whose sectors are as wide, the one
+  with the most houses on it and below it; then the lower number.
 - The members stand below the new avenue as roads of ring 2, with the roads and the houses below them, as after a move of a road: **only the houses of their subtrees are put again**, on the
   line of the new avenue, a road at a time in the order the roads were opened and their houses in the order they arrived; every other house keeps its lot. The old lines of the members (their
   spokes and ribs, which would lie under the new line or under the road of the next avenue that takes the direction) are taken away.
@@ -351,7 +352,8 @@ The TypeScript engine must give the same bytes as this one. What is easy to get 
 - **Ties by code point.** Every "ties by code point" (a node id, a road id, a parent id) compares Unicode code points, as Python compares strings. A string comparison in JavaScript or
   TypeScript compares UTF-16 units, and the two differ for a character beyond U+FFFF: U+10000 comes after U+E000 here and before it there.
 - **Directions.** The 13 sectors above, as whole units of 1/100 degree; a new avenue takes the lowest number that no avenue holds; a merge keeps the direction of the member with the widest
-  sector (strictly: 32.47 is wider than 32.46); an avenue that moves below a road, and the members of a merge, give their numbers up.
+  sector, the widths in whole tenths of a degree rounded half up (`(span + 5) // 10` for a span in units of 1/100 degree, so 32.46 and 32.47 are both 325 and 12.52 and 12.53 both 125); an
+  avenue that moves below a road, and the members of a merge, give their numbers up.
 - **Road ids.** The engine names a new road `road:<place>`, and when that is in use `road:<place>@1`, `@2`, and so on: the first that is not in use now. When an avenue gives up its direction
   (merged, or moved below a road) its line, its spoke, its arcs and the roads of the ribs on it are taken away, so those ids are free again and the next road of that name takes them. The
   layout document carries the road ids, so a port must reuse them in the same way.

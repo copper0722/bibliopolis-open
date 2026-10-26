@@ -17,9 +17,10 @@ There is no library to plan from, so the plan grows with the world and never cha
                   A new avenue takes the lowest number that no avenue holds; with all 13 held the event is refused (`Refusal` with the id `ring1_full`, and the remedy
                   `merge_roads`): the 14th category goes below an avenue, or similar avenues are merged first.
   merging         `merge_roads` groups avenues upward: the new avenue takes the direction (sector and bearing) of the member whose sector is the widest (it carries all
-                  their houses and needs the room; of two as wide, the one with the most houses on it and below it, then the lower number), the others are free again and
-                  the next avenues take them, the lowest number first (the golden-angle order among the free ones). The members stand below the new avenue as roads of
-                  ring 2, as after a move of a road: only the houses of their subtrees are put again.
+                  their houses and needs the room; widths are compared in whole tenths of a degree, rounded half up, so that the hundredths that come of the tiling make
+                  no difference; of two as wide, the one with the most houses on it and below it, then the lower number), the others are free again and the next avenues
+                  take them, the lowest number first (the golden-angle order among the free ones). The members stand below the new avenue as roads of ring 2, as after a
+                  move of a road: only the houses of their subtrees are put again.
   stability       a house stays on its lot unless an event moves it: opening a road moves the houses chosen, filing a house moves that house, moving a road moves
                   the houses of its subtree. The houses that stay keep their lots, whatever holes the others leave. (`undo` may re-place what came after the event
                   it takes back: the fold of the log without that event.)
@@ -91,6 +92,12 @@ def sector_table() -> list[tuple[int, int]]:
 SECTORS = sector_table()  # the 13 sectors: the 14th bearing (347.60 degrees) lies inside the first
 AVENUES = len(SECTORS)  # 13
 REMEDY = "merge_roads"  # what the refusal `ring1_full` names: group similar avenues under a new one, which frees their directions
+
+
+def tenths(span: int) -> int:
+    """A width given in units of 1/100 degree, in whole tenths of a degree, rounded half up. The sectors tile the circle, so their widths differ in the hundredths (32.46 and 32.47, 12.52
+    and 12.53) by no real difference: in tenths they are 325 and 125, and 400 for the widest."""
+    return (span + 5) // 10
 
 
 def ordinal(n: int) -> str:
@@ -345,11 +352,11 @@ class State:
         return [h for h in self.items if self.road_of[h] in roads]
 
     def widest_avenue(self, members: list[str]) -> str:
-        """The avenue of `members` whose direction has the widest sector (`SECTORS`, compared in units of 1/100 degree): a merge gives that sector to the new avenue, which
-        carries the houses of all of them and needs the room. Of two with sectors as wide, the one with the most houses on it and below it; then the lower number."""
+        """The avenue of `members` whose direction has the widest sector (`SECTORS`, the widths compared in whole tenths of a degree, `tenths`): a merge gives that sector to the
+        new avenue, which carries the houses of all of them and needs the room. Of two with sectors as wide, the one with the most houses on it and below it; then the lower number."""
         def rank(m: str) -> tuple[int, int, int]:
             k = self.direction_of(m)
-            return -(SECTORS[k][1] - SECTORS[k][0]), -len(self.houses_below(m)), k
+            return -tenths(SECTORS[k][1] - SECTORS[k][0]), -len(self.houses_below(m)), k
 
         return min(members, key=rank)
 
