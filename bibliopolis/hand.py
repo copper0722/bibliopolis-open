@@ -40,7 +40,7 @@ from . import document
 from . import layout as lay
 from . import plan as plan_mod
 from . import world as zw
-from .events import AUTO_PREFIX, Refusal, standing
+from .events import AUTO_PREFIX, RING_LIMIT, Refusal, standing
 from .suggest import descends, landing, roads_by_node, suggest_road
 
 ZONING_VERSION = "hand-1"
@@ -108,6 +108,11 @@ def ring1_full(number: int) -> Refusal:
     """The refusal when no direction is left for the `number`-th category of the first ring: it names the remedy."""
     return Refusal(f"the first ring has at most {AVENUES} avenues and all {AVENUES} directions are used, so the {ordinal(number)} category goes below an avenue, "
                    f"or similar avenues are merged under a new one ({REMEDY}) to free their directions", "ring1_full", limit=AVENUES, number=number, remedy=REMEDY)
+
+
+def too_deep(road: str, ring: int) -> Refusal:
+    """The refusal when an event would put a road in a ring deeper than `RING_LIMIT`: `road` is the road the event is about, `ring` the deepest ring that any road would stand in."""
+    return Refusal(f"the road {road!r} would put a road in ring {ring}; the most the engine takes is ring {RING_LIMIT}", "too_deep", road=road, ring=ring, limit=RING_LIMIT)
 
 
 def ring1_wedge(given: list[tuple[int, int]], k: int) -> tuple[int, int]:
@@ -346,6 +351,17 @@ class State:
                     todo.append(k)
         return [k for k in self.nodes if k in below]
 
+    def ring(self, road: str) -> int:
+        """The ring a road stands in: 1 for an avenue, and one more for each road above it."""
+        n = 1
+        while self.nodes[road]["parent"] is not None:
+            road, n = self.nodes[road]["parent"], n + 1
+        return n
+
+    def merge_reach(self, members: list[str]) -> int:
+        """The deepest ring that a merge of the avenues `members` would put a road in: the new avenue is ring 1, they are ring 2, and every road below them goes one ring down."""
+        return 1 + max(self.ring(k) for m in members for k in self.subtree(m))
+
     def houses_below(self, road: str) -> list[str]:
         """The houses that stand on the road or on a road below it, in arrival order."""
         roads = set(self.subtree(road))
@@ -399,8 +415,8 @@ class State:
         houses directly, a road is opened for the largest group of its houses (`bibliopolis.suggest.suggest_road`: one level of OpenAlex below the place) and named after the
         node, with the mechanics of `open_road`: the houses that stay keep their lots. Each road so opened is looked at in turn, in the order they were opened, so that one
         that holds more than `max` houses splits again. The roads are `auto:<seq>`, `auto:<seq>.2`, ... in that order, roads like any other afterwards. A place with no
-        suggestion (no group of `min`, or a road for a topic, which is not split), or the root zone when all 13 directions of the first ring are used, is left as it is,
-        crowded (`bibliopolis.suggest.crowded` says so). Nothing without `auto`."""
+        suggestion (no group of `min`, or a road for a topic, which is not split, or a road in the last ring, `RING_LIMIT`), or the root zone when all 13 directions of the first
+        ring are used, is left as it is, crowded (`bibliopolis.suggest.crowded` says so). Nothing without `auto`."""
         if not self.rule["auto"]:
             return
         n, queue, seen = 0, [start], set(touched)
@@ -429,6 +445,9 @@ class State:
             raise Refusal(f"there is a road {key!r} already", "road_exists", road=key)
         if parent is not None and parent not in self.nodes:
             raise Refusal(f"there is no road {parent!r} to open a road below", "parent_missing", parent=parent)
+        ring = 1 if parent is None else self.ring(parent) + 1
+        if ring > RING_LIMIT:
+            raise too_deep(key, ring)
         held = self.houses_at(parent)
         if len(held) < least:
             raise Refusal(f"{self.where(parent)} holds {len(held)} houses directly; a road is opened from a place that holds at least {least}", "too_few_here",
@@ -503,6 +522,9 @@ class State:
         old = self.nodes[key]["parent"]
         if old == parent:
             raise Refusal(f"the road {key!r} is below {parent!r} already", "already_below", road=key, parent=parent)
+        reach = self.ring(parent) + 1 + max(self.ring(k) for k in below) - self.ring(key)  # the ring of the deepest road of the subtree once it stands below `parent`
+        if reach > RING_LIMIT:
+            raise too_deep(key, reach)
         moved = [h for h in self.items if self.road_of[h] in below]
         self.nodes[key]["parent"] = parent
         if old is None:  # an avenue below another road is no avenue: its direction is free (the next avenue takes the lowest free number)
@@ -525,6 +547,9 @@ class State:
                 raise Refusal(f"the road {m!r} is not an avenue: it is below {self.nodes[m]['parent']!r}, and only avenues of the first ring are merged", "not_an_avenue", road=m)
         below = {m: set(self.subtree(m)) for m in members}  # (before anything moves)
         keys = [k for k in self.nodes if any(k in roads for roads in below.values())]  # in the order the roads were opened
+        reach = self.merge_reach(members)
+        if reach > RING_LIMIT:
+            raise too_deep(key, reach)
         moved = [h for h in self.items if any(self.road_of[h] in roads for roads in below.values())]
         if node is not None:
             taken = roads_by_node(self).get((node["level"], node["id"]))

@@ -106,6 +106,16 @@ def ring1_full(tmp):
     return raised(lambda: h.open("r13", "Road 13", None, h.state.houses_at(None)))
 
 
+def too_deep(tmp):
+    h = Hand({"max": 40, "min": 1, "auto": False})
+    h.add(1)
+    parent = None
+    for d in range(1, ev.RING_LIMIT + 1):
+        h.open(f"r{d}", f"Road {d}", parent, [hid(1)])
+        parent = f"r{d}"
+    return raised(lambda: h.open("deeper", "Deeper", parent, [hid(1)]))
+
+
 def house_exists(tmp):
     h = town(2)
     return raised(lambda: h.event("add_item", {"item": h.state.items[hid(1)]}))

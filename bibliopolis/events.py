@@ -28,7 +28,7 @@ that a page can translate it into any language without reading the English text.
 
 from __future__ import annotations
 
-from .inputs import _CONTROL, _LANE_LIKE, MAX_PROBLEMS, _Problems, _shown, _whole, parse_added_at
+from .inputs import _CONTROL, _LANE_LIKE, MAX_DEPTH, MAX_PROBLEMS, _Problems, _shown, _whole, parse_added_at
 from .plan import MAX_HOUSES, MIN_HOUSES
 
 KINDS = ("add_item", "open_road", "file", "rename_road", "move_road", "merge_roads", "undo", "set_rule")
@@ -46,6 +46,7 @@ PAYLOAD_KEYS = {"add_item": ("item",), "open_road": ("road", "name", "parent", "
                 "move_road": ("road", "parent"), "merge_roads": ("road", "name", "parent", "members", "topic"), "undo": ("seq",), "set_rule": RULE_KEYS}
 OPTIONAL_KEYS = {"open_road": ("topic",), "merge_roads": ("topic",)}  # left out, they are null (the event is kept with every key, in the order of PAYLOAD_KEYS)
 MERGE_LEAST = 2  # the fewest avenues a merge takes
+RING_LIMIT = MAX_DEPTH  # the deepest ring a road stands in (an avenue is ring 1): the engine walks the roads ring by ring, and takes no more of a library's tree either
 NODE_KEYS = ("id", "level", "name")  # the OpenAlex node a road carries: the id of the node, its level (one of ORDER) and its name
 
 # The ids of every refusal, problem of shape and error of a world file, with the names of their params: the one list (docs/world.md, "Refusals" says when each comes).
@@ -53,6 +54,7 @@ NODE_KEYS = ("id", "level", "name")  # the OpenAlex node a road carries: the id 
 CODES = {
     # ---- the world refuses an event (Refusal)
     "ring1_full": ("limit", "number", "remedy"),
+    "too_deep": ("road", "ring", "limit"),
     "house_exists": ("house",),
     "not_a_house": ("house",),
     "road_exists": ("road",),

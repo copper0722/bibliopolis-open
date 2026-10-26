@@ -69,7 +69,8 @@ the world never refuses a house for it, never marks a road over and never splits
 **The root zone.** A house starts underground, under the town hall, on the first free cell of the grid of the root zone (as in a grown city, see [engine.md](engine.md)). The
 root zone is no road: nothing of it is on the surface.
 
-**A road** is a node of the player's tree (it may also stand for a node of OpenAlex: see "A road's node"). Below the root zone it is a **ring-1 road**: a trunk of its own, with a sector of the circle and a spoke through the plaza.
+**A road** is a node of the player's tree (it may also stand for a node of OpenAlex: see "A road's node"). It stands in a **ring**: an avenue in ring 1, a road below an avenue in ring 2, and so on to
+ring 64, the last (`too_deep` refuses an event that would pass it). Below the root zone it is a **ring-1 road**: a trunk of its own, with a sector of the circle and a spoke through the plaza.
 Below a road it is laid out as the engine lays out a topic that the plan does not hold: a rib on the line of its ring-1 road (a road of ring 3 is a rib on the same line). No
 trunk is promoted and no heavy path changes. A road with more houses than a rib holds opens continuation ribs, as in a grown city.
 
@@ -101,7 +102,7 @@ takes the lowest empty lot). The one exception is `undo`, which is the fold of t
 replay logs one event at a time and check this (`tests/test_stability.py`), with planted faults that must turn the check red.
 
 **Moving a road.** The road and the roads below it are put again below the new parent, a road at a time in the order the roads were opened, and their houses in the order they arrived;
-their old ribs go and the ground they claimed stays claimed. A road may not move below itself or below a road of its own, nor below the road it is below already. A ring-1 road may move
+their old ribs go and the ground they claimed stays claimed. A road may not move below itself or below a road of its own, nor below the road it is below already, nor where the deepest road of its subtree would stand below ring 64 (`too_deep`). A ring-1 road may move
 below a road (it is then laid out like any road of ring 2, on the line of the avenue it is below). It gives up its direction, and its old line, which nothing stands on any more and which the next avenue
 of that direction would have its own line over, is taken away (the ground of the other roads that move stays claimed). A road below a road cannot move to the town hall: `parent` is a road, and a move never makes a ring-1 road.
 
@@ -138,7 +139,7 @@ a road below another road is no avenue) and opens the new avenue `road` under th
 - The directions of the other members are **free**. The next avenue takes the lowest free number. A direction that a merge frees has a lower number than any that was never used, so freed
   directions are taken first, in the golden-angle order among the free ones, and each comes back with the sector and the bearing that its number always has.
 - `topic` is as for `open_road`: the OpenAlex node the new avenue stands for; it is refused when another road stands for it, or when a house of the members, or of the roads below them, is not under it.
-- Refused: a road id that is there, a member that is not there, a member that is not an avenue (`not_an_avenue`). Two or more members, no member twice, `parent` null: the shape of the event.
+- Refused: a road id that is there, a member that is not there, a member that is not an avenue (`not_an_avenue`), a merge that would put a road below ring 64 (`too_deep`: every road below the members goes one ring down). Two or more members, no member twice, `parent` null: the shape of the event.
 
 `suggest_merge` (below) proposes the members. The merge writes one entry of the chronicle.
 
@@ -185,6 +186,7 @@ that is read passes the refusal of an event on as a `WorldFileError` with the sa
 | id | params | when | message |
 |---|---|---|---|
 | `ring1_full` | `limit`, `number`, `remedy` | `open_road` with `parent` null, when all 13 directions are held (`limit` is 13, `number` the number of the category, `remedy` what frees directions: `merge_roads`) | the first ring has at most 13 avenues and all 13 directions are used, so the 14th category goes below an avenue, or similar avenues are merged under a new one (merge_roads) to free their directions |
+| `too_deep` | `road`, `ring`, `limit` | `open_road`, `move_road` or `merge_roads` that would put a road in a ring deeper than `limit` (64; an avenue is ring 1): `road` is the road of the event, `ring` the deepest ring any road would stand in | the road 'deeper' would put a road in ring 65; the most the engine takes is ring 64 |
 | `house_exists` | `house` | `add_item` of an item whose id is a house already | 'h0001' is a house already |
 | `not_a_house` | `house` | a house id that is not a house: in `open_road`, `file` and `suggest_file` | 'nobody' is not a house |
 | `road_exists` | `road` | `open_road` with the id of a road that is there | there is a road 'a' already |
@@ -364,6 +366,8 @@ The TypeScript engine must give the same bytes as this one. What is easy to get 
 - **Road ids.** The engine names a new road `road:<place>`, and when that is in use `road:<place>@1`, `@2`, and so on: the first that is not in use now. When an avenue gives up its direction
   (merged, or moved below a road) its line, its spoke, its arcs and the roads of the ribs on it are taken away, so those ids are free again and the next road of that name takes them. The
   layout document carries the road ids, so a port must reuse them in the same way.
+- **Depth.** Ring 64 is the last: an `open_road`, `move_road` or `merge_roads` that would put a road in ring 65 is refused with the id `too_deep`, before anything changes. A port must not
+  leave that to its stack, which runs out at another depth than Python's: the same log must be taken or refused by every engine.
 - **Rounding.** The `confidence` of `suggest_file` is `round(count / whole, 2)` with Python's `round`, which rounds a half to the even digit on the binary value: 1/8 is 0.12, not 0.13.
 - **Order.** The roads, the items and the houses are kept in the order of the log; "in arrival order" and "in the order the roads were opened" mean that order, and an object is written with its
   keys in the order of this page (the chronicle entries, the events, the world file).
@@ -373,6 +377,9 @@ The TypeScript engine must give the same bytes as this one. What is easy to get 
 - A town has at most 13 avenues (above): the 14th category goes below an avenue. The sectors are fixed by the rule, not by the weight of a road.
 - No trunk is promoted below ring 1 and no heavy path changes; a road below a road is a rib on the line of its ring-1 road.
 - A road never becomes a ring-1 road by moving (`parent` is a road); an avenue that moves below a road gives its direction up.
+- No road stands deeper than ring 64 (an avenue is ring 1), the limit the engine takes of the tree of a library too, since it walks the roads ring by ring. An `open_road`, a `move_road`
+  (with the roads below the road) or a `merge_roads` (which puts every road of the members one ring down) that would pass it is refused by `too_deep` before anything changes;
+  `suggest_road` offers nothing below the last ring and `suggest_merge` nothing that would pass it; the rule `auto` leaves such a place crowded.
 - `merge_roads` merges avenues of the first ring under a new avenue of the first ring; it does not merge roads below a road.
 - A road for a topic is not split, whatever it holds: the OpenAlex tree has no level below a topic (`crowded` lists it).
 - The roads of a hand-built city are never marked over and nothing splits by itself, except under `auto`; `crowded` is computed on demand.
@@ -389,6 +396,7 @@ The TypeScript engine must give the same bytes as this one. What is easy to get 
 | suggestions, `crowded`, the rule `auto`, the sample | `tests/test_suggest.py` |
 | the ids and params of every refusal, and a scenario for each | `tests/test_refusals.py`, `tests/refusal_cases.py` |
 | merging avenues, `suggest_merge`, the directions held and freed | `tests/test_merge.py` |
+| how deep a road may stand: the limit, the refusal before any change, the stack | `tests/test_depth.py` |
 | the world file, the SQLite file, the home folder | `tests/test_world_file.py` |
 | the golden world files of `examples/` and their index: byte for byte, the pinned cities, the schema | `tests/test_world_examples.py` |
 | the schema of the world file (`schema/world.schema.json`) | `tests/test_world_schema.py` |

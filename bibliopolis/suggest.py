@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from collections import Counter
 
-from .events import LEVELS, MERGE_LEAST, ORDER, Refusal
+from .events import LEVELS, MERGE_LEAST, ORDER, RING_LIMIT, Refusal
 
 
 def roads_by_node(world) -> dict[tuple[str, str], str]:
@@ -92,9 +92,12 @@ def suggest_road(world, at: str | None) -> dict | None:
     field, a field road by subfield, a subfield road by topic; a topic road is not split. Only the topics at or below the node of the place count. A house is in the group of
     each node it carries at that level, once; a house with no topic is in none. A node that a road stands for already is left out. The suggestion is the largest group of at
     least `min` houses (of two as large, the lower node id); `houses` are its members in arrival order, `topic` its node, ready to be the `topic` of `open_road`, and `name` the
-    default name of the road (the name of the node, as the first house that carries it writes it). `Refusal` for a road that is not there."""
+    default name of the road (the name of the node, as the first house that carries it writes it). None where no road can be opened: a road in the last ring (`RING_LIMIT`) has no ring
+    below it. `Refusal` for a road that is not there."""
     if at is not None and at not in world.nodes:
         raise Refusal(f"there is no road {at!r}", "no_road", road=at)
+    if at is not None and world.ring(at) >= RING_LIMIT:
+        return None
     houses = world.houses_at(at)
     anchor = _anchor(world, at, houses)
     below = 0 if anchor is None else ORDER.index(anchor[0]) + 1
@@ -196,7 +199,8 @@ def suggest_merge(world) -> dict | None:
     (ready to be the `topic` of `merge_roads`), `name` its name, `by` is "parent_node". Failing that, the two avenues whose houses are most alike (`_likeness`: the
     topics they have in common, the most specific level first; of two as alike the pair of lower road ids), when they have anything in common: `topic` is None, `name` the two
     names joined by " / ", `by` "similar_houses". `members` are in the order the avenues were opened, `takes` is the member whose direction the new avenue takes (the one whose
-    sector is the widest, `bibliopolis.hand.State.widest_avenue`) and `frees` how many directions the merge frees. Nothing is changed; the world takes the merge as it takes any event."""
+    sector is the widest, `bibliopolis.hand.State.widest_avenue`) and `frees` how many directions the merge frees. A merge that would put a road below the last ring (`RING_LIMIT`)
+    is not suggested. Nothing is changed; the world takes the merge as it takes any event."""
     avenues = [road for road, node in world.nodes.items() if node["parent"] is None]
     if len(avenues) < MERGE_LEAST:
         return None
@@ -221,7 +225,7 @@ def suggest_merge(world) -> dict | None:
             siblings.setdefault((up, parent), []).append(road)
             names[(up, parent)] = first[parent]
     groups = [(key, roads) for key, roads in siblings.items() if len(roads) >= MERGE_LEAST and key not in taken
-              and all(descends(world.items[h]["openalex"], key[0], key[1]) for road in roads for h in houses[road])]
+              and all(descends(world.items[h]["openalex"], key[0], key[1]) for road in roads for h in houses[road]) and world.merge_reach(roads) <= RING_LIMIT]
     if groups:
         (level, parent), roads = min(groups, key=lambda g: (-len(g[1]), -sum(len(houses[r]) for r in g[1]), g[0][1], ORDER.index(g[0][0])))
         return {"members": roads, "topic": {"id": parent, "level": level, "name": names[(level, parent)]}, "name": names[(level, parent)], "by": "parent_node",
@@ -232,7 +236,7 @@ def suggest_merge(world) -> dict | None:
         for b in avenues[i + 1:]:
             like = _likeness(profiles[a], profiles[b])
             key = (tuple(-n for n in like), *sorted((a, b)))
-            if any(like) and (best is None or key < best):
+            if any(like) and (best is None or key < best) and world.merge_reach([a, b]) <= RING_LIMIT:
                 best, pair = key, [a, b]
     if pair is None:
         return None

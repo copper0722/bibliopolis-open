@@ -123,6 +123,7 @@ def test_the_limits_the_page_states_are_the_limits_of_the_program():
     with pytest.raises(ev.Refusal):
         h.journal.append("move_road", {"road": "a", "parent": None}, stamp(99))  # a road is not made a ring-1 road by a move
     assert "A road never becomes a ring-1 road by moving" in PAGE and "No trunk is promoted" in PAGE
+    assert f"No road stands deeper than ring {ev.RING_LIMIT} (an avenue is ring 1)" in PAGE and f"Ring {ev.RING_LIMIT} is the last" in PAGE and ev.RING_LIMIT == 64
     assert "never marked over" in PAGE and "A road for a topic is not split" in PAGE
     assert (ROOT / "docs" / "engine.md").is_file() and "[engine.md](engine.md)" in PAGE
 
