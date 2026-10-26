@@ -36,6 +36,8 @@ There is no library to plan from, so the plan grows with the world and never cha
 
 from __future__ import annotations
 
+import copy
+
 from . import document
 from . import layout as lay
 from . import plan as plan_mod
@@ -288,6 +290,22 @@ class State:
         self.held: dict[int, str] = {}  # direction number (0 to 12, see SECTORS) -> the avenue that holds it: a ring-1 road, or a road that moved away and keeps it
         self.kinds: dict[int, str] = {}  # seq -> kind of every event seen, standing or not
         self.effects: dict[int, dict] = {}  # seq -> {"houses": placed or moved by the event, "roads": opened by it}: what a later event can depend on
+
+    # ---- all or nothing
+    def snapshot(self) -> dict:
+        """Everything that an event may change in this State, kept so that `restore` can put it back (`Journal.append` takes one before it applies an event). The dictionaries are copies;
+        the records of `nodes` are copied too, since a rename or a move changes them in place, and the plan is copied whole; the document is the same object, since it is never changed
+        (a new one takes its place when an event is committed, `zw.apply_delta`). `vars(State)` is this and the live tree, which reads `nodes`: a test holds the two together."""
+        return {"rule": dict(self.rule), "nodes": {k: dict(v) for k, v in self.nodes.items()}, "items": dict(self.items), "road_of": dict(self.road_of), "plan": copy.deepcopy(self.plan),
+                "doc": self.doc, "held": dict(self.held), "kinds": dict(self.kinds), "effects": dict(self.effects)}
+
+    def restore(self, saved: dict) -> None:
+        """Put back what `snapshot` kept. The dictionaries are emptied and filled again, not replaced, so that whoever holds one (the live tree holds `nodes`) still holds the State's."""
+        self.rule, self.doc = saved["rule"], saved["doc"]
+        for name in ("nodes", "items", "road_of", "plan", "held", "kinds", "effects"):
+            current = getattr(self, name)
+            current.clear()
+            current.update(saved[name])
 
     # ---- events
     def apply(self, event: dict) -> None:

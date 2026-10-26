@@ -7,7 +7,9 @@
     journal = read_world(json.loads(text))                                   # ... and back: every event is appended again, under the rules of `append`
 
 `append` is the one way an event enters a world. It checks the shape of the event (bibliopolis.events), asks the world to take it (bibliopolis.hand) and only then
-keeps it, so a log made by `append` folds again to the same world. An `undo` is held to two more rules, so that the player undoes from the end backwards:
+keeps it, so a log made by `append` folds again to the same world. It is all or nothing: a `State.snapshot` is taken before the event is applied, and when anything at all comes out of
+the call (a refusal, a fault of the engine, an interrupt, a log that cannot take the event) the State is put back from it, in place, and the log is as it was. (An `undo` folds a new
+State instead, and the one that is there is not touched until the fold has succeeded.) An `undo` is held to two more rules, so that the player undoes from the end backwards:
 
   - the event it names counts, and no later event that counts depends on it: none names a road it opened, or a house it placed or moved;
   - the log without that event still folds: every later event that counts can be taken again (the check that sees what the rule above cannot say, for example the
@@ -78,16 +80,23 @@ class Journal:
         _refuse(problems)
         assert event is not None
         if kind == "undo":
-            self.state = self.undone(event)
-        else:
+            before = self.state
             try:
-                self.state.apply(event)
-            except Refusal:
+                self.state = self.undone(event)  # (a new State, folded from the log with the undo: the State that is there is not touched until this succeeds)
+                self.events.append(event)
+            except BaseException:
+                self.state = before
+                del self.events[event["seq"] - 1:]
                 raise
-            except Exception:  # a fault in the engine, with the world half changed: fold the log again, so that the journal is not left in a state no log gives
-                self.state = fold(self.events, self.rule)
-                raise
-        self.events.append(event)
+            return copy_json(event)
+        saved = self.state.snapshot()
+        try:
+            self.state.apply(event)
+            self.events.append(event)
+        except BaseException:  # a refusal, a fault of the engine, an interrupt: the journal is as it was before the call, whatever the event had changed
+            self.state.restore(saved)
+            del self.events[event["seq"] - 1:]
+            raise
         return copy_json(event)
 
     def undone(self, event: dict) -> State:

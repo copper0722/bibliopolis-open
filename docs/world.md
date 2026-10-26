@@ -108,7 +108,7 @@ of that direction would have its own line over, is taken away (the ground of the
 
 **Undo.** `undo` names an earlier event that counts. It is refused when a later event that counts depends on the named one: it names a road that the event opened, or a house that the
 event placed or moved. So the player undoes from the end backwards. It is also refused when the log without that event does not fold (every later event that counts is taken again; for
-example giving back a filing whose house a later event took from the root zone, or a merge whose freed direction a later avenue took when the ring would then be full). Appending is all or nothing.
+example giving back a filing whose house a later event took from the root zone, or a merge whose freed direction a later avenue took when the ring would then be full). Appending is all or nothing: a snapshot of the world is taken before an event is applied, and when anything comes out of the call (a refusal, a fault of the engine, an interrupt, a log that cannot take the event) the world is put back from it, in place, and the log is as it was.
 A merge depends on the roads it merges (the events that opened them cannot be undone before it); a later event that names the new avenue depends on it.
 
 **The chronicle.** One entry for each road opened, house filed, road renamed or moved, merge of avenues, undo and change of rule, in log order. Every entry has `n` (1, 2, ...), `event_id` (the `seq` of the

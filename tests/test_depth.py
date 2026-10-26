@@ -2,14 +2,13 @@
 so a chain of roads that is deep enough once ran out of stack in the middle of an event, with the road in the world and the event not in the log. Now an event that would put a road
 below the limit is refused by the id `too_deep` before anything changes, and a chain as deep as the limit is taken, folded again, undone and written with most of the stack to spare."""
 
-import copy
 import json
 import sqlite3
 import sys
 from contextlib import closing
 
 import pytest
-from hand_support import Hand, hand_problems, hid, stamp, topic
+from hand_support import Hand, hand_problems, hid, journal_value, stamp, topic
 
 from bibliopolis import layout as lay
 from bibliopolis import picture
@@ -49,9 +48,7 @@ def ring_of(state, road):
 
 
 def everything(h):
-    """All that an event may change in a journal and its world, as a value to compare before and after."""
-    s = h.state
-    return copy.deepcopy((h.journal.events, s.rule, s.nodes, s.items, s.road_of, s.held, s.kinds, s.effects, s.plan, s.doc))
+    return journal_value(h.journal)
 
 
 def stack_depth():

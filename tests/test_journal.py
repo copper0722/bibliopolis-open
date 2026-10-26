@@ -1,14 +1,16 @@
 """The journal (bibliopolis.journal): the one way an event enters a world, and what it keeps and what it gives back."""
 
 import copy
+import errno
 import json
 
 import pytest
-from hand_support import Hand, hid, item, scripted, scripted_merge, scripted_nodes, stamp, topic
+from hand_support import Hand, hid, item, journal_value, scripted, scripted_merge, scripted_nodes, stamp, topic
 
 from bibliopolis import hand
 from bibliopolis import layout as lay
 from bibliopolis.events import KINDS, Refusal
+from bibliopolis.hand import HandWorld, State
 from bibliopolis.journal import Journal, dumps_world, read_world, world_document
 
 
@@ -168,9 +170,158 @@ def test_a_fault_in_the_engine_in_the_middle_of_an_event_leaves_the_journal_as_i
     with pytest.raises(RuntimeError, match="a fault"):
         h.file(hid(11), "a")
     monkeypatch.setattr(hand.State, "do_file", original)
-    assert (h.journal.events, lay.render(h.journal.state.city(with_coast=False)), dict(h.journal.state.road_of)) == before  # the state was folded again from the log
+    assert (h.journal.events, lay.render(h.journal.state.city(with_coast=False)), dict(h.journal.state.road_of)) == before  # the state was put back as it was
     h.file(hid(11), "a")
     assert h.state.road_of[hid(11)] == "a"
+
+
+# ------------------------------------------------------------------------------------------ all or nothing ----
+def a_world_where_every_kind_of_event_can_come_next():
+    h = Hand({"max": 6, "min": 2, "auto": False})
+    h.add(9, topic(1, 1, 1, 1))
+    h.add(4, topic(2, 1, 1, 1))
+    h.open("a", "A", None, [hid(i) for i in range(1, 5)])
+    h.open("b", "B", None, [hid(i) for i in range(10, 13)])
+    h.file(hid(5), "a")
+    h.file(hid(6), "a")
+    h.open("a1", "A one", "a", [hid(5), hid(6)])
+    h.rule(6, 2, True)
+    return h
+
+
+NEXT = {
+    "add_item": lambda h: {"item": item(99, topic(1, 1, 1, 1))},
+    "open_road": lambda h: {"road": "c", "name": "C", "parent": None, "houses": [hid(7), hid(8)]},
+    "file": lambda h: {"house": hid(9), "road": "b"},
+    "rename_road": lambda h: {"road": "a", "name": "Alpha"},
+    "move_road": lambda h: {"road": "a1", "parent": "b"},
+    "merge_roads": lambda h: {"road": "m", "name": "M", "parent": None, "members": ["a", "b"]},
+    "undo": lambda h: {"seq": len(h.journal.events)},
+    "set_rule": lambda h: {"max": 9, "min": 3, "auto": True},
+}
+AT = "2026-10-26T12:00:00Z"
+PLACING = ("add_item", "open_road", "file", "move_road", "merge_roads")  # the kinds that put houses on a road
+FAULTS = {  # a place in the engine, the error it fails with once it has done its work, and the kinds of event that go through it
+    "after the houses are placed": (HandWorld, "add_houses", RuntimeError("a fault"), PLACING),
+    "when the document is to be committed": (State, "commit", RuntimeError("a fault"), KINDS),
+    "after the whole event is applied": (State, "apply", RuntimeError("a fault"), KINDS),
+    "an interrupt in the middle": (State, "commit", KeyboardInterrupt(), KINDS),
+    "the stack runs out": (State, "commit", RecursionError("maximum recursion depth exceeded"), KINDS),
+}
+PAIRS = [(kind, fault) for fault, (*_, kinds) in FAULTS.items() for kind in kinds]
+
+
+def fail_after(cls, name, error, *, first=False):
+    """The method `name` of `cls` as it is, and failing with `error` after it has done its work (`first`: before it does any)."""
+    real = getattr(cls, name)
+
+    def failing(*args, **kw):
+        if first:
+            raise error
+        real(*args, **kw)
+        raise error
+
+    return failing
+
+
+def fails_in_the_middle(kind, fault):
+    """Take the event `kind` in a world with `fault` planted (the fault is gone after): returns the journal, its value before, and the objects that must still be the journal's."""
+    h = a_world_where_every_kind_of_event_can_come_next()
+    before, state, nodes = journal_value(h.journal), h.state, h.state.nodes
+    cls, name, error, _ = FAULTS[fault]
+    with pytest.MonkeyPatch.context() as plant:
+        plant.setattr(cls, name, fail_after(cls, name, error))
+        with pytest.raises(type(error)):
+            h.journal.append(kind, copy.deepcopy(NEXT[kind](h)), AT)
+    return h, before, (state, nodes)
+
+
+def is_changed_by(kind, fault):
+    """Whether the journal is different after the event `kind` failed with `fault` from what it was before."""
+    h, before, _ = fails_in_the_middle(kind, fault)
+    return journal_value(h.journal) != before
+
+
+@pytest.mark.parametrize(("kind", "fault"), PAIRS)
+def test_an_event_that_fails_in_the_middle_leaves_the_journal_exactly_as_it_was(kind, fault):
+    """Whatever the engine does before it fails, or however: a fault, an interrupt, the stack running out. The log, the rule, the roads, the houses, the directions, the plan and the
+    document are equal to what they were, the State is the same object (whoever holds it holds the journal's) and its live tree still reads its roads; and the journal goes on as one
+    that never failed."""
+    h, before, (state, nodes) = fails_in_the_middle(kind, fault)
+    assert journal_value(h.journal) == before
+    assert h.journal.state is state and state.nodes is nodes and state.tree.nodes is nodes
+    control = a_world_where_every_kind_of_event_can_come_next()
+    h.journal.append(kind, copy.deepcopy(NEXT[kind](h)), AT)
+    control.journal.append(kind, copy.deepcopy(NEXT[kind](control)), AT)
+    assert h.journal.events == control.journal.events and lay.render(h.state.city()) == lay.render(control.state.city())
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_a_log_that_cannot_take_the_event_after_the_world_took_it_leaves_the_journal_as_it_was(kind):
+    class FullDisk(list):
+        def append(self, event):
+            raise OSError(errno.ENOSPC, "No space left on device")
+
+    h = a_world_where_every_kind_of_event_can_come_next()
+    before, kept = journal_value(h.journal), h.journal.events
+    h.journal.events = FullDisk(kept)
+    with pytest.raises(OSError, match="No space left"):
+        h.journal.append(kind, NEXT[kind](h), AT)
+    h.journal.events = list(h.journal.events)
+    assert journal_value(h.journal) == before
+
+
+def test_an_arrival_that_fails_after_the_rule_opened_some_roads_leaves_no_road_behind(monkeypatch):
+    h = Hand({"max": 5, "min": 2, "auto": True})
+    h.add(5, topic(1, 1, 1, 1))
+    before, real, calls = journal_value(h.journal), State.open, []
+
+    def the_third_fails(self, *args, **kw):
+        calls.append(args[1])
+        if len(calls) == 3:
+            raise RuntimeError("a fault")
+        return real(self, *args, **kw)
+
+    monkeypatch.setattr(State, "open", the_third_fails)
+    with pytest.raises(RuntimeError, match="a fault"):  # the sixth house takes the root zone over 5: the domain and the field are opened, the subfield is not
+        h.add(1, topic(1, 1, 1, 1))
+    monkeypatch.undo()
+    assert len(calls) == 3 and journal_value(h.journal) == before and not h.state.nodes
+    h.add(1, topic(1, 1, 1, 1))
+    assert list(h.state.nodes) == ["auto:6", "auto:6.2", "auto:6.3", "auto:6.4"]
+
+
+def test_the_snapshot_covers_every_attribute_of_a_state():
+    state = State({"max": 40, "min": 10, "auto": False})
+    assert set(vars(state)) == set(state.snapshot()) | {"tree"} and state.tree.nodes is state.nodes
+
+
+@pytest.mark.parametrize("forgotten", ["rule", "nodes", "items", "road_of", "plan", "doc", "held", "kinds", "effects"])
+def test_the_faults_see_a_restore_that_forgets_an_attribute_of_the_state(forgotten):
+    """The proof that the table of faults has teeth: with the restore of one attribute left out (it keeps what the failed event made of it), some fault of the table leaves the journal changed."""
+    real = State.restore
+
+    def forgetting(self, saved):
+        real(self, {**saved, forgotten: copy.deepcopy(getattr(self, forgotten))})
+
+    with pytest.MonkeyPatch.context() as flaw:
+        flaw.setattr(State, "restore", forgetting)
+        changed = [pair for pair in PAIRS if is_changed_by(*pair)]
+    assert changed, forgotten
+
+
+def test_the_faults_see_a_snapshot_that_shares_the_records_of_the_roads():
+    real = State.snapshot
+
+    def sharing(self):
+        saved = real(self)
+        saved["nodes"] = dict(self.nodes)  # the same records, not copies: a rename or a move changes them in place
+        return saved
+
+    with pytest.MonkeyPatch.context() as flaw:
+        flaw.setattr(State, "snapshot", sharing)
+        changed = [pair for pair in PAIRS if is_changed_by(*pair)]
+    assert {kind for kind, _ in changed} >= {"rename_road", "move_road"}
 
 
 def thirteen_avenues_and_a_fourteenth():

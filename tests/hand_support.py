@@ -4,6 +4,7 @@ world (the geometry and bookkeeping of the engine, the roads and houses it must 
 Nothing here is an identifier of a real database: the topics are `ex:d1.f2.s3.t4` and the names `Domain 1`, `Field 1.2`, ... Not collected by pytest (the name has no
 test_ prefix)."""
 
+import copy
 import json
 import random
 from collections import Counter
@@ -326,6 +327,12 @@ def play(seed: int, steps: int = 120, *, auto: bool = False, rule: dict | None =
         except Refusal:
             pass
     return hand.journal
+
+
+def journal_value(journal: Journal):
+    """All that an event may change in a journal and its world, as a value (a deep copy) to compare before and after: the log, and every attribute of the State but the live tree."""
+    s = journal.state
+    return copy.deepcopy((journal.events, s.rule, s.nodes, s.items, s.road_of, s.held, s.kinds, s.effects, s.plan, s.doc))
 
 
 # --------------------------------------------------------------------------------------- the checks of a world ----
