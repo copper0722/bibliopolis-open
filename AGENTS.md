@@ -19,3 +19,15 @@ split as they grow).
 - Fixtures are synthetic (`10.0000/...` DOIs, sample titles and authors).
 - Code and agent docs in English; human-facing copy in English and Traditional Chinese (Taiwan terms).
 - No GitHub Actions workflows. Run the local tests and the scrub gate before every push.
+
+## Layout and checks
+
+- `bibliopolis/` the package (Python 3.11+, standard library only): `inputs` (read and check the two files), `cut` and `plan` (the directions),
+  `world` (the growing city), `document` and `layout` and `coast` (the document), `city` and `cli`. Rules: `docs/engine.md`; formats:
+  `docs/format.md` and `schema/`.
+- `examples/` the seeded generator of the synthetic sample (`make_example.py`) and its output; a derived city is never committed.
+- `tests/`: `python -m pytest` from the repository root. Every test is offline and synthetic.
+- Everything except `inputs` and the mirror mode is an extraction of the private engine and is compared with it by a parity test that runs in the
+  private repository. The input checks and the mirror mode have no private counterpart: a change there says so in its commit.
+- No third-party code or data is copied in. Two textbook algorithms (largest-remainder apportionment, Douglas-Peucker simplification) are
+  implemented here, and the sample is generated from invented word lists.
