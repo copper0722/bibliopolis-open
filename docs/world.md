@@ -25,8 +25,8 @@ the event, writes it into the chronicle, and never reads the clock; `at` does no
 | `open_road` | `{road, name, parent, houses, topic}` | the player opens a road, a named category, below a road or (`parent` null) the root zone, and moves the houses chosen onto it. The place it opens from holds at least `min` houses directly, at least `min` houses are chosen, and all of them stand directly there. `topic` is the OpenAlex node the road stands for (see "A road's node"), or null; it may be left out |
 | `file` | `{house, road}` | a house moves, from the root zone or another road, onto a road |
 | `rename_road` | `{road, name}` | |
-| `move_road` | `{road, parent}` | a road, with the roads and the houses below it, stands again below another road |
-| `merge_roads` | `{road, name, parent, members, topic}` | a full first ring is the moment to group upward: two or more avenues of the first ring (`members`) stand below a new avenue `road` (`parent` is null, the town hall), which takes the direction of the largest of them; the directions of the others are free (see "Merging avenues"). `topic` is as for `open_road` |
+| `move_road` | `{road, parent}` | a road, with the roads and the houses below it, stands again below another road. An avenue that moves is no avenue any more: its direction is free |
+| `merge_roads` | `{road, name, parent, members, topic}` | a full first ring is the moment to group upward: two or more avenues of the first ring (`members`) stand below a new avenue `road` (`parent` is null, the town hall), which takes the direction of the member with the widest sector; the directions of the others are free (see "Merging avenues"). `topic` is as for `open_road` |
 | `undo` | `{seq}` | the named event no longer counts; an undo of an undo gives it back |
 | `set_rule` | `{max, min, auto}` | the rule from here on |
 
@@ -91,8 +91,9 @@ of the sector, which is kept between -180 and 180 degrees. These are the thirtee
 
 They cover the whole circle: **a town has at most 13 avenues** (大道, the roads of the first ring), so **the 14th category goes below an avenue**, or similar avenues are merged under a new
 one, which frees directions (see "Merging avenues"). An avenue holds one direction. **A new avenue takes the lowest number that no avenue holds.** With all 13 held, `open_road` with `parent`
-null is refused with the id `ring1_full`, whose params name the remedy, `merge_roads` (see "Refusals"); a road below an avenue still opens. A road that moves below another road keeps the
-direction it held, so that the sectors stay as they were: only a merge frees a direction.
+null is refused with the id `ring1_full`, whose params name the remedy, `merge_roads` (see "Refusals"); a road below an avenue still opens. **An avenue gives its direction up when it is
+no avenue any more**: when it moves below another road, and when it is merged. So a full first ring is never a dead end: moving an avenue below another road, or merging avenues, makes room
+for the next category, which takes the lowest free number.
 
 **Stability.** A house keeps its lot unless an event moves it. `open_road` moves the houses chosen, `file` moves that house, `move_road` moves the houses of the road and of the roads
 below it; nothing else moves a house, and the houses that stay keep their lots whatever holes the others leave (a lot that a house leaves stays empty, and the next house on that road
@@ -101,7 +102,8 @@ replay logs one event at a time and check this (`tests/test_stability.py`), with
 
 **Moving a road.** The road and the roads below it are put again below the new parent, a road at a time in the order the roads were opened, and their houses in the order they arrived;
 their old ribs go and the ground they claimed stays claimed. A road may not move below itself or below a road of its own, nor below the road it is below already. A ring-1 road may move
-below a road (it is then laid out like any road of ring 2). A road below a road cannot move to the town hall: `parent` is a road, and a move never makes a ring-1 road.
+below a road (it is then laid out like any road of ring 2, on the line of the avenue it is below). It gives up its direction, and its old line, which nothing stands on any more and which the next avenue
+of that direction would have its own line over, is taken away (the ground of the other roads that move stays claimed). A road below a road cannot move to the town hall: `parent` is a road, and a move never makes a ring-1 road.
 
 **Undo.** `undo` names an earlier event that counts. It is refused when a later event that counts depends on the named one: it names a road that the event opened, or a house that the
 event placed or moved. So the player undoes from the end backwards. It is also refused when the log without that event does not fold (every later event that counts is taken again; for
@@ -126,8 +128,9 @@ An event that an undo takes back writes no entry (it does not count); the undo w
 **Merging avenues.** A full first ring is a signal to group upward, not a dead end. `merge_roads {road, name, parent, members, topic}` takes two or more avenues of the first ring (`members`;
 a road below another road is no avenue) and opens the new avenue `road` under the town hall (`parent` is null) above them:
 
-- The new avenue takes **the direction of its largest member**: its sector and its bearing. The largest member is the one with the most houses on it and below it; of two as large, the one
-  that holds the lower direction.
+- The new avenue takes **the direction of the member with the widest sector**: its sector and its bearing. It carries the houses of all the members and needs the room. The sectors are
+  compared in units of 1/100 degree (40.00 for the numbers 0 to 4, 32.46, 32.46 and 32.47 for 5 to 7, 12.52, 12.52, 12.52, 12.53 and 12.52 for 8 to 12). Of two members whose sectors are as
+  wide, the one with the most houses on it and below it; then the lower number.
 - The members stand below the new avenue as roads of ring 2, with the roads and the houses below them, as after a move of a road: **only the houses of their subtrees are put again**, on the
   line of the new avenue, a road at a time in the order the roads were opened and their houses in the order they arrived; every other house keeps its lot. The old lines of the members (their
   spokes and ribs, which would lie under the new line or under the road of the next avenue that takes the direction) are taken away.
@@ -297,7 +300,7 @@ No model and no network: the same world gives the same answer. A house is in the
   `topic` is that parent node, ready to be the `topic` of `merge_roads`, and `by` is `parent_node`. Failing that, the two avenues whose houses are most alike: for each level, the most specific
   first, the houses they have in common under the same nodes (the smaller count of each node, summed); of two as alike, the pair of the lower road ids; only when they have something in common.
   Then `topic` is `None`, `name` the two names joined by ` / `, and `by` is `similar_houses`. Returns `{members, topic, name, by, takes, frees}`: `members` in the order the avenues were opened,
-  `takes` the member whose direction the new avenue takes, `frees` how many directions the merge frees; or `None`.
+  `takes` the member whose direction the new avenue takes (the one with the widest sector), `frees` how many directions the merge frees; or `None`.
 - `crowded(world)`: `[{at, name, houses}]` for the places that hold more than `max` houses directly, the root zone (`at` and `name` null) first.
 
 ## The files
@@ -338,11 +341,29 @@ suggest_road(journal.state, None)
 
 `Journal.append` is the one way an event enters a world. `bibliopolis.hand.fold(events, rule)` folds a whole log. `bibliopolis.store.Store` reads and writes the SQLite file.
 
+## For a port
+
+The TypeScript engine must give the same bytes as this one. What is easy to get wrong:
+
+- **The check.** `tests/test_world_file.py` pins the sha256 of the world file and of the text of the city for three fixed logs, `scripted`, `scripted_nodes` and `scripted_merge` of
+  `tests/hand_support.py` (a log of every kind of event; one with OpenAlex topics, nodes and the rule `auto`; one in which the first ring fills and is merged). A port that folds those logs to
+  those hashes agrees on every kind of event. The helpers build the logs, `world_document` and `dumps_world` write them.
+- **Ties by code point.** Every "ties by code point" (a node id, a road id, a parent id) compares Unicode code points, as Python compares strings. A string comparison in JavaScript or
+  TypeScript compares UTF-16 units, and the two differ for a character beyond U+FFFF: U+10000 comes after U+E000 here and before it there.
+- **Directions.** The 13 sectors above, as whole units of 1/100 degree; a new avenue takes the lowest number that no avenue holds; a merge keeps the direction of the member with the widest
+  sector (strictly: 32.47 is wider than 32.46); an avenue that moves below a road, and the members of a merge, give their numbers up.
+- **Road ids.** The engine names a new road `road:<place>`, and when that is in use `road:<place>@1`, `@2`, and so on: the first that is not in use now. When an avenue gives up its direction
+  (merged, or moved below a road) its line, its spoke, its arcs and the roads of the ribs on it are taken away, so those ids are free again and the next road of that name takes them. The
+  layout document carries the road ids, so a port must reuse them in the same way.
+- **Rounding.** The `confidence` of `suggest_file` is `round(count / whole, 2)` with Python's `round`, which rounds a half to the even digit on the binary value: 1/8 is 0.12, not 0.13.
+- **Order.** The roads, the items and the houses are kept in the order of the log; "in arrival order" and "in the order the roads were opened" mean that order, and an object is written with its
+  keys in the order of this page (the chronicle entries, the events, the world file).
+
 ## Limits of this version
 
 - A town has at most 13 avenues (above): the 14th category goes below an avenue. The sectors are fixed by the rule, not by the weight of a road.
 - No trunk is promoted below ring 1 and no heavy path changes; a road below a road is a rib on the line of its ring-1 road.
-- A road never becomes a ring-1 road by moving (`parent` is a road), and a road that moves away keeps its direction: only a merge frees a direction.
+- A road never becomes a ring-1 road by moving (`parent` is a road); an avenue that moves below a road gives its direction up.
 - `merge_roads` merges avenues of the first ring under a new avenue of the first ring; it does not merge roads below a road.
 - A road for a topic is not split, whatever it holds: the OpenAlex tree has no level below a topic (`crowded` lists it).
 - The roads of a hand-built city are never marked over and nothing splits by itself, except under `auto`; `crowded` is computed on demand.

@@ -1,6 +1,6 @@
-"""Merging avenues (docs/world.md, "Merging avenues"): a full first ring is the moment to group upward. `merge_roads` gives a new avenue the direction of the largest of its members,
-puts the members below it as roads of ring 2, and frees the directions of the others; the next avenues take the freed directions, the lowest number first. `suggest_merge` proposes
-the members."""
+"""Merging avenues (docs/world.md, "Merging avenues"): a full first ring is the moment to group upward. `merge_roads` gives a new avenue the direction of the member with the widest
+sector, puts the members below it as roads of ring 2, and frees the directions of the others; an avenue that moves below another road frees its direction too; the next avenues
+take the freed directions, the lowest number first. `suggest_merge` proposes the members."""
 
 import json
 import os
@@ -79,42 +79,102 @@ def test_an_avenue_takes_the_lowest_direction_that_no_avenue_holds_and_all_thirt
     sound(h)
 
 
-def test_the_holder_of_a_direction_keeps_it_when_the_road_moves_away_and_only_a_merge_frees_one():
+def test_an_avenue_that_moves_below_another_road_frees_its_direction_and_a_fourteenth_category_fits():
     h = avenues(13)
-    h.move("r4", "r0")  # an avenue below another road: it keeps its direction
-    assert h.state.held[4] == "r4" and h.state.nodes["r4"]["parent"] == "r0"
     h.add(10)
-    with pytest.raises(Refusal, match="all 13 directions are used"):
-        h.open("x", "X", None, h.state.houses_at(None))
+    with pytest.raises(Refusal) as why:
+        h.open("x", "X", None, h.state.houses_at(None))  # the thirteen directions are held
+    assert why.value.code == "ring1_full"
+    h.move("r4", "r0")  # an avenue below another road is no avenue any more: its direction is free
+    assert 4 not in h.state.held and len(h.state.held) == 12 and h.state.nodes["r4"]["parent"] == "r0"
+    h.open("x", "X", None, h.state.houses_at(None))  # the fourteenth category takes the lowest free direction: the one that r4 gave up
+    assert h.state.direction_of("x") == 4 and len(h.state.held) == 13
+    assert h.state.city()["composition"]["ring1"][-1]["from"] == SECTORS[4][0] / 100  # with the sector and the bearing of its number
+    sound(h)
+
+
+def test_the_houses_of_the_avenue_that_moved_are_put_again_on_the_line_of_its_new_parent_and_no_other_house_moves():
+    h = avenues(13)
+    before = lot_snapshot(h.state)
+    h.move("r4", "r0")
+    after = lot_snapshot(h.state)
+    assert {x for x in before if before[x] != after[x]} == set(houses(41, 50))  # the houses of r4, on the line of r0 now
+    places = h.state.city()["places"]
+    assert places["place:tag:r4"]["address"] == ["Road 0", "Road 4"] and places["place:tag:r4"]["level"] == 2
+    sound(h)
+
+
+def test_the_directions_freed_by_moves_and_by_a_merge_are_taken_lowest_first():
+    h = avenues(13)
+    h.move("r9", "r0")
+    h.move("r3", "r0")
+    h.merge("m", "M", ["r6", "r7"])  # as wide: r6 holds 6, the sector of 7 is a hundredth of a degree wider: 7 is kept
+    assert sorted(set(range(13)) - set(h.state.held)) == [3, 6, 9] and h.state.held[7] == "m"
+    for want in (3, 6, 9):
+        h.add(10)
+        h.open(f"n{want}", f"New {want}", None, h.state.houses_at(None))
+        assert h.state.direction_of(f"n{want}") == want
+    sound(h)
+
+
+def test_a_move_that_freed_a_direction_is_not_undone_while_a_later_avenue_stands_in_it_and_the_ring_would_be_full():
+    h = avenues(13)
+    h.move("r4", "r0")
+    moved = len(h.journal.events)
+    h.add(10)
+    h.open("x", "X", None, h.state.houses_at(None))
+    assert h.state.direction_of("x") == 4
+    with pytest.raises(Refusal) as why:
+        h.undo(moved)  # without the move the thirteen directions are held and x has none
+    assert why.value.code == "undo_unfoldable" and why.value.params["cause"] == "ring1_full" and why.value.params["kind"] == "open_road"
+    h.undo(len(h.journal.events))  # x goes first ...
+    h.undo(moved)  # ... and then the move: r4 is an avenue again, holding its direction
+    assert h.state.held == {k: f"r{k}" for k in range(13)} and h.state.nodes["r4"]["parent"] is None
+    sound(h)
+
+
+def test_the_move_of_a_road_that_is_not_an_avenue_changes_no_direction():
+    h = avenues(4)
+    h.open("r0a", "R0 A", "r0", houses(1, 10))
+    h.open("r1a", "R1 A", "r1", houses(11, 20))
+    before = dict(h.state.held)
+    h.move("r0a", "r1")  # a road of ring 2 below a road of the first ring
+    assert h.state.held == before
     sound(h)
 
 
 # ------------------------------------------------------------------------------------------------ the merge ----
-def test_a_merge_gives_the_new_avenue_the_direction_of_its_largest_member_and_frees_the_others():
+def test_the_sectors_of_the_directions_have_the_widths_the_page_gives():
+    assert [hi - lo for lo, hi in SECTORS] == [4000] * 5 + [3246, 3246, 3247] + [1252, 1252, 1252, 1253, 1252]  # in units of 1/100 degree
+
+
+def test_a_merge_gives_the_new_avenue_the_direction_of_the_member_with_the_widest_sector_and_frees_the_others():
     h = avenues(13)
-    h.add(5)
-    h.file(hid(131), "r5")  # r5 has 11 houses, the others 10: the largest of the three
+    h.add(30)
+    for x in houses(131, 160):
+        h.file(x, "r5")  # r5 has 40 houses, the others 10: the most, but its sector is narrower than the one of r2
     before = {r["label"]: (r["from"], r["to"]) for r in h.state.city()["composition"]["ring1"]}
-    h.merge("m", "Merged", ["r2", "r5", "r7"])
+    h.merge("m", "Merged", ["r7", "r5", "r2"])
     state = sound(h)
-    assert state.held == {**{k: f"r{k}" for k in range(13) if k not in (2, 5, 7)}, 5: "m"}  # the direction of r5; 2 and 7 are free
+    assert state.held == {**{k: f"r{k}" for k in range(13) if k not in (2, 5, 7)}, 2: "m"}  # the direction of r2 (40 degrees); 5 and 7 are free
     after = {r["label"]: (r["from"], r["to"]) for r in state.city()["composition"]["ring1"]}
-    assert after["Merged"] == before["Road 5"] and not {"Road 2", "Road 5", "Road 7"} & set(after) and len(after) == 11
+    assert after["Merged"] == before["Road 2"] and not {"Road 2", "Road 5", "Road 7"} & set(after) and len(after) == 11
     assert [state.nodes[k]["parent"] for k in ("r2", "r5", "r7")] == ["m"] * 3 and state.nodes["m"]["parent"] is None
     places = state.city()["places"]
     assert [places[f"place:tag:{k}"]["address"] for k in ("r2", "r5", "r7")] == [["Merged", "Road 2"], ["Merged", "Road 5"], ["Merged", "Road 7"]]  # roads of ring 2
     assert {places[f"place:tag:{k}"]["level"] for k in ("r2", "r5", "r7")} == {2} and places["place:tag:m"]["level"] == 1
 
 
-def test_the_largest_member_has_the_most_houses_on_it_and_below_it_and_of_two_as_large_the_lower_direction():
+def test_of_two_members_with_sectors_as_wide_the_one_with_the_most_houses_on_it_and_below_it_then_the_lower_number():
     h = avenues(8, each=12)
     h.open("r1a", "R1 A", "r1", houses(13, 24))  # r1 has nothing of its own: its 12 houses are on the road below it
     h.add(12)
     h.file(hid(97), "r3")  # r3: 13 houses
-    assert h.state.largest_avenue(["r3", "r1"]) == "r3" and h.state.largest_avenue(["r1", "r2"]) == "r1"  # 12 against 13; 12 and 12: the lower direction
+    assert h.state.widest_avenue(["r3", "r1"]) == "r3" and h.state.widest_avenue(["r1", "r2"]) == "r1"  # both 40 degrees: 13 against 12; 12 and 12, the lower number
     for x in houses(98, 103):
         h.file(x, "r1a")  # r1 has 18 on the road below it
-    assert h.state.largest_avenue(["r3", "r1"]) == "r1" and h.state.largest_avenue(["r3", "r1", "r5"]) == "r1"
+    assert h.state.widest_avenue(["r3", "r1"]) == "r1" and h.state.widest_avenue(["r3", "r1", "r5"]) == "r1"  # the sector of r5 is narrower
+    assert h.state.widest_avenue(["r5", "r6"]) == "r5" and h.state.widest_avenue(["r5", "r6", "r7"]) == "r7"  # 32.46, 32.46 and 32.47 degrees: a hundredth of a degree decides
     h.merge("m", "M", ["r5", "r3", "r1"])
     assert h.state.held[1] == "m" and 3 not in h.state.held and 5 not in h.state.held
     sound(h)
@@ -124,15 +184,15 @@ def test_the_next_avenues_take_the_freed_directions_lowest_number_first_and_befo
     h = avenues(9)
     h.add(2)
     h.file(hid(91), "r6")
-    h.merge("m", "M", ["r2", "r6", "r3"])  # r6 is the largest: the new avenue holds direction 6; 2 and 3 are free
-    assert sorted(h.state.held) == [0, 1, 4, 5, 6, 7, 8] and h.state.held[6] == "m"
+    h.merge("m", "M", ["r6", "r3", "r2"])  # 40, 32.46 and 40 degrees; r2 and r3 are as wide and have 10 houses each: the new avenue holds 2, and 3 and 6 are free
+    assert sorted(h.state.held) == [0, 1, 2, 4, 5, 7, 8] and h.state.held[2] == "m"
     taken = []
     for name in ("n1", "n2", "n3", "n4"):
         h.add(10)
         h.open(name, name.upper(), None, h.state.houses_at(None)[:10])
         taken.append(h.state.direction_of(name))
-    assert taken == [2, 3, 9, 10]  # the freed ones, then the never used ones, in the golden-angle order
-    assert [s["from"] for s in h.state.city()["composition"]["ring1"][-4:]] == [SECTORS[k][0] / 100 for k in (2, 3, 9, 10)]  # each has the sector and the bearing of its number
+    assert taken == [3, 6, 9, 10]  # the freed ones, then the never used ones, in the golden-angle order
+    assert [s["from"] for s in h.state.city()["composition"]["ring1"][-4:]] == [SECTORS[k][0] / 100 for k in (3, 6, 9, 10)]  # each has the sector and the bearing of its number
     sound(h)
 
 
@@ -482,22 +542,58 @@ def test_the_scripted_merge_log_fills_the_ring_merges_by_suggestion_and_by_hand_
     assert kinds.count("merge_roads") == 2 and {"undo", "rename_road", "move_road", "file"} <= set(kinds)
     state = sound(h)
     assert landing_violations(h.journal.events, h.journal.rule) == []
-    assert state.held == {0: "n1", 1: "n2", 2: "d1", 3: "n3", 4: "d2", 5: "f5", 6: "f6", 7: "f7", 8: "f8", 9: "f9", 10: "f10", 11: "f11", 12: "mine"}
-    assert state.nodes["n3"]["parent"] == "n2" and state.direction_of("n3") == 3  # an avenue moved below another keeps its direction
+    assert state.held == {0: "n1", 1: "n2", 2: "d1", 3: "n4", 4: "d2", 5: "f5", 6: "f6", 7: "f7", 8: "f8", 9: "f9", 10: "f10", 11: "f11", 12: "mine"}
+    assert state.nodes["n3"]["parent"] == "n2" and state.direction_of("n3") is None  # an avenue moved below another road gave its direction up: n4 has it
     assert [state.nodes[k]["parent"] for k in ("f0", "f1", "f2")] == ["d1"] * 3 and [state.nodes[k]["parent"] for k in ("f3", "f4")] == ["d2"] * 2
 
 
+# ------------------------------------------------------------------------------------------ the room ----
+def probe_town():
+    """The probe of the order: 13 avenues of 14 + k houses, a road below r2."""
+    h = Hand({"max": 40, "min": 10, "auto": False})
+    for k in range(13):
+        h.add(14 + k, T(k % 4 + 1, k // 4 + 1, 1, 1))
+        h.open(f"r{k}", f"Road {k}", None, h.state.houses_at(None))
+    h.open("r2a", "R2 A", "r2", h.state.houses_at("r2")[:10])
+    return h
+
+
+def farthest(h):
+    return h.state.city()["composition"]["measure"]["max_radius"]
+
+
+def test_the_widest_sector_keeps_the_merged_avenue_nearer_the_town_hall_than_a_narrow_one_would(monkeypatch):
+    """Four avenues (r2, r5, r7 and r9) merged: the farthest house is 31.5 cells from the centre before the merge, 57.6 with the widest sector (number 2, 40 degrees),
+    and 85.6 with the narrowest (number 9, 12.5 degrees), where the same houses must stand in a line."""
+    h = probe_town()
+    assert farthest(h) == 31.5
+    h.merge("m", "Merged", ["r2", "r5", "r7", "r9"])
+    assert h.state.direction_of("m") == 2 and farthest(h) == 57.6
+    sound(h)
+    monkeypatch.setattr(hand.State, "widest_avenue", lambda self, members: "r9")
+    narrow = probe_town()
+    narrow.merge("m", "Merged", ["r2", "r5", "r7", "r9"])
+    assert narrow.state.direction_of("m") == 9 and farthest(narrow) == 85.6
+
+
 # ------------------------------------------------------------------------------------- the planted faults ----
-def merge_log(tie=False):
-    """Thirteen avenues with houses and a road below one of them, merged: the log that the planted faults go wrong on. The members r2, r5 and r9 have 12 houses each (`tie`),
-    or r5 has 15 and is the largest."""
+def merge_log(kind="width"):
+    """Thirteen avenues with 12 houses each and a road below r2, and a merge that the planted faults go wrong on. `width`: r2 (40 degrees), r5 (32.46, with 15 houses, the most) and
+    r9 (12.52): the sector of r2 is the widest. `houses`: r0 and r1, both 40 degrees, r1 with 15 houses: the one with the most houses. `number`: r0 and r1, both 40 degrees,
+    with 12 houses each: the lower number."""
     h = avenues(13, each=12)
     h.open("r2a", "R2 A", "r2", houses(25, 36))
-    if not tie:
+    if kind == "width":
         h.add(3)
         for x in houses(157, 159):
             h.file(x, "r5")
-    h.merge("m", "M", ["r2", "r5", "r9"])
+        h.merge("m", "M", ["r2", "r5", "r9"])
+    else:
+        if kind == "houses":
+            h.add(3)
+            for x in houses(157, 159):
+                h.file(x, "r1")
+        h.merge("m", "M", ["r0", "r1"])
     return h
 
 
@@ -528,15 +624,43 @@ def test_the_stability_check_has_to_know_the_event_or_a_merge_looks_like_houses_
     assert stability_violations(h.journal.events, h.journal.rule) == []
 
 
-@pytest.mark.parametrize("fault", ["the smallest member", "the higher direction of two as large"])
-def test_the_direction_check_is_red_when_the_new_avenue_takes_the_direction_of_another_member_than_the_largest(fault, monkeypatch):
-    h = merge_log(tie=fault != "the smallest member")
-    if fault == "the smallest member":
-        monkeypatch.setattr(hand.State, "largest_avenue", lambda self, members: min(members, key=lambda m: (len(self.houses_below(m)), self.direction_of(m))))
-    else:
-        monkeypatch.setattr(hand.State, "largest_avenue", lambda self, members: min(members, key=lambda m: (-len(self.houses_below(m)), -self.direction_of(m))))
+def width(state, road):
+    lo, hi = SECTORS[state.direction_of(road)]
+    return hi - lo
+
+
+FAULTS = {
+    "the narrowest sector": ("width", lambda self, ms: min(ms, key=lambda m: (width(self, m), -len(self.houses_below(m)), self.direction_of(m)))),
+    "the most houses and not the widest sector": ("width", lambda self, ms: min(ms, key=lambda m: (-len(self.houses_below(m)), self.direction_of(m)))),
+    "the fewest houses of two as wide": ("houses", lambda self, ms: min(ms, key=lambda m: (-width(self, m), len(self.houses_below(m)), self.direction_of(m)))),
+    "the higher number of two as wide and as large": ("number", lambda self, ms: min(ms, key=lambda m: (-width(self, m), -len(self.houses_below(m)), -self.direction_of(m)))),
+}
+
+
+@pytest.mark.parametrize("fault", list(FAULTS))
+def test_the_direction_check_is_red_when_the_new_avenue_takes_the_direction_of_another_member_than_the_one_with_the_widest_sector(fault, monkeypatch):
+    kind, wrong = FAULTS[fault]
+    h = merge_log(kind)
+    monkeypatch.setattr(hand.State, "widest_avenue", wrong)
     found = direction_violations(h.journal.events, h.journal.rule)
     assert found and all("(merge_roads)" in line for line in found), found
+    monkeypatch.undo()
+    assert direction_violations(h.journal.events, h.journal.rule) == []
+
+
+def test_the_direction_check_is_red_when_a_move_of_an_avenue_keeps_its_direction(monkeypatch):
+    h = avenues(5)
+    h.move("r2", "r0")
+    original = hand.State.do_move_road
+
+    def keeping(self, e, p):
+        held = dict(self.held)
+        original(self, e, p)
+        self.held.update(held)  # the avenue keeps the direction it had (the rule before)
+
+    monkeypatch.setattr(hand.State, "do_move_road", keeping)
+    found = direction_violations(h.journal.events, h.journal.rule)
+    assert found and all("(move_road)" in line for line in found), found
     monkeypatch.undo()
     assert direction_violations(h.journal.events, h.journal.rule) == []
 

@@ -195,8 +195,8 @@ def suggest_merge(world) -> dict | None:
     lower parent id) whose parent node no road stands for, and every house of whose avenues, and of the roads below them, is under it. `topic` is that parent node
     (ready to be the `topic` of `merge_roads`), `name` its name, `by` is "parent_node". Failing that, the two avenues whose houses are most alike (`_likeness`: the
     topics they have in common, the most specific level first; of two as alike the pair of lower road ids), when they have anything in common: `topic` is None, `name` the two
-    names joined by " / ", `by` "similar_houses". `members` are in the order the avenues were opened, `takes` is the member whose direction the new avenue takes (the one
-    with the most houses) and `frees` how many directions the merge frees. Nothing is changed; the world takes the merge as it takes any event."""
+    names joined by " / ", `by` "similar_houses". `members` are in the order the avenues were opened, `takes` is the member whose direction the new avenue takes (the one whose
+    sector is the widest, `bibliopolis.hand.State.widest_avenue`) and `frees` how many directions the merge frees. Nothing is changed; the world takes the merge as it takes any event."""
     avenues = [road for road, node in world.nodes.items() if node["parent"] is None]
     if len(avenues) < MERGE_LEAST:
         return None
@@ -225,7 +225,7 @@ def suggest_merge(world) -> dict | None:
     if groups:
         (level, parent), roads = min(groups, key=lambda g: (-len(g[1]), -sum(len(houses[r]) for r in g[1]), g[0][1], ORDER.index(g[0][0])))
         return {"members": roads, "topic": {"id": parent, "level": level, "name": names[(level, parent)]}, "name": names[(level, parent)], "by": "parent_node",
-                "takes": world.largest_avenue(roads), "frees": len(roads) - 1}
+                "takes": world.widest_avenue(roads), "frees": len(roads) - 1}
     profiles = {road: _profile(world, houses[road]) for road in avenues}
     best, pair = None, None
     for i, a in enumerate(avenues):
@@ -236,7 +236,7 @@ def suggest_merge(world) -> dict | None:
                 best, pair = key, [a, b]
     if pair is None:
         return None
-    return {"members": pair, "topic": None, "name": " / ".join(world.nodes[r]["name"] for r in pair), "by": "similar_houses", "takes": world.largest_avenue(pair), "frees": 1}
+    return {"members": pair, "topic": None, "name": " / ".join(world.nodes[r]["name"] for r in pair), "by": "similar_houses", "takes": world.widest_avenue(pair), "frees": 1}
 
 
 def crowded(world) -> list[dict]:

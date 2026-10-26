@@ -222,8 +222,8 @@ def node(level: str, d: int, f: int = 1, s: int = 1, t: int = 1) -> dict:
 def scripted_merge():
     """A log in which the first ring fills and is merged: twelve avenues for fields of OpenAlex domains and one category of the player's (the ring is full), a merge by
     suggestion (the three fields of one domain, under the domain), the avenues of the next categories in the directions it freed, a merge by hand (two fields, under their
-    domain), more avenues in the freed directions, a rename of a merged avenue, a house filed onto a merged field, an avenue moved below another (it keeps its direction),
-    and an undo from the middle."""
+    domain), more avenues in the freed directions, a rename of a merged avenue, a house filed onto a merged field, an avenue moved below another (its direction is free
+    and the next avenue takes it), and an undo from the middle."""
     h = Hand({"max": 30, "min": 5, "auto": False})
     fields = [(1, 1), (1, 2), (1, 3), (2, 1), (2, 2), (3, 1), (4, 1), (5, 1), (6, 1), (7, 1), (8, 1), (9, 1)]
     for k, (d, f) in enumerate(fields):
@@ -241,7 +241,9 @@ def scripted_merge():
     h.rename("d1", "Domain one")
     h.add(2, topic(1, 2, 1, 1))
     h.file(hid(h.count), "f1")  # onto a field that is a road of ring 2 now
-    h.move("n3", "n2")  # an avenue below another: it keeps its direction
+    h.move("n3", "n2")  # an avenue below another road: it is no avenue any more, and its direction is free ...
+    h.add(6, topic(13, 1, 1, 1))
+    h.open("n4", "Field 13.1", None, houses(h.count - 5, h.count), node("field", 13, 1))  # ... for the next one
     h.add(3)
     h.undo(len(h.journal.events) - 1)  # from the middle: nothing names the house it added
     return h
@@ -406,8 +408,8 @@ def hand_problems(state: State, *, coast: bool = False) -> list:
     holders = list(state.held.values())
     if len(holders) != len(set(holders)) or not set(state.held) <= set(range(len(SECTORS))):
         bad.append(("held", "a road holds two directions, or there is a direction that is not in the table"))
-    if sorted(h for h in holders if state.nodes[h]["parent"] is None) != sorted(avenues):
-        bad.append(("held", "the roads of the first ring are not the roads that hold a direction"))
+    if sorted(holders) != sorted(avenues):
+        bad.append(("held", "the roads that hold a direction are not the roads of the first ring"))
     for k, holder in state.held.items():
         lo, hi = SECTORS[k]
         if not lo <= bearing(k) <= hi and not lo <= bearing(k) - 36000 <= hi:
@@ -542,8 +544,9 @@ def landing_violations(events: list[dict], rule: dict) -> list[str]:
 def direction_violations(events: list[dict], rule: dict) -> list[str]:
     """Replay the log one event at a time and check which avenue holds which direction, from the event and the world before it (not from what the engine says): a new
     avenue (an `open_road` below the town hall, an avenue that the rule `auto` opens, in the order it opens them) takes the lowest direction that no avenue holds; a merge
-    gives the new avenue the direction of the member with the most houses on it and below it (of two as large the lower direction) and frees the directions of the other
-    members; no other event changes who holds a direction (a road that moves away keeps its direction). An undo is excepted: the world is folded again."""
+    gives the new avenue the direction of the member whose sector is the widest (of two as wide, the one with the most houses on it and below it, then the lower number) and
+    frees the directions of the other members; an avenue that moves below another road frees its direction; no other event changes who holds a direction. An undo is
+    excepted: the world is folded again."""
     bad = []
     state, seen = State(rule), []
     for e in events:
@@ -556,10 +559,13 @@ def direction_violations(events: list[dict], rule: dict) -> list[str]:
         want, p = dict(held), e["payload"]
         if e["kind"] == "open_road" and p["parent"] is None:
             want[free[0]] = p["road"]
+        elif e["kind"] == "move_road" and state.nodes[p["road"]]["parent"] is None:
+            del want[next(k for k, road in held.items() if road == p["road"])]
         elif e["kind"] == "merge_roads":
             direction = {m: next(k for k, road in held.items() if road == m) for m in p["members"]}
             size = {m: sum(1 for h in state.items if state.road_of[h] in set(state.subtree(m))) for m in p["members"]}
-            took = min(p["members"], key=lambda m: (-size[m], direction[m]))
+            width = {m: SECTORS[direction[m]][1] - SECTORS[direction[m]][0] for m in p["members"]}
+            took = min(p["members"], key=lambda m: (-width[m], -size[m], direction[m]))
             for m in p["members"]:
                 del want[direction[m]]
             want[direction[took]] = p["road"]

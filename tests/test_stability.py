@@ -5,7 +5,7 @@ The check itself is `stability_violations` of hand_support. It reads what an eve
 so a fault that moves one house too many shows. The mutation controls below plant such faults in the engine and see that the check turns red."""
 
 import pytest
-from hand_support import landing_violations, play, scripted, scripted_nodes, stability_violations
+from hand_support import direction_violations, hand_problems, landing_violations, play, scripted, scripted_nodes, stability_violations
 
 from bibliopolis import hand
 from bibliopolis import layout as lay
@@ -32,6 +32,13 @@ def test_a_random_log_is_stable(seed):
     j = play(seed, steps=150)
     assert len(j.events) > 100
     assert stability_violations(j.events, j.rule) == []
+
+
+@pytest.mark.parametrize("seed", range(40))
+def test_a_random_log_holds_its_directions_as_the_rule_says_and_the_world_is_sound(seed):
+    """The plain random player moves roads of the first ring below others now and then: the direction of such an avenue is free, and the next avenue takes it."""
+    j = play(seed, steps=150)
+    assert direction_violations(j.events, j.rule) == [] and hand_problems(j.state) == []
 
 
 def test_the_replay_ends_in_the_world_the_journal_holds():

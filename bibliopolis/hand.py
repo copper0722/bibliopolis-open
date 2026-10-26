@@ -13,12 +13,13 @@ There is no library to plan from, so the plan grows with the world and never cha
   directions      the k-th direction (k = 0, 1, 2, ...) has the bearing k * 137.50776405003785 degrees, clockwise from north, in whole units of 1/100 degree. Its
                   sector is the free arc around that bearing, at most 20 degrees to either side, never over the sector of an earlier direction (`SECTORS`, a table of
                   13: the 14th bearing lies inside a sector already given, so there are 13 directions and a town has at most 13 avenues, the roads of the first ring,
-                  `AVENUES`). A sector never changes. An avenue holds one direction, and keeps it when it moves away below another road. A new avenue takes the lowest
-                  number that no avenue holds; with all 13 held the event is refused (`Refusal` with the id `ring1_full`, and the remedy `merge_roads`): the 14th category goes
-                  below an avenue, or similar avenues are merged first.
-  merging         `merge_roads` groups avenues upward: the new avenue takes the direction (sector and bearing) of the largest of its members, the others are free
-                  again and the next avenues take them, the lowest number first (the golden-angle order among the free ones). The members stand below the new
-                  avenue as roads of ring 2, as after a move of a road: only the houses of their subtrees are put again.
+                  `AVENUES`). A sector never changes. An avenue holds one direction and gives it up when it is no avenue any more: when it moves below another road, or is merged.
+                  A new avenue takes the lowest number that no avenue holds; with all 13 held the event is refused (`Refusal` with the id `ring1_full`, and the remedy
+                  `merge_roads`): the 14th category goes below an avenue, or similar avenues are merged first.
+  merging         `merge_roads` groups avenues upward: the new avenue takes the direction (sector and bearing) of the member whose sector is the widest (it carries all
+                  their houses and needs the room; of two as wide, the one with the most houses on it and below it, then the lower number), the others are free again and
+                  the next avenues take them, the lowest number first (the golden-angle order among the free ones). The members stand below the new avenue as roads of
+                  ring 2, as after a move of a road: only the houses of their subtrees are put again.
   stability       a house stays on its lot unless an event moves it: opening a road moves the houses chosen, filing a house moves that house, moving a road moves
                   the houses of its subtree. The houses that stay keep their lots, whatever holes the others leave. (`undo` may re-place what came after the event
                   it takes back: the fold of the log without that event.)
@@ -225,8 +226,8 @@ class HandWorld(zw.World):
         return ids
 
     def drop_line(self, place: str) -> None:
-        """Take away the line of the avenue `place` with every road it carries (its spoke, its arcs, the roads of the ribs on it). Used when an avenue gives up its direction:
-        the line would be a ghost lying over the line that the direction gets next, and nothing stands on it any more."""
+        """Take away the line of the avenue `place` with every road it carries (its spoke, its arcs, the roads of the ribs on it). Used when an avenue gives up its direction
+        (it is merged, or moves below another road): the line would be a ghost lying over the line that the direction gets next, and nothing stands on it any more."""
         for rid, road in list(self.roads.items()):
             if road.get("trunk") == place or (road["street"] == place and road["kind"] in ("spoke", "arc")):
                 self.roads.delete(rid)
@@ -343,10 +344,14 @@ class State:
         roads = set(self.subtree(road))
         return [h for h in self.items if self.road_of[h] in roads]
 
-    def largest_avenue(self, members: list[str]) -> str:
-        """The avenue of `members` that has the most houses on it and below it; of two as large the one that holds the lower direction. Its sector is the one a merge
-        gives to the new avenue."""
-        return min(members, key=lambda m: (-len(self.houses_below(m)), self.direction_of(m)))
+    def widest_avenue(self, members: list[str]) -> str:
+        """The avenue of `members` whose direction has the widest sector (`SECTORS`, compared in units of 1/100 degree): a merge gives that sector to the new avenue, which
+        carries the houses of all of them and needs the room. Of two with sectors as wide, the one with the most houses on it and below it; then the lower number."""
+        def rank(m: str) -> tuple[int, int, int]:
+            k = self.direction_of(m)
+            return -(SECTORS[k][1] - SECTORS[k][0]), -len(self.houses_below(m)), k
+
+        return min(members, key=rank)
 
     def houses_at(self, road: str | None) -> list[str]:
         """The houses that stand directly on a road (None: the root zone), in arrival order."""
@@ -493,7 +498,11 @@ class State:
             raise Refusal(f"the road {key!r} is below {parent!r} already", "already_below", road=key, parent=parent)
         moved = [h for h in self.items if self.road_of[h] in below]
         self.nodes[key]["parent"] = parent
+        if old is None:  # an avenue below another road is no avenue: its direction is free (the next avenue takes the lowest free number)
+            del self.held[self.direction_of(key)]
         w, before = self.world(e), len(self.doc["chronicle"])
+        if old is None:
+            w.drop_line(lay.tag_place(key))  # ... and nothing stands on its line any more: the next avenue of that direction would have its line over it
         w.move_subtree(key, below, PLAZA if old is None else lay.tag_place(old), lay.tag_place(parent), "move_road")
         self.commit(w, e, before)
         self.effects[e["seq"]] = {"houses": moved, "roads": []}
@@ -520,8 +529,8 @@ class State:
                     raise Refusal(f"the house {h!r} is not under the {node['level']} {node['id']!r}, which the road stands for", "house_not_under_node",
                                   house=h, level=node["level"], topic=node["id"])
         held = {m: self.direction_of(m) for m in members}
-        took = self.largest_avenue(members)  # the most houses on it and below it; of two as large the lower direction
-        for m in members:  # the directions of the members are free; the new avenue takes the one of the largest
+        took = self.widest_avenue(members)  # the widest sector; of two as wide, the most houses on it and below it; then the lower number
+        for m in members:  # the directions of the members are free; the new avenue takes the one of the member with the widest sector
             del self.held[held[m]]
         self.nodes[key] = {"key": key, "name": name, "parent": None, "topic": node}
         for m in members:

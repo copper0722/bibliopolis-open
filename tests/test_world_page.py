@@ -10,6 +10,7 @@ import refusal_cases as rc
 from hand_support import Hand, every_entry, hid, item, sample_world_items, stamp, topic
 
 from bibliopolis import cli, hand
+from bibliopolis.suggest import suggest_file, suggest_road
 from bibliopolis import events as ev
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -133,3 +134,61 @@ def test_the_numbers_the_page_gives_for_the_sample_are_the_numbers_of_the_progra
     h.add_items(sample_world_items())
     levels = [sum(1 for n in h.state.nodes.values() if n["topic"]["level"] == level) for level in ev.ORDER]
     assert [int(x) for x in found.groups()] == [len(h.state.nodes), *levels, h.state.count(None)]
+
+
+# ------------------------------------------------------------------------------------------ for a port ----
+def test_the_widths_of_the_sectors_the_page_gives_for_the_merge_are_the_widths_of_the_table():
+    spans = [f"{(hi - lo) / 100:.2f}" for lo, hi in hand.SECTORS]
+    assert spans == ["40.00"] * 5 + ["32.46", "32.46", "32.47"] + ["12.52", "12.52", "12.52", "12.53", "12.52"]
+    assert "(40.00 for the numbers 0 to 4, 32.46, 32.46 and 32.47 for 5 to 7, 12.52, 12.52, 12.52, 12.53 and 12.52 for 8 to 12)" in " ".join(PAGE.split())
+
+
+def test_the_check_the_page_names_for_a_port_is_in_the_repository():
+    import hand_support
+
+    section = PAGE.split("## For a port")[1].split("## Limits")[0]
+    for name in ("scripted", "scripted_nodes", "scripted_merge"):
+        assert f"`{name}`" in section and callable(getattr(hand_support, name)), name
+    pins = (ROOT / "tests" / "test_world_file.py").read_text(encoding="utf-8")
+    assert all(pin in pins for pin in ("PIN_WORLD", "PIN_CITY", "PIN_NODES_WORLD", "PIN_NODES_CITY", "PIN_MERGE_WORLD", "PIN_MERGE_CITY"))
+
+
+def test_a_tie_by_code_point_is_not_a_tie_by_utf_16_unit():
+    """U+E000 is below U+10000 by code point (Python) and above it by UTF-16 unit (D800 DC00 < E000): the page says a port must compare code points."""
+    low, high = "\ue000", "\U00010000"
+    assert low < high and low.encode("utf-16-be") > high.encode("utf-16-be")
+    h = Hand({"max": 40, "min": 5, "auto": False})
+    for name in (high, low):  # the one that comes first by UTF-16 unit arrives first
+        top = topic(1, 1, 1, 1)
+        top["domain"] = {"id": name, "name": f"Domain {name!r}"}
+        for _ in range(5):
+            h.add(1, top)
+    suggestion = suggest_road(h.state, None)
+    assert suggestion["topic"]["id"] == low and len(suggestion["houses"]) == 5  # a group of 5 each: the lower code point wins
+    assert "compares Unicode code points" in PAGE and "UTF-16 units" in PAGE
+
+
+def test_the_road_ids_of_the_line_an_avenue_gave_up_are_free_again_and_the_next_road_of_that_name_takes_them():
+    h = Hand({"max": 40, "min": 5, "auto": False})
+    for k in range(3):
+        h.add(6)
+        h.open(f"r{k}", f"Road {k}", None, h.state.houses_at(None))
+    assert h.state.doc["roads"]["road:place:tag:r2"]["kind"] == "spoke" and "road:place:tag:r2@1" not in h.state.doc["roads"]
+    h.merge("m", "M", ["r1", "r2"])
+    roads = h.state.doc["roads"]
+    assert roads["road:place:tag:r2"]["kind"] == "lane" and "road:place:tag:r2@1" not in roads  # the id of the spoke that was taken away is the id of the first road of r2 now
+    assert roads["road:place:tag:r0"]["kind"] == "spoke"  # the avenue that is not a member keeps its own
+    assert set(h.state.doc["lines"]) == {"place:tag:r0", "place:tag:m"}  # (the lines of r1 and r2 are gone; the one of r0 stands, and the new avenue has its own)
+    h.move("r0", "m")  # an avenue that moves below a road gives its line up too
+    assert h.state.doc["roads"]["road:place:tag:r0"]["kind"] == "lane" and set(h.state.doc["lines"]) == {"place:tag:m"} and h.state.held == {1: "m"}
+
+
+def test_the_confidence_is_rounded_as_python_rounds_a_half_to_the_even_digit():
+    h = Hand({"max": 40, "min": 1, "auto": False})
+    for k in range(8):
+        h.add(1, topic(1, 1, 1, 1))
+        h.open(f"r{k}", f"Road {k}", None, [hid(k + 1)])
+    h.add(1, topic(1, 1, 1, 1))
+    found = suggest_file(h.state, hid(9))
+    assert found["confidence"] == 0.12 and 1 / 8 == 0.125  # one of the eight matches, which Math.round would make 0.13
+    assert "1/8 is 0.12, not 0.13" in PAGE

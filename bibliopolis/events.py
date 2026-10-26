@@ -16,8 +16,8 @@ A world built by hand is an append-only log of events, and its city and its chro
   move_road    {road, parent}                 a road, with the roads and houses below it, stands again below another road
   merge_roads  {road, name, parent, members, topic}
                                               a full first ring is the moment to group upward: a new avenue (a road of the first ring; `parent` is null, the town hall)
-                                              takes the direction of the largest of the `members`, avenues of the first ring, and they stand below it as roads of the
-                                              second ring, with the roads and houses below them; the directions of the other members are free again. `topic` as for open_road
+                                              takes the direction of the member with the widest sector among the `members`, avenues of the first ring, and they stand below it
+                                              as roads of the second ring, with the roads and houses below them; the directions of the other members are free again. `topic` as for open_road
   undo         {seq}                          the named event no longer counts; an undo of an undo restores it
   set_rule     {max, min, auto}               the rule from here on; `auto` applies the district rule after each arrival (bibliopolis.hand)
 

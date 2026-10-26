@@ -397,17 +397,18 @@ def test_the_ground_a_moved_road_claimed_stays_claimed_and_its_new_ribs_stand_on
     assert (line["bands"], line["spokes"]) == claimed  # a road opened later on that line does not stand on the ghost of the moved one
 
 
-def test_a_ring_one_road_may_move_below_a_road_and_its_sector_stays_given():
+def test_a_ring_one_road_may_move_below_a_road_and_then_its_direction_is_free_for_the_next_avenue():
     h = build_two_districts()
     h.move("b", "a")
     state = sound(h)
     assert the_street(h, "b")["level"] == 2 and the_street(h, "b")["address"] == ["A", "B"] and the_street(h, "b")["carrier"] == "place:tag:a"
     assert [s["label"] for s in state.city()["composition"]["ring1"]] == ["A"]  # b is not a road of the first ring now ...
-    assert [r["name"] for r in state.plan["ring1"]] == ["a", "b"]  # ... and its sector is still given
+    assert [r["name"] for r in state.plan["ring1"]] == ["a", "b"] and state.held == {0: "a"}  # ... and it holds no direction: number 1 is free
     h.add(20)
     h.open("c", "C", None, h.state.houses_at(None)[:10])
     state = sound(h)
-    assert [s["from"] for s in state.city()["composition"]["ring1"]] == [-20.0, -104.98]  # the third road takes the third direction, not the second one again
+    assert state.held == {0: "a", 1: "c"}  # the third road takes the lowest free number: the one that b gave up
+    assert [s["from"] for s in state.city()["composition"]["ring1"]] == [-20.0, 117.51]  # the sector and the bearing of number 1
 
 
 def test_a_road_moves_only_below_a_road_that_is_not_its_own_and_not_where_it_is_already():

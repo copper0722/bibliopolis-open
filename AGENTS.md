@@ -26,7 +26,7 @@ split as they grow).
 - `bibliopolis/` the package (Python 3.11+, standard library only): `inputs` (read and check the files), `cut` and `plan` (the directions),
   `world` (the growing city), `document` and `layout` and `coast` (the document), `picture` (the SVG), `city` and `cli`; `canonical` (the one number form of
   every document written). The world built by hand: `events` (the log and its checks), `hand` (the fold), `journal` (append, the world file), `suggest`,
-  `store` (SQLite, the home folder). Rules: `docs/engine.md` and `docs/world.md`; formats: `docs/format.md` and `schema/` (the library, the tree and, for a world built by hand, `schema/world.schema.json`).
+  `store` (SQLite, the home folder). Rules: `docs/engine.md` and `docs/world.md` (with the notes for a port); formats: `docs/format.md` and `schema/` (the library, the tree and, for a world built by hand, `schema/world.schema.json`).
 - `examples/` the seeded generator of the synthetic sample (`make_example.py`) and its output; a derived city is never committed. `make_pictures.py` makes
   `docs/images/*.svg` from the sample; a test compares them with the committed files byte for byte, so run it after a change to the engine or the sample.
 - `tests/`: `python3 -m pytest` from the repository root. Every test is offline and synthetic.
