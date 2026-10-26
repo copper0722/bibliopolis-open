@@ -428,7 +428,7 @@ def registered(error):
 
 
 def test_a_store_with_a_cell_that_cannot_be_what_the_column_holds_is_refused_with_an_id_and_not_a_traceback(tmp_path):
-    """The case of the review: `world.rule` is NULL. `json.loads(None)` raised a TypeError that no command caught."""
+    """The plainest case: `world.rule` is NULL. `json.loads(None)` raised a TypeError that no command caught."""
     j = small()
     path = crafted(tmp_path / "w.sqlite", j)
     assert text_of(Store(path).journal()) == text_of(j)  # (the control: the tables as they are read as the world)
