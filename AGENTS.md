@@ -31,7 +31,9 @@ split as they grow).
 - The plan, the world of `grow` mode (roads, direct counts, root zone, chronicle, lots, ribs, lines) and the document it makes (places, roads, coast,
   measures) are an extraction of the private engine. A parity test in the private repository compares them with it on random libraries and on the
   sample (the whole document against a private plan without the journal sector). Not compared, because the private engine has nothing to compare
-  with: the input checks, the mirror mode (and `complete`), the command line and its summary, the `at` dates of the chronicle, the replay (`first`), the
-  chronicle sentences, the picture and the pictures. A change there says so in its commit.
+  with: the input checks (and the checks of a city file), the mirror mode (and `complete`), the command line and its summary, the `at` dates of the
+  chronicle, the replay (`first`) and the chronicle sentences. `picture` is a rewrite of the private SVG renderer (the plan view of a layout v4 document),
+  not an extraction, and it is not under parity either; the pictures of the README are made here, from the sample. A change to any of these says so in
+  its commit.
 - No third-party code or data is copied in. Two textbook algorithms (largest-remainder apportionment, Douglas-Peucker simplification) are
   implemented here, and the sample is generated from invented word lists.
