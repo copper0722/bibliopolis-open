@@ -14,7 +14,8 @@ split as they grow).
 
 ## Rules
 
-- Text and code only in Git, no Git LFS. The one exception is `docs/images/`: pictures generated from the sample are SVG (text, made by `examples/make_pictures.py`); screenshots of the viewer are PNG/JPG/WebP in `docs/images/` only, small (under 1 MB each).
+- Text and code only in Git, no Git LFS. The one exception is PNG images directly under `docs/images/`, at most 1 MiB (1,048,576 bytes) each, pixels only:
+  the screenshots of the viewer. Pictures generated from the sample are SVG (text, made by `examples/make_pictures.py`). JPG, WebP and every other binary stay out.
 - Source-generic: no journal-specific assumption in the engine.
 - Fixtures are synthetic (`10.0000/...` DOIs, sample titles and authors).
 - Code and agent docs in English; human-facing copy in English and Traditional Chinese (Taiwan terms).

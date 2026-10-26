@@ -33,7 +33,5 @@ var/
 *.blend
 *.pdf
 
-# ... except the pictures of the README: images in docs/images/ only (under 1 MB each)
+# ... except PNG images directly under docs/images/ (at most 1 MiB each, pixels only)
 !docs/images/*.png
-!docs/images/*.jpg
-!docs/images/*.webp

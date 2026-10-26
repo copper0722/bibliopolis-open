@@ -2,6 +2,7 @@
 
 import importlib.util
 import os
+import shutil
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
@@ -129,3 +130,51 @@ def test_no_two_labels_of_the_concept_picture_stand_on_each_other():
     for i, a in enumerate(boxes):
         for b in boxes[i + 1:]:
             assert not picture.overlaps(a, b), (a, b)
+
+
+# ---------------------------------------------------------------------------------- what may live in docs/images ----
+PNG_LIMIT = 1_048_576  # 1 MiB: the most a PNG under docs/images/ may be
+
+
+def ignore_lines():
+    lines = (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
+    return [line.strip() for line in lines if line.strip() and not line.lstrip().startswith("#")]
+
+
+def test_the_images_folder_holds_only_svg_pictures_and_png_images_of_at_most_1_mib_directly_in_it():
+    entries = sorted(IMAGES.iterdir())
+    assert entries and all(p.is_file() and not p.is_symlink() for p in entries)  # no folder below it: the exception is for files directly under docs/images/
+    assert {p.suffix for p in entries} <= {".svg", ".png"}
+    for p in entries:
+        if p.suffix == ".png":
+            data = p.read_bytes()
+            assert data.startswith(b"\x89PNG\r\n\x1a\n") and len(data) <= PNG_LIMIT, p.name
+
+
+def test_the_ignore_file_lets_png_through_directly_under_docs_images_and_nothing_else():
+    lines = ignore_lines()
+    assert [line for line in lines if line.startswith("!")] == ["!docs/images/*.png"]
+    assert lines.index("*.png") < lines.index("!docs/images/*.png")  # the later rule wins
+    assert {"*.jpg", "*.jpeg", "*.webp", "*.avif"} <= set(lines)  # the other image formats stay ignored
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
+def test_git_ignores_every_image_but_a_png_directly_under_docs_images(tmp_path):
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    shutil.copy(ROOT / ".gitignore", tmp_path / ".gitignore")
+
+    def ignored(path):
+        return subprocess.run(["git", "-C", str(tmp_path), "check-ignore", "-q", path], check=False).returncode == 0
+
+    assert not any(ignored(p) for p in ("docs/images/a.png", "docs/images/a.svg", "docs/a.svg"))
+    assert all(ignored(p) for p in ("docs/images/a.jpg", "docs/images/a.jpeg", "docs/images/a.webp", "docs/images/a.avif", "docs/a.png", "docs/images/sub/a.png", "a.png"))
+
+
+def test_the_card_and_both_halves_of_the_readme_say_what_the_ignore_file_lets_through():
+    card = " ".join((ROOT / "AGENTS.md").read_text(encoding="utf-8").split())  # the card wraps its lines
+    assert "PNG images directly under `docs/images/`, at most 1 MiB (1,048,576 bytes) each, pixels only" in card and str(PNG_LIMIT) == "1048576"
+    assert "JPG, WebP and every other binary stay out" in card
+    english, chinese = (ROOT / "README.md").read_text(encoding="utf-8").split("\n---\n", 1)
+    assert "PNG images directly under `docs/images/` (pixels only, at most 1 MiB each)" in english
+    assert "PNG" in chinese and "`docs/images/`" in chinese and "1 MiB" in chinese
+    assert not any(word in text for text in (english, chinese) for word in ("JPG", "JPEG", "WebP"))
