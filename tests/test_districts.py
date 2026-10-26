@@ -397,6 +397,8 @@ def test_below_ring_one_a_group_in_a_chain_opens_the_deepest_road_with_the_whole
     assert second["from"] == first["to"] and second["to"] == "place:tag:alz" and road["tag"] == "alz"
     assert road["collapsed"] == ["internal", "neuro", "degen"] and road["parent"] == first["to"] and road["level"] == 2
     assert road["label"] == "Internal・Neuro・Degen・Alz" and second["count_after"] == 0
+    parent = world_layout(doc, with_coast=False)["places"][first["to"]]  # the road above it kept no house: a road with no lots of its own is still a road
+    assert (parent["lots"], parent["reserved"]) == (0, 0) and "rib" not in parent and parent["level"] == 1 and parent["shape"] == "trunk"
 
 
 # -------------------------------------------------------------------------------------- the calls are pure ----

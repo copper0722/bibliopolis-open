@@ -37,6 +37,7 @@ The order of the items in the file does not matter: only `added_at` and `id` do.
 ```json
 {"nodes": [
   {"id": "computing", "label": "Computing", "parent": null},
+  {"id": "systems", "label": "Systems", "parent": "computing"},
   {"id": "networks", "label": "Networks", "parent": "systems"}
 ]}
 ```
@@ -134,11 +135,20 @@ Every place has a `kind`.
 
   A street has `tag` (the topic id; the root zone has none), `address` (the labels from ring 1 down to this road), `level` (1 for ring 1),
   `class` (`大道` ring 1 = avenue, `路` ring 2 = road, `巷` ring 3 = lane, `弄` ring 4 and deeper = alley), `parent` (the street above, or the plaza),
-  `lots` (houses standing on it directly) and `reserved` (empty lots it holds). `label` is there when it differs from the tree's label (a road with a collapsed
+  `lots` and `reserved`. `label` is there when it differs from the tree's label (a road with a collapsed
   chain: `"Humanities・History"`), else `address[-1]` is the name. `collapsed` lists the topics collapsed into the road, top first. `over: true` marks a road
   that holds more than `max` houses and cannot split. `rib` is `{trunk, band, side, x0, x1, s, slots}` (`band` is null when the rib lies along the spoke).
   A road that holds more than its first rib has `lanes`: continuation ribs, records with `lane_of`, `ordinal`, `continued: true` and the same label,
   level, class and address as the road.
+
+  **`lots` and `reserved` count one segment**: the houses that stand in, and the empty lots that are left in, the rib that this record carries. A road with
+  continuation ribs is several records, each with its own counts. **The houses standing on a whole road are the `lots` of its record plus the `lots` of every
+  record in its `lanes`, and not the houses of the roads below it.** In the sample, Ecology is a record with `lots: 18` and one continuation with `lots: 17`: 35
+  houses. `reserved` is read the same way. (A continuation that a split left empty is not in the document, nor in `lanes`.)
+
+  **A road with no lots of its own** has `lots: 0`, `reserved: 0` and no `rib`. In `grow` mode it is a road whose houses have all moved to the roads below it, and none has arrived since. In
+  `mirror` mode it is also a topic that has roads below it and no house of its own, or a topic an item is filed under while that item's house stands elsewhere.
+  It is a road all the same: it has a place, an address, a level and a parent, and a ring-1 road of this kind has its wedge and its spoke.
 
 ### `roads`
 
