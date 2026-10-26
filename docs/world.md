@@ -121,14 +121,14 @@ the first ring is full by the 180th arrival.) A `set_rule` that switches `auto` 
 
 No model and no network: the same world gives the same answer. A house is in the group of each OpenAlex topic it carries, once.
 
-- `suggest_road(state, at)`: the road to open at `at` (a road id, or `None` for the root zone). The largest group of the houses standing directly there that share a topic at the most specific
+- `suggest_road(world, at)`: the road to open at `at` (a road id, or `None` for the root zone). The largest group of the houses standing directly there that share a topic at the most specific
   level (topic, then subfield, field, domain) that still gives a group of at least `min`; at one level the largest group wins, and of two as large the one with the lower topic id. Returns
   `{at, level, topic: {id, name}, name, houses}`, `name` being the default name of the road (the name of that topic), or `None`.
-- `suggest_file(state, house)`: the road that the house belongs on. A road scores a count for each level, the topic level first: the topics the house shares with the houses of the road, summed
+- `suggest_file(world, house)`: the road that the house belongs on. A road scores a count for each level, the topic level first: the topics the house shares with the houses of the road, summed
   over those houses. The best score wins, a road opened earlier winning a tie. Returns `{house, road, name, level, shared, confidence}`: `level` is the most specific level at which the
   winner shares anything, `shared` the count there, `confidence` that count as a part of the same count over every road that could take the house (1.0 when no other road shares a topic
   at that level), in hundredths. A house on a road gets a suggestion only for a road that scores better than its own; `None` when there is nothing to suggest.
-- `crowded(state)`: `[{at, name, houses}]` for the places that hold more than `max` houses directly, the root zone (`at` and `name` null) first.
+- `crowded(world)`: `[{at, name, houses}]` for the places that hold more than `max` houses directly, the root zone (`at` and `name` null) first.
 
 ## The files
 

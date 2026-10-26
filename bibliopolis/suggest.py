@@ -1,13 +1,13 @@
 """Suggestions for a hand-built world, made from the OpenAlex topics of its houses: no model, no network, and the same answer for the same world.
 
-    suggest_road(state, at)       the houses to put on a new road opened at a road or the root zone, and the name to give it
-    suggest_file(state, house)    the road a house belongs on, with a confidence
-    crowded(state)                the places that hold more houses than `max`
+    suggest_road(world, at)       the houses to put on a new road opened at a road or the root zone, and the name to give it
+    suggest_file(world, house)    the road a house belongs on, with a confidence
+    crowded(world)                the places that hold more houses than `max`
 
 An item carries up to three OpenAlex topics (the primary one and two more), each with four levels: domain, field, subfield and topic. Two houses share a topic at
 a level when a topic of the one and a topic of the other have the same id there. A house with no topic is shared with nobody.
 
-A suggestion is a dict that a page can show as it is; `state` is a `bibliopolis.hand.State` (what `Journal.state` holds).
+A suggestion is a dict that a page can show as it is; `world` is a `bibliopolis.hand.State`, the folded world (what `Journal.state` holds).
 """
 
 from __future__ import annotations
@@ -43,13 +43,13 @@ def largest_group(houses: dict[str, list[dict]], least: int) -> Group | None:
     return None
 
 
-def suggest_road(state, at: str | None) -> dict | None:
+def suggest_road(world, at: str | None) -> dict | None:
     """The road to open at `at` (a road id, or None for the root zone): `{at, level, topic: {id, name}, name, houses}`, or None when the houses that stand there directly
     share no topic in a group of at least `min`. `houses` are the houses of the largest group at the most specific level that gives one (see `largest_group`), `name`
     the default name for the road (the name of that topic). `Refusal` for a road that is not there."""
-    if at is not None and at not in state.nodes:
+    if at is not None and at not in world.nodes:
         raise Refusal(f"there is no road {at!r}")
-    group = largest_group({h: state.items[h]["openalex"] for h in state.houses_at(at)}, state.rule["min"])
+    group = largest_group({h: world.items[h]["openalex"] for h in world.houses_at(at)}, world.rule["min"])
     if group is None:
         return None
     return {"at": at, "level": group.level, "topic": {"id": group.id, "name": group.name}, "name": group.name, "houses": group.houses}
@@ -63,7 +63,7 @@ def _ids(topics: list[dict]) -> dict[str, set[str]]:
     return {level: {t[level]["id"] for t in topics} for level in LEVELS}
 
 
-def suggest_file(state, house: str) -> dict | None:
+def suggest_file(world, house: str) -> dict | None:
     """The road that `house` belongs on: `{house, road, name, level, shared, confidence}`, or None.
 
     A road scores one count for each level, the most specific first: the topics that the house shares with the houses of the road, summed over those houses (a topic
@@ -72,33 +72,33 @@ def suggest_file(state, house: str) -> dict | None:
     could take the house, from 0 to 1 in hundredths: 1 when no other road shares a topic at that level. A house that stands on a road gets a suggestion only
     for a road that scores better than the one it stands on. None when the house has no topic, no road shares one, or the road it stands on is as good.
     `Refusal` for a house that is not there."""
-    if house not in state.items:
+    if house not in world.items:
         raise Refusal(f"{house!r} is not a house")
-    mine = _ids(state.items[house]["openalex"])
+    mine = _ids(world.items[house]["openalex"])
     scores: dict[str, list[int]] = {}
-    for road in state.nodes:
+    for road in world.nodes:
         total = [0] * len(LEVELS)
-        for other in state.houses_at(road):
+        for other in world.houses_at(road):
             if other != house:
-                total = [a + b for a, b in zip(total, _shared(mine, _ids(state.items[other]["openalex"])))]
+                total = [a + b for a, b in zip(total, _shared(mine, _ids(world.items[other]["openalex"])))]
         scores[road] = total
-    here = state.road_of[house]
+    here = world.road_of[house]
     candidates = {road: s for road, s in scores.items() if road != here}
     if not candidates:
         return None
-    opened = {road: i for i, road in enumerate(state.nodes)}
+    opened = {road: i for i, road in enumerate(world.nodes)}
     best = max(candidates, key=lambda road: (candidates[road], -opened[road]))  # (the road opened first wins a tie)
     if not any(candidates[best]) or (here is not None and candidates[best] <= scores[here]):
         return None
     at = next(i for i, n in enumerate(candidates[best]) if n)
     count = candidates[best][at]
     whole = sum(s[at] for s in candidates.values())
-    return {"house": house, "road": best, "name": state.nodes[best]["name"], "level": LEVELS[at], "shared": count, "confidence": round(count / whole, 2)}
+    return {"house": house, "road": best, "name": world.nodes[best]["name"], "level": LEVELS[at], "shared": count, "confidence": round(count / whole, 2)}
 
 
-def crowded(state) -> list[dict]:
+def crowded(world) -> list[dict]:
     """The places that hold more than `max` houses directly: `{at, name, houses}` (the root zone first, with `at` None and `name` None, then the roads in the order they
     were opened). The town hall tells the player; nothing in the world changes by itself."""
-    held = Counter(state.road_of.values())
-    top = state.rule["max"]
-    return [{"at": road, "name": None if road is None else state.nodes[road]["name"], "houses": held[road]} for road in (None, *state.nodes) if held[road] > top]
+    held = Counter(world.road_of.values())
+    top = world.rule["max"]
+    return [{"at": road, "name": None if road is None else world.nodes[road]["name"], "houses": held[road]} for road in (None, *world.nodes) if held[road] > top]
