@@ -328,7 +328,8 @@ program for the rest. `tests/test_world_schema.py` holds the schema to the progr
 exporting it again gives the same bytes, and so does exporting a store and importing the file.
 
 **The home folder** is `$BIBLIOPOLIS_HOME`, else `~/Bibliopolis`; it is made on first use and printed. The world of a command without `--world` is `world.sqlite` in it. A world is never
-overwritten: `world new` and `world import` refuse a file that is there, and `world export` and `world fold` refuse to write a file that is the world they read (under any name for it) or any SQLite
+overwritten: `world new` and `world import` refuse a file that is there, even one that appears while they work (the file is made exclusively, so of two commands for one path one is refused,
+and a command that fails removes only a file it made itself), and `world export` and `world fold` refuse to write a file that is the world they read (under any name for it) or any SQLite
 database (`output_is_the_world`, `output_is_a_database`).
 
 ## In Python

@@ -93,20 +93,27 @@ class Store:
 
     @classmethod
     def import_journal(cls, path: str | Path, journal: Journal) -> "Store":
-        """A new file with the world of `journal`, all or nothing: the file is not left behind when something goes wrong. `Refusal` when the file is there already."""
+        """A new file with the world of `journal`, all or nothing: the file is not left behind when something goes wrong. `Refusal` when the file is there already.
+
+        The file is made exclusively (`O_CREAT | O_EXCL`, which also refuses a name that is a link, to a file or to nothing): of two calls for one path only one gets it, the other
+        is refused, and a call removes after a failure only the file that it made itself."""
         store = cls(path)
-        if store.path.exists():
-            raise Refusal(f"{store.path} is there already; a world is not overwritten (choose another file with --world, or move that one away)", "world_exists", path=str(store.path))
         store.path.parent.mkdir(parents=True, exist_ok=True)
         try:
-            with closing(_connect(store.path)) as db, db:
+            os.close(os.open(store.path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644))
+        except FileExistsError:
+            raise Refusal(f"{store.path} is there already; a world is not overwritten (choose another file with --world, or move that one away)", "world_exists", path=str(store.path)) from None
+        try:
+            with closing(_connect(store.path)) as db:
+                db.execute("BEGIN")  # one transaction for the tables and the rows: a reader sees an empty file, then the whole world
                 for statement in SCHEMA:
                     db.execute(statement)
                 db.execute("INSERT INTO world (id, format, version, rule) VALUES (1, ?, ?, ?)", (FORMAT, VERSION, dumps(journal.rule)))
                 for e in journal.events:
                     cls._insert(db, e)
+                db.commit()
         except BaseException:
-            store.path.unlink(missing_ok=True)
+            store.path.unlink(missing_ok=True)  # (this call made the file, so it is this call's to remove)
             raise
         return store
 

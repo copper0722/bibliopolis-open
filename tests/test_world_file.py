@@ -216,6 +216,34 @@ def test_a_store_is_made_with_a_rule_and_nothing_else_and_is_never_overwritten(t
     assert not (tmp_path / "bad.sqlite").exists()  # a rule that cannot be leaves no file behind
 
 
+def test_a_world_made_in_the_same_moment_is_never_removed_by_the_call_that_fails(tmp_path, monkeypatch):
+    """Two calls that make a world at one path both look, find no file, and go on; one is first. The other must fail with the refusal and leave the first one's file alone: it used to
+    remove it, as the unfinished file that it took for its own."""
+    path = tmp_path / "w.sqlite"
+    first = small()
+    Store.import_journal(path, first)  # the call that was first
+    before = path.read_bytes()
+    monkeypatch.setattr(Path, "exists", lambda self: False)  # the other call looked a moment too soon: it saw no file
+    for make in (lambda: Store.import_journal(path, small()), lambda: Store.create(path)):
+        with pytest.raises(Refusal, match="is there already; a world is not overwritten") as why:
+            make()
+        assert why.value.code == "world_exists"
+    monkeypatch.undo()
+    assert path.read_bytes() == before and text_of(Store(path).journal()) == text_of(first)
+
+
+def test_a_world_is_not_made_through_a_link_that_leads_nowhere(tmp_path):
+    """A name that is a link to a file that is not there is a name that is taken: making the world would make the file behind the link."""
+    behind, path = tmp_path / "behind.sqlite", tmp_path / "w.sqlite"
+    try:
+        path.symlink_to(behind)
+    except OSError:
+        pytest.skip("this system makes no links")
+    with pytest.raises(Refusal, match="is there already"):
+        Store.create(path)
+    assert not behind.exists() and path.is_symlink()
+
+
 def test_the_tables_of_a_store_are_world_item_and_event_with_the_payloads_as_canonical_text(tmp_path):
     j = small()
     path = tmp_path / "w.sqlite"
