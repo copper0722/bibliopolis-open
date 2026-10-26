@@ -51,7 +51,7 @@ def test_a_list_that_the_caller_goes_on_changing_does_not_change_the_road_that_w
     event = j.append("open_road", {"road": "a", "name": "A", "parent": None, "houses": houses}, stamp(10))
     houses.append("absent")  # the caller reuses its list
     houses[0] = "another"
-    assert event["payload"]["houses"] == [hid(1), hid(2), hid(3)] and j.events[-1] is event
+    assert event["payload"]["houses"] == [hid(1), hid(2), hid(3)] and j.events[-1] == event
     again = Journal.replay(j.rule, j.events)  # the log still replays: it was never changed
     assert lay.render(again.state.city()) == lay.render(j.state.city())
 
@@ -91,6 +91,29 @@ def test_no_list_or_dict_that_a_payload_is_made_of_is_shared_with_the_event_that
             kept = fresh.append(e["kind"], payload, e["at"])
             assert [place for place, value in containers(kept["payload"]) if id(value) in given] == [], e["kind"]
             seen.add(e["kind"])
+    assert seen == set(KINDS)
+
+
+def test_the_event_append_returns_is_a_copy_that_shares_nothing_with_the_log_and_changing_it_changes_nothing():
+    """What `append` gives back used to be the event of the log itself: a caller who set a key or emptied a list of it changed the log. Every event of the scripted worlds is appended to a
+    new journal; what comes back equals the event in the log, is not it, shares no list or dict with it, and is changed all over without changing the log."""
+    seen = set()
+    for world in (scripted, scripted_nodes, scripted_merge):
+        source = world().journal
+        fresh = Journal(source.rule)
+        for e in source.events:
+            returned = fresh.append(e["kind"], copy.deepcopy(e["payload"]), e["at"])
+            kept = fresh.events[-1]
+            assert returned == kept == e and returned is not kept, e["kind"]
+            in_the_log = {id(value) for _, value in containers(kept)}
+            assert [place for place, value in containers(returned) if id(value) in in_the_log] == [], e["kind"]
+            for _, value in list(containers(returned)):  # change what came back, all over
+                value.clear()
+            returned["seq"] = 0
+            assert kept == e, e["kind"]
+            seen.add(e["kind"])
+        again = Journal.replay(source.rule, fresh.events)
+        assert lay.render(again.state.city()) == lay.render(source.state.city())
     assert seen == set(KINDS)
 
 

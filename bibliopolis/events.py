@@ -174,6 +174,15 @@ class Problems(_Problems):
         super().add(where, what)
 
 
+def copy_json(value):
+    """A copy of a JSON value (objects, lists, text, numbers, true, false, null) in which every object and list is new: what a journal gives back of its log, so that the log stays its own."""
+    if isinstance(value, dict):
+        return {key: copy_json(child) for key, child in value.items()}
+    if isinstance(value, list):
+        return [copy_json(child) for child in value]
+    return value
+
+
 def text(problems: Problems, where: str, value, *, nonempty: bool = True, plain: bool = False) -> bool:
     """Whether `value` is a string that can be written as UTF-8; `nonempty` refuses text of white space only and `plain` also control characters (ids and names are written into
     place ids). The same checks as the readers of the library and the tree, with an id for each fault."""

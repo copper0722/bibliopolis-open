@@ -1,7 +1,7 @@
 """The journal of a hand-built world: its log of events and the world that the log folds to, kept together; and the world file it is written to and read from.
 
     journal = Journal()                                                      # the rule 40 / 10, `auto` off
-    journal.append("add_item", {"item": {...}}, "2026-10-26T09:30:00Z")      # -> the event, with its `seq`; `Refusal` when the world does not take it
+    journal.append("add_item", {"item": {...}}, "2026-10-26T09:30:00Z")      # -> a copy of the event, with its `seq`; `Refusal` when the world does not take it
     journal.state.city()                                                     # the layout v4 document of the world now
     text = dumps_world(world_document(journal))                              # the world file: JSON, one item and one event to a line, the canonical number form
     journal = read_world(json.loads(text))                                   # ... and back: every event is appended again, under the rules of `append`
@@ -17,7 +17,7 @@ keeps it, so a log made by `append` folds again to the same world. An `undo` is 
 from __future__ import annotations
 
 from .canonical import dumps
-from .events import DEFAULT_RULE, Coded, Problems, Refusal, check_event, check_item, check_rule, references, standing
+from .events import DEFAULT_RULE, Coded, Problems, Refusal, check_event, check_item, check_rule, copy_json, references, standing
 from .hand import State, fold
 from .inputs import InputError, _shown, load_json
 
@@ -71,7 +71,8 @@ class Journal:
         return [e["payload"]["item"] for e in self.events if e["kind"] == "add_item"]
 
     def append(self, kind: str, payload: dict, at: str) -> dict:
-        """Append an event. Returns it as the log keeps it. `Refusal`, and no change, when its shape is wrong or the world does not take it."""
+        """Append an event. Returns a copy of it as the log keeps it (the log's own event is not handed out: a caller who changes what it gets changes nothing). `Refusal`, and no change,
+        when its shape is wrong or the world does not take it."""
         problems = Problems()
         event = check_event({"seq": len(self.events) + 1, "at": at, "kind": kind, "payload": payload}, "event", problems)
         _refuse(problems)
@@ -87,7 +88,7 @@ class Journal:
                 self.state = fold(self.events, self.rule)
                 raise
         self.events.append(event)
-        return event
+        return copy_json(event)
 
     def undone(self, event: dict) -> State:
         """The world after the undo `event`, if it may be taken."""

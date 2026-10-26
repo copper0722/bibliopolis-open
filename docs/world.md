@@ -351,12 +351,12 @@ from bibliopolis.journal import Journal, dumps_world, read_world, world_document
 from bibliopolis.suggest import suggest_road, suggest_file, suggest_merge, crowded
 
 journal = Journal()                                              # or Journal({"max": 30, "min": 8, "auto": True})
-journal.append("add_item", {"item": item}, "2026-10-26T09:30:00Z")   # the event, or Refusal and no change
+journal.append("add_item", {"item": item}, "2026-10-26T09:30:00Z")   # a copy of the event, or Refusal and no change
 journal.state.city()                                             # the layout v4 document
 suggest_road(journal.state, None)
 ```
 
-`Journal.append` is the one way an event enters a world. `bibliopolis.hand.fold(events, rule)` folds a whole log. `bibliopolis.store.Store` reads and writes the SQLite file.
+`Journal.append` is the one way an event enters a world; it gives back a copy of the event, never the log's own, and copies the lists it is given. `bibliopolis.hand.fold(events, rule)` folds a whole log. `bibliopolis.store.Store` reads and writes the SQLite file.
 
 ## For a port
 
