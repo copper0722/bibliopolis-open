@@ -14,6 +14,52 @@ residents of its house. The city grows as the collection grows.
 ready-made topic tree: you bring a library file and a topic tree (formats: [docs/format.md](docs/format.md)). This repository is the
 open extraction of a private, self-use project.
 
+## Set up
+
+This takes a few minutes and needs no programming. You need Python 3.11 or newer and the files of this repository. Nothing else has to be installed: the
+program uses only what comes with Python.
+
+**1. Install Python.** Download it from [python.org/downloads](https://www.python.org/downloads/) and run the installer. On a Mac you can use Homebrew
+instead: `brew install python`. Then open a terminal and check the version:
+
+```
+python3 --version
+```
+
+It should say Python 3.11 or higher. If it says an older version (a Mac may come with Python 3.9), install a newer one. On Windows, type `py` instead of
+`python3` here and in every command on this page.
+
+**2. Get the files.** If you have Git, run this:
+
+```
+git clone https://github.com/copper0722/bibliopolis-open.git
+```
+
+If you do not, open the repository on GitHub, press the green "Code" button, choose "Download ZIP" and unzip the file. Either way you get a folder.
+
+**3. Open a terminal in that folder.** If you used `git clone`, type `cd bibliopolis-open` in the same terminal. Otherwise, on Windows open the folder in
+File Explorer, click its address bar, type `cmd` and press Enter. On a Mac open Terminal, type `cd ` (with a space after it), drag the folder into the
+window and press Enter. On Linux right-click in the folder and choose "Open in Terminal".
+
+**4. Build a city and draw it.** Type these two commands, one after the other:
+
+```
+python3 -m bibliopolis build --library examples/library.json --tree examples/tree.json --mode grow --out city.json
+python3 -m bibliopolis picture --city city.json --out city.svg
+```
+
+Each one prints a line when it is done:
+
+```
+wrote city.json: 600 houses on 22 roads, 15 under the town hall, 22 splits, 1 over (mode grow)
+wrote city.svg: 39457 bytes
+```
+
+**5. Look at it.** Open `city.svg` in a web browser: drag the file onto a browser window, or right-click it and choose "Open with". You see the town hall
+in the middle, the roads that go out from it, and a coloured house for each article. The example library is invented; to use your own, see "Try it" below.
+
+You need `python3 -m pip install pytest` only if you want to run the tests (see Tests below).
+
 ## How a city grows
 
 A city starts as a town hall and nothing else. Each new article becomes a house at once, and it is built under the town hall, in the root zone. Nothing
@@ -28,8 +74,8 @@ are under the town hall. House 41 opens the first road, and the orange houses ar
 The town hall keeps a chronicle of every split. The command prints it, one sentence per entry (the first four here):
 
 ```
-python -m bibliopolis build --library examples/library.json --tree examples/tree.json --mode grow --out city.json
-python -m bibliopolis chronicle --city city.json --limit 4
+python3 -m bibliopolis build --library examples/library.json --tree examples/tree.json --mode grow --out city.json
+python3 -m bibliopolis chronicle --city city.json --limit 4
 ```
 
 ```
@@ -43,8 +89,8 @@ To see the city as it was at house 41, build it again with `--first 41` and draw
 first house is built, so every road points the same way as in the full city. This is the same city at an earlier moment.
 
 ```
-python -m bibliopolis build --library examples/library.json --tree examples/tree.json --mode grow --first 41 --out city-41.json
-python -m bibliopolis picture --city city-41.json --out city-41.svg
+python3 -m bibliopolis build --library examples/library.json --tree examples/tree.json --mode grow --first 41 --out city-41.json
+python3 -m bibliopolis picture --city city-41.json --out city-41.svg
 ```
 
 ## Two modes
@@ -67,12 +113,12 @@ arrived.*
 
 ## Try it
 
-Python 3.11 or newer. Nothing to install: the package uses the standard library only.
+With Python and the files in place (see Set up above), run these in the folder of the files:
 
 ```
-python -m bibliopolis build --library examples/library.json --tree examples/tree.json --mode grow --out city.json
-python -m bibliopolis build --library examples/library.json --tree examples/tree.json --mode mirror --out city-mirror.json
-python -m bibliopolis picture --city city.json --out city.svg
+python3 -m bibliopolis build --library examples/library.json --tree examples/tree.json --mode grow --out city.json
+python3 -m bibliopolis build --library examples/library.json --tree examples/tree.json --mode mirror --out city-mirror.json
+python3 -m bibliopolis picture --city city.json --out city.svg
 ```
 
 The example is a synthetic library of 600 items on a tree of 80 topics, made by `examples/make_example.py`; every title, author and DOI
@@ -94,12 +140,12 @@ of each problem. JSON Schema files are in `schema/`.
 ## Tests
 
 ```
-python -m pip install pytest
-python -m pytest
+python3 -m pip install pytest
+python3 -m pytest
 ```
 
 The pictures of this page are made by `examples/make_pictures.py` from the example. A test makes them again and compares them with the files in
-`docs/images/` byte for byte, so they cannot go stale. After a change to the engine or the example, run `python examples/make_pictures.py` and commit
+`docs/images/` byte for byte, so they cannot go stale. After a change to the engine or the example, run `python3 examples/make_pictures.py` and commit
 the result.
 
 ## Principles
@@ -127,6 +173,49 @@ the result.
 **狀態：起步中。** 城邦引擎與命令列已經可以用，兩種模式都有。目前還沒有檢視器，還不能直接匯入 Zotero，也沒有現成的主題樹：
 你要自備文獻庫檔案與主題樹（格式見 [docs/format.md](docs/format.md)）。這個 repo 是一個私人自用專案的開源版。
 
+## 安裝與設定
+
+不需要會寫程式，幾分鐘就能完成。你需要兩樣東西：Python 3.11 或更新的版本，以及這個 repo 的檔案。其他東西都不用安裝：這個程式只用 Python 內建的功能。
+
+**1. 安裝 Python。** 到 [python.org/downloads](https://www.python.org/downloads/) 下載，執行安裝程式。Mac 也可以改用 Homebrew：`brew install python`。
+接著開啟終端機，檢查版本：
+
+```
+python3 --version
+```
+
+畫面應該顯示 Python 3.11 或更高的版本。如果顯示的版本比較舊（有些 Mac 內建的是 Python 3.9），請安裝新版。Windows 請把這一頁每一行指令裡的 `python3` 改成 `py`。
+
+**2. 取得檔案。** 如果你有安裝 Git，可以執行這一行：
+
+```
+git clone https://github.com/copper0722/bibliopolis-open.git
+```
+
+沒有 Git 的話，打開這個 repo 在 GitHub 上的頁面，按綠色的「Code」按鈕，選「Download ZIP」，再把下載的檔案解壓縮。兩種做法都會得到一個資料夾。
+
+**3. 在那個資料夾裡開啟終端機。** 如果你用的是 `git clone`，在同一個終端機輸入 `cd bibliopolis-open` 就可以。否則，Windows 請用檔案總管打開資料夾，點一下上方的網址列，
+輸入 `cmd` 再按 Enter；Mac 請開啟「終端機」，輸入 `cd `（後面留一個空格），把資料夾拖進視窗，再按 Enter；Linux 請在資料夾裡按右鍵，選「在終端機中開啟」。
+
+**4. 蓋一座城邦，再把它畫出來。** 依序輸入這兩行指令：
+
+```
+python3 -m bibliopolis build --library examples/library.json --tree examples/tree.json --mode grow --out city.json
+python3 -m bibliopolis picture --city city.json --out city.svg
+```
+
+每一行做完，都會印出一行結果：
+
+```
+wrote city.json: 600 houses on 22 roads, 15 under the town hall, 22 splits, 1 over (mode grow)
+wrote city.svg: 39457 bytes
+```
+
+**5. 看看成果。** 用瀏覽器打開 `city.svg`：把檔案拖進瀏覽器視窗，或對檔案按右鍵，選「開啟方式」。你會看到市政廳在中央，路從它往外延伸，每篇文獻是一棟上了色的房子。
+範例文獻庫是虛構的；要用你自己的文獻庫，請看下面的「試試看」。
+
+只有要跑測試時，才需要 `python3 -m pip install pytest`（見下面的「測試」）。
+
 ## 城邦怎麼長大
 
 一座城邦一開始只有市政廳。每一篇新文獻立刻蓋成一棟房子，蓋在市政廳地下的根區。根區住滿 40 棟之前，地面上什麼都沒有。超過 40 棟時，
@@ -140,8 +229,8 @@ the result.
 市政廳會記下每一次分路，寫成市政紀事。下面的指令把它印出來，一筆一句（這裡只列前四筆）：
 
 ```
-python -m bibliopolis build --library examples/library.json --tree examples/tree.json --mode grow --out city.json
-python -m bibliopolis chronicle --city city.json --limit 4
+python3 -m bibliopolis build --library examples/library.json --tree examples/tree.json --mode grow --out city.json
+python3 -m bibliopolis chronicle --city city.json --limit 4
 ```
 
 ```
@@ -154,8 +243,8 @@ house 130, 2020-08-12: Computing held 41 houses. Systems opens as a road with 20
 想看蓋到第 41 棟時的城邦，加上 `--first 41` 再蓋一次，然後把它畫出來。路的方向不會變：規劃在蓋第一棟房子之前，就已經讀過整份文獻庫，所以每條路的方向都和完整城邦相同。這是同一座城邦在較早的時刻。
 
 ```
-python -m bibliopolis build --library examples/library.json --tree examples/tree.json --mode grow --first 41 --out city-41.json
-python -m bibliopolis picture --city city-41.json --out city-41.svg
+python3 -m bibliopolis build --library examples/library.json --tree examples/tree.json --mode grow --first 41 --out city-41.json
+python3 -m bibliopolis picture --city city-41.json --out city-41.svg
 ```
 
 ## 兩種模式
@@ -175,12 +264,12 @@ python -m bibliopolis picture --city city-41.json --out city-41.svg
 
 ## 試試看
 
-需要 Python 3.11 以上。不用安裝任何東西，套件只用標準函式庫。
+照上面的「安裝與設定」準備好 Python 與檔案之後，在檔案所在的資料夾裡執行：
 
 ```
-python -m bibliopolis build --library examples/library.json --tree examples/tree.json --mode grow --out city.json
-python -m bibliopolis build --library examples/library.json --tree examples/tree.json --mode mirror --out city-mirror.json
-python -m bibliopolis picture --city city.json --out city.svg
+python3 -m bibliopolis build --library examples/library.json --tree examples/tree.json --mode grow --out city.json
+python3 -m bibliopolis build --library examples/library.json --tree examples/tree.json --mode mirror --out city-mirror.json
+python3 -m bibliopolis picture --city city.json --out city.svg
 ```
 
 範例是一個合成的文獻庫：80 個主題、600 篇文獻，由 `examples/make_example.py` 產生，標題、作者與 DOI 都是虛構的。在 `grow` 模式下，
@@ -201,12 +290,12 @@ wrote city.json: 600 houses on 22 roads, 15 under the town hall, 22 splits, 1 ov
 ## 測試
 
 ```
-python -m pip install pytest
-python -m pytest
+python3 -m pip install pytest
+python3 -m pytest
 ```
 
 這一頁的圖由 `examples/make_pictures.py` 從範例產生。測試會重新產生這些圖，和 `docs/images/` 裡的檔案逐位元組比對，所以圖不會過期。
-改了引擎或範例之後，執行 `python examples/make_pictures.py`，再把結果提交。
+改了引擎或範例之後，執行 `python3 examples/make_pictures.py`，再把結果提交。
 
 ## 原則
 

@@ -28,7 +28,7 @@ split as they grow).
   formats: `docs/format.md` and `schema/`.
 - `examples/` the seeded generator of the synthetic sample (`make_example.py`) and its output; a derived city is never committed. `make_pictures.py` makes
   `docs/images/*.svg` from the sample; a test compares them with the committed files byte for byte, so run it after a change to the engine or the sample.
-- `tests/`: `python -m pytest` from the repository root. Every test is offline and synthetic.
+- `tests/`: `python3 -m pytest` from the repository root. Every test is offline and synthetic.
 - The plan, the world of `grow` mode (roads, direct counts, root zone, chronicle, lots, ribs, lines) and the document it makes (places, roads, coast,
   measures) are an extraction of the private engine. A parity test in the private repository compares them with it on random libraries and on the
   sample (the whole document against a private plan without the journal sector). Not compared, because the private engine has nothing to compare

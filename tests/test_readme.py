@@ -6,6 +6,7 @@ import re
 import shlex
 import subprocess
 import sys
+import tomllib
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -15,10 +16,52 @@ from bibliopolis import picture
 ROOT = Path(__file__).resolve().parents[1]
 README = (ROOT / "README.md").read_text(encoding="utf-8")
 ENGLISH, CHINESE = README.split("\n---\n", 1)
+HALVES = ((ENGLISH, "## Set up", "## How a city grows", "## Try it"), (CHINESE, "## 安裝與設定", "## 城邦怎麼長大", "## 試試看"))
+
+# The lines of the code blocks that the test does not run, and why. Every other line of a code block must be a bibliopolis command (run below), the version
+# command (run below) or a line that a command printed (compared with the real output below).
+NOT_RUN = {
+    "git clone https://github.com/copper0722/bibliopolis-open.git": "downloads the repository from GitHub",
+    "python3 -m pip install pytest": "installs from the internet",
+    "python3 -m pytest": "is the test run itself",
+}
+# The same for a command inside a sentence.
+NOT_RUN_INLINE = {
+    "brew install python": "installs Python with Homebrew",
+    "git clone": "the name of the command, with the line of NOT_RUN above",
+    "cd bibliopolis-open": "moves into the folder that `git clone` makes",
+    "cd ": "the first word of a command that the reader completes",
+    "python3 -m pip install pytest": "installs from the internet",
+    "python3 examples/make_pictures.py": "makes the pictures of docs/images/; tests/test_images.py runs the script into a temporary folder",
+}
+OUTPUT = ("wrote ", "house ")
 
 
 def commands(text):
-    return [line.strip() for line in text.splitlines() if line.strip().startswith("python -m bibliopolis ")]
+    return [line.strip() for line in text.splitlines() if line.strip().startswith("python3 -m bibliopolis ")]
+
+
+def fenced_lines(text):
+    """Every non-empty line of every code block, in order."""
+    lines, inside = [], False
+    for line in text.splitlines():
+        if line.strip().startswith("```"):
+            inside = not inside
+        elif inside and line.strip():
+            lines.append(line.strip())
+    return lines
+
+
+def inline_commands(text):
+    """The commands inside sentences: the `code` spans (outside the code blocks) that start like one."""
+    prose = re.sub(r"```.*?```", "", text, flags=re.DOTALL)
+    return [span for span in re.findall(r"`([^`\n]+)`", prose) if span.startswith(("python3 ", "py ", "git ", "brew ", "pip ", "cd "))]
+
+
+def section(text, head, next_head="\n## "):
+    """From `head` to the next heading (or to `next_head`, the text of one)."""
+    start = text.index(head)
+    return text[start:text.index(next_head, start + len(head))]
 
 
 def run(argv, cwd):
@@ -27,7 +70,7 @@ def run(argv, cwd):
 
 
 def argv_of(command):
-    """The arguments of a README command (without `python`), the sample files by absolute path: the command is run where the reader stands."""
+    """The arguments of a README command (without `python3`), the sample files by absolute path: the command is run where the reader stands."""
     argv = shlex.split(command)[1:]
     for flag in ("--library", "--tree"):
         if flag in argv:
@@ -41,7 +84,7 @@ def build_on_the_sample(cwd, *extra):
 
 def test_the_two_halves_show_the_same_commands_in_the_same_order():
     english, chinese = commands(ENGLISH), commands(CHINESE)
-    assert english == chinese and len(english) == 7
+    assert english == chinese and len(english) == 9  # two in Set up, four in How a city grows, three in Try it
     assert {shlex.split(c)[3] for c in english} == {"build", "chronicle", "picture"}
     builds = [shlex.split(c) for c in english if shlex.split(c)[3] == "build"]
     assert {b[b.index("--mode") + 1] for b in builds} == {"grow", "mirror"} and sum("--first" in b for b in builds) == 1
@@ -61,11 +104,54 @@ def test_the_commands_of_the_readme_run_in_order_on_the_files_of_the_repository_
         assert ET.parse(where / "city.svg").getroot().tag.endswith("svg") and ET.parse(where / "city-41.svg").getroot().tag.endswith("svg")
 
 
+def test_every_command_the_readme_shows_is_run_by_the_test_or_is_on_the_list_of_those_that_are_not():
+    for half, *_heads in HALVES:
+        for line in fenced_lines(half):
+            assert line.startswith("python3 -m bibliopolis ") or line == "python3 --version" or line in NOT_RUN or line.startswith(OUTPUT), line
+        for span in inline_commands(half):
+            assert span in NOT_RUN_INLINE, span
+    assert all(reason for reason in [*NOT_RUN.values(), *NOT_RUN_INLINE.values()])
+
+
+def test_the_version_command_of_the_readme_runs_and_the_version_it_asks_for_is_the_one_the_project_needs(tmp_path):
+    assert all(fenced_lines(half).count("python3 --version") == 1 for half, *_heads in HALVES)
+    done = run(["--version"], tmp_path)  # the interpreter of this run stands in for `python3`
+    assert done.returncode == 0 and re.match(r"Python 3\.\d+", done.stdout)
+    needs = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]["requires-python"]
+    assert needs == ">=3.11"
+    version = needs.removeprefix(">=")  # the README asks for the version the project needs: 3.11
+    for half, head, next_head, _try_head in HALVES:
+        words = (f"Python {version} or newer", f"Python {version} or higher") if half is ENGLISH else (f"Python {version} 或更新", f"Python {version} 或更高")
+        text = section(half, head, next_head)
+        assert all(phrase in text for phrase in words), head
+        assert {m for m in re.findall(r"Python 3\.(\d+)", text)} == {version.split(".")[1], "9"}  # and 3.9 only as the example of an old one on a Mac
+
+
+def test_each_half_has_a_set_up_section_before_how_a_city_grows_for_a_reader_who_does_not_program():
+    for half, head, next_head, try_head in HALVES:
+        assert half.index(head) < half.index(next_head)
+        text = section(half, head, next_head)
+        for needle in ("python.org/downloads", "Homebrew", "`py`", "`python3`", "git clone https://github.com/copper0722/bibliopolis-open.git", "Download ZIP",
+                       "`cmd`", "city.svg", "pytest"):
+            assert needle in text, (head, needle)
+        try_it = section(half, try_head)  # up to the next heading
+        assert commands(text) == [commands(try_it)[0], commands(try_it)[2]]  # the two example commands of Set up: the grow build and the picture
+
+
 def test_the_readme_shows_the_line_the_build_command_prints_on_the_sample(tmp_path):
     shown = re.findall(r"^wrote city\.json: .*$", README, flags=re.MULTILINE)
-    assert len(shown) == 2 and shown[0] == shown[1]
+    assert len(shown) == 4 and len(set(shown)) == 1  # in Set up and in Try it, in both halves
     done = build_on_the_sample(tmp_path, "--mode", "grow", "--out", "city.json")
     assert done.returncode == 0 and done.stderr.strip() == shown[0]
+
+
+def test_the_readme_shows_the_line_the_picture_command_prints_after_that_build(tmp_path):
+    shown = re.findall(r"^wrote city\.svg: .*$", README, flags=re.MULTILINE)
+    assert len(shown) == 2 and shown[0] == shown[1]  # in Set up, in both halves
+    assert build_on_the_sample(tmp_path, "--mode", "grow", "--out", "city.json").returncode == 0
+    done = run(["-m", "bibliopolis", "picture", "--city", "city.json", "--out", "city.svg"], tmp_path)
+    assert done.returncode == 0 and done.stderr.strip() == shown[0]
+    assert shown[0] == f"wrote city.svg: {(tmp_path / 'city.svg').stat().st_size} bytes"
 
 
 def test_the_readme_shows_the_chronicle_the_command_prints_on_the_sample(tmp_path):
@@ -96,7 +182,8 @@ def test_the_two_halves_of_the_readme_say_the_same_numbers():
 
 
 def test_each_half_leads_with_the_concept_picture_then_shows_the_growth_and_the_modes_with_a_caption_under_each():
-    for half, heads in ((ENGLISH, ("## How a city grows", "## Two modes")), (CHINESE, ("## 城邦怎麼長大", "## 兩種模式"))):
+    for half, _set_up, grows, _try_it in HALVES:
+        heads = (grows, "## Two modes" if half is ENGLISH else "## 兩種模式")
         found = [(m.start(), m.group(1), m.group(2)) for m in re.finditer(r"!\[([^\]]+)\]\(docs/images/([\w.-]+)\)", half)]
         assert [name for _, _, name in found] == ["concept.svg", "growth.svg", "modes.svg"]
         assert all(alt.strip() for _, alt, _ in found)

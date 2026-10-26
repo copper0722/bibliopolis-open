@@ -3,7 +3,7 @@
 Two JSON files go in, one comes out.
 
 ```
-python -m bibliopolis build --library library.json --tree tree.json --mode grow --out city.json
+python3 -m bibliopolis build --library library.json --tree tree.json --mode grow --out city.json
 ```
 
 JSON Schema files for the two inputs are in `schema/`. A schema cannot say everything the program checks; the checks are listed below.
@@ -67,7 +67,7 @@ Every problem found is reported at once (up to 20), each with the place it was f
 `city.json` is the layout v4 document: the geometry and the structure of the city. It holds no title, author, year, DOI, type or tag: those stay in your
 library file, and the house of an item is `place:article:<id>`.
 
-Two commands read it: `python -m bibliopolis picture --city city.json --out city.svg` draws it, and `python -m bibliopolis chronicle --city city.json`
+Two commands read it: `python3 -m bibliopolis picture --city city.json --out city.svg` draws it, and `python3 -m bibliopolis chronicle --city city.json`
 prints its chronicle as sentences. They refuse a file that is not a city (a library or a tree, say), and a city in which a field they read is missing or of the
 wrong type, a street or a house points at a place that is not there, the parents of a street lead round in a circle instead of to the plaza, or a house on the
 surface stands under a street that is no sector of ring 1. Each problem is named with its place (`city.places['place:tag:a'].parent: ...`), up to 20 at a time.

@@ -13,7 +13,7 @@ inputs ──> plan (directions, from the whole library) ──> world (the arri
 | plan | `bibliopolis.plan` | pins the directions: ring-1 sectors, trunks, heavy paths, sides; and the rule `max` / `min` |
 | world | `bibliopolis.world` | folds the arrivals into a world, one house at a time: the root zone, the roads, the splits, the ribs, the chronicle |
 | document | `bibliopolis.document`, `bibliopolis.layout`, `bibliopolis.coast` | writes the world as the layout v4 document: records, measures, the coast, the stable text |
-| glue | `bibliopolis.city`, `bibliopolis.cli` | `build_city()`, `chronicle_lines()` and the commands `python -m bibliopolis build`, `picture` and `chronicle` |
+| glue | `bibliopolis.city`, `bibliopolis.cli` | `build_city()`, `chronicle_lines()` and the commands `python3 -m bibliopolis build`, `picture` and `chronicle` |
 | picture | `bibliopolis.picture` | draws a city document as SVG: one city, or several on one sheet (see "The pictures") |
 
 ## Arrival and address
