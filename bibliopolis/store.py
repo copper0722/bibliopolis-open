@@ -9,7 +9,7 @@
 
 The SQLite file holds the same content as a world file in three tables: `world` (one row: format, version and the rule the world started with), `event` (one row for
 each event: seq, at, kind, and the payload as the canonical JSON text) and `item` (the metadata of each add_item event, by the seq of the event, as the canonical JSON
-text). The event log is append-only: the file refuses an update or a delete of a row. Nothing else is stored; the city is the fold of the events. A world file that is read
+text). The event log is append-only: the file refuses an update, a delete or a replace of a row. Nothing else is stored; the city is the fold of the events. A world file that is read
 into a store and written out again is the same bytes, and so is a store written out to a world file and read back.
 """
 
@@ -36,6 +36,10 @@ SCHEMA = (
     "CREATE INDEX item_id ON item (id)",
     *(f"CREATE TRIGGER {table}_{verb} BEFORE {verb.upper()} ON {table} BEGIN SELECT RAISE(ABORT, 'a world is append-only: {table} rows are not {verb}d'); END"
       for table in ("world", "event", "item") for verb in ("update", "delete")),
+    # `INSERT OR REPLACE` (and `REPLACE INTO`) deletes the row in its way without firing the delete trigger, and `OR IGNORE` and `ON CONFLICT` would pass over it: a row that is there is not
+    # inserted again under any form of the statement, so history cannot be rewritten by insert
+    *(f"CREATE TRIGGER {table}_replace BEFORE INSERT ON {table} WHEN EXISTS (SELECT 1 FROM {table} WHERE {key} = NEW.{key}) "
+      f"BEGIN SELECT RAISE(ABORT, 'a world is append-only: {table} rows are not replaced'); END" for table, key in (("world", "id"), ("event", "seq"), ("item", "seq"))),
 )
 
 

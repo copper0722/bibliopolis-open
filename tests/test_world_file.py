@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 import pytest
@@ -301,6 +302,48 @@ def test_the_log_of_a_store_is_append_only_the_file_itself_refuses_an_update_or_
     assert text_of(Store(path).journal()) == text_of(small())
 
 
+REPLACING_ROWS = {  # a row for each table with the key of a row that is there: (the columns, the values, the key, the column to change)
+    "world": ("id, format, version, rule", "1, 'bibliopolis.world', 1, '{\"max\":1,\"min\":1,\"auto\":false}'", "id", "rule"),
+    "event": ("seq, at, kind, payload", "1, '2030-01-01', 'set_rule', '{\"max\":9,\"min\":3,\"auto\":false}'", "seq", "payload"),
+    "item": ("seq, id, json", "1, 'changed', '{\"id\":\"changed\"}'", "seq", "json"),
+}
+REPLACING_FORMS = {
+    "INSERT OR REPLACE": "INSERT OR REPLACE INTO {table} ({columns}) VALUES ({values})",
+    "REPLACE INTO": "REPLACE INTO {table} ({columns}) VALUES ({values})",
+    "INSERT OR IGNORE": "INSERT OR IGNORE INTO {table} ({columns}) VALUES ({values})",
+    "an upsert that updates": "INSERT INTO {table} ({columns}) VALUES ({values}) ON CONFLICT ({key}) DO UPDATE SET {change} = excluded.{change}",
+    "an upsert that does nothing": "INSERT INTO {table} ({columns}) VALUES ({values}) ON CONFLICT DO NOTHING",
+}
+
+
+@pytest.mark.parametrize("form", list(REPLACING_FORMS))
+@pytest.mark.parametrize("table", list(REPLACING_ROWS))
+def test_the_log_of_a_store_is_append_only_a_row_that_is_there_is_not_replaced_either(table, form, tmp_path):
+    """`INSERT OR REPLACE` removes the row that is in the way without the delete trigger (SQLite fires it only for recursive triggers), so a trigger on insert guards the key."""
+    path = tmp_path / "w.sqlite"
+    Store.import_journal(path, small())
+    columns, values, key, change = REPLACING_ROWS[table]
+    with closing(sqlite3.connect(path)) as db:
+        before = db.execute(f"SELECT * FROM {table} ORDER BY 1").fetchall()
+        with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+            db.execute(REPLACING_FORMS[form].format(table=table, columns=columns, values=values, key=key, change=change))
+        db.rollback()
+        assert db.execute(f"SELECT * FROM {table} ORDER BY 1").fetchall() == before
+    assert text_of(Store(path).journal()) == text_of(small())
+
+
+def test_a_row_with_a_new_key_goes_in_as_before_and_a_plain_insert_of_a_key_that_is_there_is_refused(tmp_path):
+    """The controls of the guard on insert: appending (what `Store.append` does) is not hindered, and the key itself still refuses a plain insert."""
+    path = tmp_path / "w.sqlite"
+    Store.import_journal(path, small())  # 17 events
+    with closing(sqlite3.connect(path)) as db, db:
+        db.execute("INSERT INTO event VALUES (18, '2030-01-01', 'set_rule', '{\"max\":9,\"min\":3,\"auto\":false}')")
+        assert db.execute("SELECT COUNT(*) FROM event").fetchone() == (18,)
+    with closing(sqlite3.connect(path)) as db:
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute("INSERT INTO event VALUES (18, 'x', 'x', 'x')")
+
+
 def test_a_file_that_is_not_a_world_is_refused(tmp_path):
     with pytest.raises(WorldFileError, match="there is no world here"):
         Store(tmp_path / "none.sqlite").journal()
@@ -321,7 +364,7 @@ def test_a_file_that_is_not_a_world_is_refused(tmp_path):
 def test_a_world_that_was_tampered_with_is_refused_where_the_log_stops_making_sense(tmp_path):
     path = tmp_path / "w.sqlite"
     Store.import_journal(path, small())  # 17 events
-    with sqlite3.connect(path) as db:  # a row put in by hand, past the triggers (they guard update and delete, not insert)
+    with sqlite3.connect(path) as db:  # a row put in by hand, past the triggers (they refuse an update, a delete and a replace of a row, not a row with a new key)
         db.execute("INSERT INTO event VALUES (18, '2026-01-01', 'file', '{\"house\":\"h0012\",\"road\":\"gone\"}')")
     with pytest.raises(WorldFileError, match=r"w\.sqlite: event 18 \(file\): there is no road 'gone'"):
         Store(path).journal()
