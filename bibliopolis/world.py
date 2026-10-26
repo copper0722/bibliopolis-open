@@ -116,11 +116,9 @@ class PlanView:
     """The plan document with the wedges as integer angle units."""
 
     def __init__(self, plan: dict):
-        self.doc = plan
         self.trunks: dict[str, dict] = plan["trunks"]
         self.streets: dict[str, dict] = plan["streets"]
         self.sites: dict[str, str] = plan["sites"]
-        self.ring1: list[dict] = plan["ring1"]
         self.centre_tag: str | None = plan["params"].get("centre_tag")  # a tree with ONE root: the root is the town hall, its children are ring 1
         self.districts: dict = plan["params"]["districts"]
         check_districts(self.districts)
@@ -250,7 +248,7 @@ class World:
     def __init__(self, plan: PlanView, tree: TreeView, doc: dict, *, event_id: int | None = None):
         self.plan, self.tree, self.doc = plan, tree, doc
         self.places, self.roads, self.lines = Overlay(doc["places"]), Overlay(doc["roads"]), Overlay(doc.get("lines", {}))
-        self.seq0 = self.seq = doc.get("seq", 0)
+        self.seq = doc.get("seq", 0)
         self.specs: dict[str, StreetSpec] = {}
         self.placements: dict[str, dict] = {}
         self.stats = {"houses": 0, "ribs": 0, "members": 0, "bands": 0, "spoke_ribs": 0, "splits": 0, "overs": 0, "blocked": 0, "continuations": 0}
