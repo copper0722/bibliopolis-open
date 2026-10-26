@@ -44,8 +44,8 @@ def the_ring(doc):
 
 
 def the_root(doc):
-    """The street the houses of no road stand on: the ring road (lap 1), or the root zone of a city with no ring road."""
-    return next(pid for pid, p in doc["places"].items() if p["kind"] == "street" and (p.get("shape") == "ring" or p.get("underground")) and "lane_of" not in p)
+    """The street the houses of no road stand on: the ring road (lap 1)."""
+    return next(pid for pid, p in doc["places"].items() if p["kind"] == "street" and p.get("shape") == "ring" and "lane_of" not in p)
 
 
 def a_city_with_laps(mode):

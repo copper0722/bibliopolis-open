@@ -26,15 +26,10 @@ Determinism: same plan, tree, world and arrivals give the same bytes (sorted ite
 Roads (the district rule `plan["params"]["districts"]` = {max, min, extract: "largest", count: "direct"}). What the plan pins is the
 directions (the ring-1 wedges, the trunks and their sides); which topics are roads is world state:
 
-  root       the one street `place:root` takes every house no open road takes: the first houses, a topic too thin for a road, an item without a
-             topic. Two forms, by the plan:
-             - the RING ROAD (the plan carries `params.ring` = {label, radius}; every plan `build_plan` makes does): a closed circular road round the
-               town hall, `Knowledge` by default, with houses on BOTH sides (the inner side facing the town hall, the outer side facing out). It exists
-               from day one (`new_world`), with its road, before any house. The ground rules are in "The ring road" below.
-             - the underground ROOT ZONE (a plan without `params.ring`, as a world built by hand has for now): the street (label 根區) lies UNDER the town
-               hall, `{shape: "underground", underground: true, parent: plaza}`, no road and no rib on the surface. Its lots carry `underground: true` and
-               stand on a compact grid of whole cells round the centre of the plaza, nearest cell first, in arrival order (the first 89 lie inside the
-               plaza), so that a renderer that ignores the flag draws nothing outside it.
+  root       the one street `place:root`, the RING ROAD, takes every house no open road takes: the first houses, a topic too thin for a road, an item
+             without a topic. It is a closed circular road round the town hall (the plan carries it as `params.ring` = {label, radius}), `Knowledge` by
+             default, with houses on BOTH sides (the inner side facing the town hall, the outer side facing out). It exists from day one (`new_world`),
+             with its road, before any house. The ground rules are in "The ring road" below.
   road       a street record with a key (`tag`) and the chain of topics collapsed into it (`collapsed`). A house stands on the NEAREST OPEN
              ANCESTOR-OR-SELF of its topic (`road_for_tag`): a road covers its key's subtree, and exactly the topics of its chain.
   split      a road holds `max` houses directly (alleys and their houses do not count). The house that would be one more is decided BEFORE
@@ -43,8 +38,8 @@ directions (the ring-1 wedges, the trunks and their sides); which topics are roa
              subtree still holds the whole group). The group moves there; the houses that stay are packed again onto the first lots of the
              road in arrival order (`seq`) - on the ring road they KEEP their lots: only the lots of the group that leaves are freed, and the
              houses of the call that stay take the lowest free slots after it; the new road is checked in turn. No group reaches `min`: the street
-             record says `over`. Ring 1 is the plan's: the root (the ring road, or the root zone) opens the plan's ring-1 street of a root topic (the
-             wedges are pinned; its record's `parent` stays the plaza), and collapse works below it.
+             record says `over`. Ring 1 is the plan's: the ring road opens the plan's ring-1 street of a root topic (the wedges are pinned; its
+             record's `parent` stays the plaza), and collapse works below it.
   rib        a rib is sized to the houses its road holds when it opens plus headroom, `min(max, even(n + max(4, ceil(n / 2))))`, n counting
              the arrivals of the call (a split group, the survivors, or 1). A full road opens a CONTINUATION rib sized the same way on its
              current count (while the road is not over its ribs hold at most `max` lots together): a lane record that adds `continued: true`
@@ -72,7 +67,7 @@ The ring road (geometry in bibliopolis.ring; the plan's `params.ring` = {label, 
              clearance meets a span moves to the upper end of it plus BRANCH_CLEAR (`clear_laps`). A road crosses a lap at its gates.
   stability  a split from the ring frees only the lots of the group that leaves; the houses that stay keep their lots. Every other road packs its survivors
              onto its first lots, as before.
-  consistent a world and its plan must agree: `World` refuses a plan with a ring and a world that has none, and the other way round.
+  consistent a world starts with the ring road its plan carries (`new_world`): `World` refuses a plan with no ring and a world that has none.
 
 In a `mirror` plan every topic of `plan["roads"]` is a road from the start and there is no split: a road that holds more than `max` houses is
 `over`, and the chronicle says when.
@@ -81,7 +76,6 @@ In a `mirror` plan every topic of `plan["roads"]` is a road from the start and t
 from __future__ import annotations
 
 import copy
-import functools
 import math
 from dataclasses import dataclass, field
 
@@ -99,7 +93,6 @@ JOIN = lay.JOIN
 EPS = 1e-9
 BRANCH_CLEAR = 1.0  # the branch circle of a member is drawn this far beyond the frontier, and keeps this clear of every lot
 SPOKE_MARGIN = 4.0  # a street goes along the spoke (lots on both sides of the axis) when that ends this many cells nearer than a band would
-ROOT_ZONE_LABEL = "根區"  # the name of the root zone of a plan without a ring (ROOT_PLACE, the street that takes every house no open road takes, is bibliopolis.ring's)
 HEADROOM_MIN, HEADROOM_DIV = 4, 2  # a rib is sized to the houses its road holds plus max(4, ceil(n / 2)) lots of headroom
 
 
@@ -108,23 +101,6 @@ def district_rib_size(n: int, max_houses: int) -> int:
     (two lots to a cell), never above `max`. A rib of `max` lots at the first house made the roads of narrow wedges long and empty."""
     want = n + max(HEADROOM_MIN, math.ceil(n / HEADROOM_DIV))
     return min(max_houses, want + want % 2)
-
-
-@functools.cache
-def _cells_within(r: int) -> tuple[tuple[int, int], ...]:
-    """The whole cells (i, j) with i*i + j*j <= r*r, nearest the centre first, ties round the circle: a prefix of the same list for a larger r."""
-    pts = ((i, j) for i in range(-r, r + 1) for j in range(-r, r + 1) if i * i + j * j <= r * r)
-    return tuple(sorted(pts, key=lambda p: (p[0] * p[0] + p[1] * p[1], math.atan2(p[1], p[0]), p)))
-
-
-def underground_cell(slot: int) -> tuple[float, float]:
-    """(x, z) of the centre of the cell of the underground lot `slot`: whole cells round the centre of the plaza, nearest first. The first 89 cells
-    lie wholly inside the plaza (radius 6.0); a root zone larger than that goes on outward."""
-    r = 7
-    while len(_cells_within(r)) <= slot:
-        r += 8
-    i, j = _cells_within(r)[slot]
-    return float(i), float(j)
 
 
 def ceil3(v: float) -> float:
@@ -155,9 +131,10 @@ class PlanView:
         self._wedge: dict[str, tuple[int, int]] = {}
         self._gates: dict[bool, tuple[float, ...]] = {}
         self._sectors: tuple[tuple[int, int], ...] | None = None
-        self.ring: dict | None = plan["params"].get("ring")  # only a plan with the ring road has it: {label, radius}
-        if self.ring is not None:
-            ring_mod.check_ring(self.ring, self.districts, self.gates(), self.sector_min())
+        self.ring: dict | None = plan["params"].get("ring")  # the ring road: {label, radius}, and for a world built by hand its `sectors` and `axes`
+        if self.ring is None:
+            raise ValueError("the plan has no ring road (params.ring = {label, radius}): the root of the road tree is the ring road")
+        ring_mod.check_ring(self.ring, self.districts, self.gates(), self.sector_min())
 
     def wedge(self, trunk: str) -> tuple[int, int]:
         if trunk not in self._wedge:
@@ -176,15 +153,20 @@ class PlanView:
         return (lo + hi) / (2 * lay.UNIT)
 
     def gates(self, sides: bool = False) -> tuple[float, ...]:
-        """The gate bearings of the ring road: G1 (`sides` False), or G2 (`sides` True), see `bibliopolis.ring.gates_of`."""
+        """The gate bearings of the ring road: G1 (`sides` False), or G2 (`sides` True), see `bibliopolis.ring.gates_of`. A plan that names its sectors and axes
+        (`params.ring`: a world built by hand) has the spoke axes of all of them from day one, whichever of its roads are open."""
         if sides not in self._gates:
-            self._gates[sides] = ring_mod.gates_of(self.trunks, sides)
+            if "sectors" in self.ring:
+                self._gates[sides] = tuple(sorted({*ring_mod.axis_gates(ring_mod.axes_units(self.ring)), *(ring_mod.gates_of(self.trunks, True) if sides else ())}))
+            else:
+                self._gates[sides] = ring_mod.gates_of(self.trunks, sides)
         return self._gates[sides]
 
     def sectors(self) -> tuple[tuple[int, int], ...]:
-        """The sectors the avenues leave the ring through, (lo, hi) in angle units, sorted: the wedges of the plan's ring-1 trunks. N is their count."""
+        """The sectors the avenues leave the ring through, (lo, hi) in angle units, sorted: the sectors the plan names (`params.ring.sectors`), else the wedges of its
+        ring-1 trunks. N is their count."""
         if self._sectors is None:
-            self._sectors = ring_mod.sectors_of(self.trunks)
+            self._sectors = ring_mod.sectors_units(self.ring) if "sectors" in self.ring else ring_mod.sectors_of(self.trunks)
         return self._sectors
 
     def sector_min(self) -> float | None:
@@ -250,8 +232,7 @@ class StreetSpec:
 
 # --------------------------------------------------------------------------------------- documents ----
 def new_world(plan: dict) -> dict:
-    """The world of day one: the town hall plaza and nothing else. A plan with a ring road starts with the ring road round the plaza, with its road, before
-    any house."""
+    """The world of day one: the town hall plaza and the ring road round it, with its road, before any house."""
     pv = PlanView(plan)
     ring1 = []
     for r in plan["ring1"]:
@@ -268,9 +249,8 @@ def new_world(plan: dict) -> dict:
         "districts": {k: pv.districts[k] for k in ("max", "min", "extract", "count")},
         "chronicle": [],
     }
-    if pv.ring is not None:  # the ring road stands from day one, empty
-        doc["places"][ROOT_PLACE] = ring_mod.ring_street_record(1, pv.ring["label"], pv.ring["radius"], pv.gates())
-        doc["roads"][lap_road(1)] = ring_mod.ring_road_record(1, pv.ring["radius"])
+    doc["places"][ROOT_PLACE] = ring_mod.ring_street_record(1, pv.ring["label"], pv.ring["radius"], pv.gates())  # the ring road stands from day one, empty
+    doc["roads"][lap_road(1)] = ring_mod.ring_road_record(1, pv.ring["radius"])
     return doc
 
 
@@ -303,14 +283,9 @@ class World:
         self.specs: dict[str, StreetSpec] = {}
         self.placements: dict[str, dict] = {}
         self.stats = {"houses": 0, "ribs": 0, "members": 0, "bands": 0, "spoke_ribs": 0, "splits": 0, "overs": 0, "blocked": 0, "continuations": 0}
-        self.ring = plan.ring is not None  # the root is the ring road: a house on it stands on a lap, with no empty-lot record
-        root = doc["places"].get(ROOT_PLACE)
-        if self.ring and root is None:
-            raise ValueError("a world on a plan with a ring road starts with the ring road: make it with bibliopolis.world.new_world(plan)")
-        if not self.ring and root is not None and root.get("shape") == "ring":
-            raise ValueError("this world has the ring road and its plan has none (params.ring): fold the items again on the plan it was made with")
-        if self.ring:
-            self.stats["laps"] = 0
+        if doc["places"].get(ROOT_PLACE, {}).get("shape") != "ring":
+            raise ValueError("a world starts with the ring road its plan carries: make it with bibliopolis.world.new_world(plan)")
+        self.stats["laps"] = 0
         self.max, self.min = plan.districts["max"], plan.districts["min"]
         self.mirror = plan.mode == MIRROR
         self.event_id = event_id  # the event whose house causes what this call writes to the chronicle (None: no events)
@@ -327,33 +302,6 @@ class World:
                 place = lay.tag_place(tag)
                 if place not in self.road_def:
                     self.register_road(place, tag, ())
-
-    # ---- the root zone: underground, under the town hall
-    def ensure_root(self) -> dict:
-        """The street record of the root zone, made on first use: no road, no rib, nothing on the surface."""
-        rec = self.places.get(ROOT_PLACE)
-        if rec is None:
-            rec = {"kind": "street", "shape": "underground", "underground": True, "label": ROOT_ZONE_LABEL, "address": [ROOT_ZONE_LABEL],
-                   "parent": PLAZA_PLACE, "lots": 0, "reserved": 0}
-            self.places.put(ROOT_PLACE, rec)
-        return rec
-
-    def put_underground(self, article_id: str, tag: str | None, seq: int, track: bool = True) -> dict:
-        """Put a house in the root zone: the lowest free cell of the grid under the plaza (the cell of the lot is a function of its slot, so the houses
-        that stay after a split are packed again onto the first cells in arrival order). The lot is flagged `underground`."""
-        self.ensure_root()
-        used = {p["slot"] for p in self.by_road().get(ROOT_PLACE, ())}
-        slot = next(s for s in range(len(used) + 1) if s not in used)
-        lot = lay.lot_record(article_id, ROOT_PLACE, slot, slot, underground_cell(slot), 0.0)
-        lot.update({"street": ROOT_PLACE, "tag": tag, "seq": seq, "underground": True})
-        self.places.mut(ROOT_PLACE)["lots"] += 1
-        self.places.put(lay.article_place(article_id), lot)
-        if track:
-            if article_id not in self.placements:
-                self.stats["houses"] += 1
-            self.placements[article_id] = lot
-        self.by_road().setdefault(ROOT_PLACE, []).append(lot)
-        return lot
 
     # ---- the ring road: the root, round the town hall
     def laps(self) -> list[str]:
@@ -589,18 +537,17 @@ class World:
     def place_lot(self, road: str, h: dict) -> dict:
         """Put a house (a lot record, or the dict of an arrival) on a road. A house of `arrival_ids` is a house of the call, any other is put again."""
         track = h["article"] in self.arrival_ids
-        if road == ROOT_PLACE:  # the root: the ring road, or the root zone under the town hall
-            put = self.put_ring if self.ring else self.put_underground
-            return put(h["article"], h["tag"], h["seq"], track=track)
+        if road == ROOT_PLACE:
+            return self.put_ring(h["article"], h["tag"], h["seq"], track=track)
         return self.put_house(h["article"], self.spec(road), h["tag"], h["seq"], track=track)
 
     def free_lot(self, lot: dict) -> None:
-        """Take a house out of its lot; the lot stays where it is, empty (an underground lot or a lot of the ring road leaves nothing: the cell is a function of
-        the slot, and the count of the lap goes down by one)."""
+        """Take a house out of its lot; the lot stays where it is, empty (a lot of the ring road leaves nothing: the cell is a function of the slot, and the count
+        of the lap goes down by one)."""
         self.places.delete(lay.article_place(lot["article"]))
         carrier = self.places.mut(lot["parent"])
         carrier["lots"] -= 1
-        if lot.get("underground") or (self.ring and lot["street"] == ROOT_PLACE):
+        if lot["street"] == ROOT_PLACE:
             self._by_road = None
             return
         carrier["reserved"] += 1
@@ -654,7 +601,7 @@ class World:
         go_ids = {h["article"] for h in found["moved"]}
         stay = [h for h in everyone if h["article"] not in go_ids]
         go = [h for h in everyone if h["article"] in go_ids]
-        keep = road == ROOT_PLACE and self.ring  # the ring road: the houses that stay keep their lots, only the lots of the group that leaves are freed
+        keep = road == ROOT_PLACE  # the ring road: the houses that stay keep their lots, only the lots of the group that leaves are freed
         for lot in existing:
             if not (keep and lot["article"] not in go_ids):
                 self.free_lot(lot)
@@ -773,7 +720,7 @@ class World:
         if spec.parent is not None:
             self.ensure_street(spec.parent)
         if t["role"] == "ring1":
-            s0, parent_road, at = (self.plan.ring["radius"] + TRUNK_LANE) if self.ring else PLAZA_RADIUS, None, 0.0  # with a ring road the spoke leaves its outer edge
+            s0, parent_road, at = self.plan.ring["radius"] + TRUNK_LANE, None, 0.0  # the spoke leaves the outer edge of the ring road
             self.lines.put(line_id, {"root": place, "axis": lay.r3(axis), "parent": None, "members": [], "bands": [], "spokes": []})
         elif t["role"] == "heavy":
             self.open_member(t["parent"])
@@ -801,8 +748,7 @@ class World:
         line["members"].append(member)
         if t["left"] or t["right"]:  # side children are planned: the branch circle is drawn now, so that the circles of the members of a line
             member["r1"] = lay.r3(self.frontier(line) + BRANCH_CLEAR)  # grow outward from the one above (an arc then never meets a deeper spoke)
-            if self.ring:  # a branch circle clears the laps of the ring road
-                member["r1"] = self.clear_laps(member["r1"])
+            member["r1"] = self.clear_laps(member["r1"])  # a branch circle clears the laps of the ring road
             self.spoke_to(rid, member["r1"])
         self.stats["members"] += 1
         return member
@@ -876,13 +822,12 @@ class World:
 
     def spans(self, line: dict) -> list[tuple[float, float]]:
         """The radial intervals of a line that something stands in: its bands, the branch circles of its members (with their clearance) and
-        its spoke ribs (with the gap after them). A band or a rib goes only where it overlaps none of them. With a ring road every lap is a span of every
-        line too: nothing lies across a lap, and a road crosses it at its gates."""
+        its spoke ribs (with the gap after them). A band or a rib goes only where it overlaps none of them. Every lap of the ring road is a span of every line
+        too: nothing lies across a lap, and a road crosses it at its gates."""
         out = [(b["s"] - BAND / 2, b["s"] + BAND / 2) for b in line["bands"]]
         out += [(m["r1"] - BRANCH_CLEAR, m["r1"] + BRANCH_CLEAR) for m in line["members"] if m["r1"] is not None]
         out += [(lo, hi) for lo, hi in line["spokes"]]
-        if self.ring:
-            out += self.lap_spans()
+        out += self.lap_spans()
         return sorted(out)
 
     def free_start(self, line: dict, a: float, length: float) -> float:

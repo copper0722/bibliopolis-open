@@ -9,8 +9,8 @@ ring 1 has its own colour. Units are cells; x east, z south, north up. Pure text
   sheet(panels, columns=2, ...)          several cities in one picture on one frame (a replay of growth, two modes side by side), each with a caption
 
 The ring road round the plaza is drawn like any road (a closed circle, class 大道, every lap of it); its houses are drawn like any house, as the polar cells of the
-lane of their lap on both sides of it, in a colour of their own (the ring is no sector of ring 1), and its name stands at its north point. (The houses of the root
-zone of a city with no ring road are not drawn as lots: they stand under the plaza, and the plaza says how many.) A sector of ring 1 is named once a road of it exists.
+lane of their lap on both sides of it, in a colour of their own (the ring is no sector of ring 1), and its name stands at its north point. A sector of ring 1 is named
+once a road of it exists.
 """
 
 from __future__ import annotations
@@ -49,10 +49,6 @@ def esc(text: str) -> str:
 def num(v: float, digits: int = 2) -> str:
     s = f"{v:.{digits}f}".rstrip("0").rstrip(".")
     return "0" if s in ("-0", "") else s
-
-
-def underground_count(city: dict) -> int:
-    return sum(1 for p in city["places"].values() if p["kind"] == "lot" and p.get("underground"))
 
 
 def ring_lot(places: dict[str, dict], p: dict) -> dict | None:
@@ -97,7 +93,7 @@ def extent(city: dict, pad: float = PAD) -> Frame:
     xs: list[float] = [0.0]
     zs: list[float] = [0.0]
     for p in city["places"].values():
-        if "position" in p and not p.get("underground"):
+        if "position" in p:
             xs.append(p["position"]["x"])
             zs.append(p["position"]["z"])
     for r in city["roads"].values():
@@ -139,7 +135,7 @@ def draw_lots(city: dict, add, look: Look, highlight: set[str] | None = None) ->
     groups: dict[int, dict[str, list[str]]] = {}
     marked: list[str] = []
     for p in places.values():
-        if p["kind"] not in ("lot", "reserved") or p.get("underground"):  # (the root zone is under the plaza: a count, not lots)
+        if p["kind"] not in ("lot", "reserved"):
             continue
         lap = ring_lot(places, p)
         g = groups.setdefault(-1 if lap else index[ring1_place(places, p["parent"])], {"lot": [], "reserved": []})  # (-1: the ring road, no sector)
@@ -190,7 +186,7 @@ def ring2_centres(places: dict[str, dict]) -> dict[str, tuple[float, float]]:
     """Street of ring 2 -> the centroid of the lots of its subtree (its continuations and the streets below it)."""
     sums: dict[str, list[float]] = {}
     for p in places.values():
-        if p["kind"] in ("lot", "reserved") and not p.get("underground"):
+        if p["kind"] in ("lot", "reserved"):
             top = ring2_of(places, p["parent"])
             if top is not None:
                 acc = sums.setdefault(top, [0.0, 0.0, 0.0])
@@ -237,19 +233,16 @@ def draw_labels(city: dict, add, look: Look, boxes: list[Box] | None = None) -> 
     for pid, p in sorted(places.items()):  # the ring road: its name stands at its north point, outside the outer row of its first lap
         if p["kind"] == "street" and p.get("shape") == "ring" and "lane_of" not in p:
             put(0.0, -(p["ring"]["radius"] + 1.5) - 0.2 * look.plaza, p.get("label") or p["address"][-1], look.plaza, PLAZA_INK)
-    under = underground_count(city)
-    if under:  # the root zone, under the town hall: how many houses lie there
-        put(0.0, places[PLAZA]["radius"] + look.plaza * 1.15, f"地下 {under} 棟", look.plaza, PLAZA_INK)
     far: dict[str, float] = {}
     for p in places.values():
-        if p["kind"] in ("lot", "reserved") and not p.get("underground"):
+        if p["kind"] in ("lot", "reserved"):
             top = ring1_place(places, p["parent"])
             far[top] = max(far.get(top, 0.0), math.hypot(p["position"]["x"], p["position"]["z"]))
     for sector in city["composition"]["ring1"]:
         if not exists(city, sector):
             continue
         place = places[sector["place"]]
-        axis = math.radians((sector["from"] + sector["to"]) / 2)  # the bisector of the wedge: the direction of the spoke
+        axis = math.radians(sector.get("axis", (sector["from"] + sector["to"]) / 2))  # the direction of the spoke: its own axis, else the bisector of the wedge
         sin, cos = math.sin(axis), -math.cos(axis)
         name = sector["label"]
         # the name stands just beyond the farthest house of its district: the nearest corner of its box is `gap` cells from it
@@ -347,8 +340,7 @@ def stats_line(city: dict, labels: tuple[int, int]) -> str:
     """The line of numbers under the title. A measure is printed as the float it is (`55.0`), whether the file it was read from has `55.0` or `55` (the canonical form of a
     document writes the second): a picture drawn from a city file has the same bytes as the picture of the city."""
     comp, m = city["composition"], city["composition"]["measure"]
-    where = f'{m["ring_lots"]} on the ring road' if "ring_lots" in m else f'{m.get("underground_lots", 0)} under the town hall'
-    text = (f'{comp["buildings"]} houses ({where}) on {comp["streets"]["total"]} roads; '
+    text = (f'{comp["buildings"]} houses ({m["ring_lots"]} on the ring road) on {comp["streets"]["total"]} roads; '
             f'the farthest house is {float(m["max_radius"])} cells from the centre, the mean walk {float(m["walk_mean"])}, the longest {float(m["walk_longest"])}')
     if labels[1]:
         text += f"; road names drawn: {labels[0]} of {labels[1]}"

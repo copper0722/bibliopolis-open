@@ -1,14 +1,14 @@
 """Suggestions for a hand-built world, made from the OpenAlex topics of its houses: no model, no network, and the same answer for the same world.
 
-    suggest_road(world, at)       the houses to put on a new road opened at a road or the root zone, and the OpenAlex node to name it after
+    suggest_road(world, at)       the houses to put on a new road opened at a road or the ring road, and the OpenAlex node to name it after
     suggest_file(world, house)    the road a house belongs on, with a confidence
-    suggest_merge(world)          the avenues of the first ring to merge under a new avenue, which frees their directions
+    suggest_merge(world, at)      the roads below one road (the ring road: the avenues) to merge under a new road there, which makes room
     landing(world, item)          the road an arriving item stands on under the rule `auto`
     crowded(world)                the places that hold more houses than `max`
 
 The OpenAlex topics are a tree of four levels (`ORDER`): domain, field, subfield and topic. An item carries up to three topics, each with the node of every level. A road may
 stand for one node (`open_road` `topic`, `{id, level, name}`; the suggestions give it ready to be passed on), and then the tree of OpenAlex is the tree the suggestions follow,
-one level at a time, as a grown city follows its topic tree: the root zone is split by domain, a domain road by field, a field road by subfield, a subfield road by topic. No road
+one level at a time, as a grown city follows its topic tree: the ring road is split by domain, a domain road by field, a field road by subfield, a subfield road by topic. No road
 is split further. Two roads never stand for the same node.
 
 A suggestion is a dict that a page can show as it is; `world` is a `bibliopolis.hand.State`, the folded world (what `Journal.state` holds).
@@ -55,7 +55,7 @@ def _best(found: dict[str, tuple[int, int]]) -> str:
 
 def landing(world, item: dict) -> str | None:
     """The road that an arriving item stands on under the rule `auto`: the deepest road whose node is at or above one of its topics (the nearest open ancestor of a grown
-    city, with the nodes of OpenAlex for the tree). Of two as deep, the one that the topic nearer the primary reaches. None, the root zone, when no road matches."""
+    city, with the nodes of OpenAlex for the tree). Of two as deep, the one that the topic nearer the primary reaches. None, the ring road, when no road matches."""
     found = _descent(world, item["openalex"])
     return _best(found) if found else None
 
@@ -63,7 +63,7 @@ def landing(world, item: dict) -> str | None:
 def _anchor(world, at: str | None, houses: list[str]) -> tuple[str, str] | None:
     """The node a place stands for, (level, id), or None.
 
-    The root zone stands for no node. A road that carries a node stands for it. A category that carries none (a name the player chose) stands for the deepest node that its
+    The ring road stands for no node. A road that carries a node stands for it. A category that carries none (a name the player chose) stands for the deepest node that its
     houses share: of the houses that carry a topic at all, a node is shared when all but fewer than `min` of them carry it (the few that do not could not make a road of their
     own), and the nodes are taken from the domain down, each below the one before it, the largest first and of two as large the lower id. None when not even a domain is shared."""
     if at is not None and world.nodes[at]["topic"] is not None:
@@ -86,9 +86,9 @@ def _anchor(world, at: str | None, houses: list[str]) -> tuple[str, str] | None:
 
 
 def suggest_road(world, at: str | None) -> dict | None:
-    """The road to open at `at` (a road id, or None for the root zone): `{at, topic: {id, level, name}, name, houses}`, or None.
+    """The road to open at `at` (a road id, or None for the ring road): `{at, topic: {id, level, name}, name, houses}`, or None.
 
-    The houses that stand directly at `at` are grouped by the OpenAlex level one below the level the place stands for (`_anchor`): the root zone by domain, a domain road by
+    The houses that stand directly at `at` are grouped by the OpenAlex level one below the level the place stands for (`_anchor`): the ring road by domain, a domain road by
     field, a field road by subfield, a subfield road by topic; a topic road is not split. Only the topics at or below the node of the place count. A house is in the group of
     each node it carries at that level, once; a house with no topic is in none. A node that a road stands for already is left out. The suggestion is the largest group of at
     least `min` houses (of two as large, the lower node id); `houses` are its members in arrival order, `topic` its node, ready to be the `topic` of `open_road`, and `name` the
@@ -191,17 +191,20 @@ def _likeness(a: dict[str, Counter], b: dict[str, Counter]) -> tuple[int, ...]:
     return tuple(sum(min(a[level][node], b[level][node]) for node in a[level].keys() & b[level].keys()) for level in LEVELS)
 
 
-def suggest_merge(world) -> dict | None:
-    """The avenues to merge under a new avenue: `{members, topic, name, by, takes, frees}`, or None. The avenues are the roads of the first ring.
+def suggest_merge(world, at: str | None = None) -> dict | None:
+    """The roads to merge under a new road at `at` (a road id, or None for the ring road, where the roads are the avenues): `{members, topic, name, by, takes, frees}`, or None.
+    The roads are those that stand directly below `at`. `Refusal` for a road that is not there.
 
-    First, avenues that stand for sibling nodes of OpenAlex (nodes with the same parent node, a level up): the group with the most avenues (then the most houses, then the
-    lower parent id) whose parent node no road stands for, and every house of whose avenues, and of the roads below them, is under it. `topic` is that parent node
-    (ready to be the `topic` of `merge_roads`), `name` its name, `by` is "parent_node". Failing that, the two avenues whose houses are most alike (`_likeness`: the
+    First, roads that stand for sibling nodes of OpenAlex (nodes with the same parent node, a level up): the group with the most roads (then the most houses, then the
+    lower parent id) whose parent node no road stands for, and every house of whose roads, and of the roads below them, is under it. `topic` is that parent node
+    (ready to be the `topic` of `merge_roads`), `name` its name, `by` is "parent_node". Failing that, the two roads whose houses are most alike (`_likeness`: the
     topics they have in common, the most specific level first; of two as alike the pair of lower road ids), when they have anything in common: `topic` is None, `name` the two
-    names joined by " / ", `by` "similar_houses". `members` are in the order the avenues were opened, `takes` is the member whose direction the new avenue takes (the one whose
-    sector is the widest, `bibliopolis.hand.State.widest_avenue`) and `frees` how many directions the merge frees. A merge that would put a road below the last ring (`RING_LIMIT`)
-    is not suggested. Nothing is changed; the world takes the merge as it takes any event."""
-    avenues = [road for road, node in world.nodes.items() if node["parent"] is None]
+    names joined by " / ", `by` "similar_houses". `members` are in the order the roads were opened, `takes` is the member the new road takes the place of (at the ring road, the
+    one whose sector is the widest, `bibliopolis.hand.State.widest_avenue`, whose direction the new avenue takes; below it, the one opened first) and `frees` how many places the
+    merge makes at `at`. A merge that would put a road below the last ring (`RING_LIMIT`) is not suggested. Nothing is changed; the world takes the merge as it takes any event."""
+    if at is not None and at not in world.nodes:
+        raise Refusal(f"there is no road {at!r}", "no_road", road=at)
+    avenues = world.children(at)
     if len(avenues) < MERGE_LEAST:
         return None
     houses = {road: world.houses_below(road) for road in avenues}
@@ -229,7 +232,7 @@ def suggest_merge(world) -> dict | None:
     if groups:
         (level, parent), roads = min(groups, key=lambda g: (-len(g[1]), -sum(len(houses[r]) for r in g[1]), g[0][1], ORDER.index(g[0][0])))
         return {"members": roads, "topic": {"id": parent, "level": level, "name": names[(level, parent)]}, "name": names[(level, parent)], "by": "parent_node",
-                "takes": world.widest_avenue(roads), "frees": len(roads) - 1}
+                "takes": world.widest_avenue(roads) if at is None else roads[0], "frees": len(roads) - 1}
     profiles = {road: _profile(world, houses[road]) for road in avenues}
     best, pair = None, None
     for i, a in enumerate(avenues):
@@ -240,11 +243,12 @@ def suggest_merge(world) -> dict | None:
                 best, pair = key, [a, b]
     if pair is None:
         return None
-    return {"members": pair, "topic": None, "name": " / ".join(world.nodes[r]["name"] for r in pair), "by": "similar_houses", "takes": world.widest_avenue(pair), "frees": 1}
+    return {"members": pair, "topic": None, "name": " / ".join(world.nodes[r]["name"] for r in pair), "by": "similar_houses",
+            "takes": world.widest_avenue(pair) if at is None else min(pair, key=avenues.index), "frees": 1}
 
 
 def crowded(world) -> list[dict]:
-    """The places that hold more than `max` houses directly: `{at, name, houses}` (the root zone first, with `at` None and `name` None, then the roads in the order they
+    """The places that hold more than `max` houses directly: `{at, name, houses}` (the ring road first, with `at` None and `name` None, then the roads in the order they
     were opened). The town hall tells the player; nothing in the world changes by itself."""
     held = Counter(world.road_of.values())
     top = world.rule["max"]

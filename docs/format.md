@@ -100,7 +100,7 @@ writes from a world built by hand is the same document, with `world.mode` `hand`
 ### `composition`
 
 `home_max`, `trunk_min` (the numbers the plan was cut with), `articles` = `buildings` (the houses in the document), `reserved_lots`
-(empty lots in the document: always 0 here), `ring1` (every ring-1 sector: `{place, label, weight, from, to, span}`, degrees), `streets`
+(empty lots in the document: always 0 here), `ring1` (every ring-1 sector: `{place, label, weight, from, to, span}`, degrees; a world built by hand ([world.md](world.md)) adds `axis`, the bearing of the spoke, which lies in the sector and need not be its middle), `streets`
 (`{total, containers, leaves, trunks, groups, spokes, lanes, continuations, ring}`: a road with continuation ribs is counted once, and the ring road counts as one
 street, its laps being continuations; `ring` is the number of street records of shape `ring`, laps included) and `measure` (`lots`, `land_area`, `max_radius`, the
 walk from the plaza to the doors, `streets_by_class`, `ring_lots`, the houses on the ring road, ...). Every house is on the surface, and the measures count them all.

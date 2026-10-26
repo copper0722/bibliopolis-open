@@ -29,7 +29,7 @@ split as they grow).
   `store` (SQLite, the home folder). Rules: `docs/engine.md` and `docs/world.md` (with the notes for a port); formats: `docs/format.md` and `schema/` (the library, the tree and, for a world built by hand, `schema/world.schema.json`).
 - `examples/` the seeded generator of the synthetic sample (`make_example.py`) and its output; a derived city is never committed. `make_pictures.py` makes
   `docs/images/*.svg` from the sample; a test compares them with the committed files byte for byte, so run it after a change to the engine or the sample.
-  `make_worlds.py` makes the three golden world files (`scripted.world.json`, `scripted_nodes.world.json`, `scripted_merge.world.json`) and their index `worlds.json`
+  `make_worlds.py` makes the four golden world files (`scripted.world.json`, `scripted_nodes.world.json`, `scripted_merge.world.json`, `scripted_branches.world.json`) and their index `worlds.json`
   (the sha256 of each file and of the city it folds to), which a port folds; a test compares them byte for byte and with the pins. No city is committed.
 - Files the tool writes: `world new`, `import`, `export` and `fold` publish a finished temporary file by a hard link and never write over a name (refused where there are no hard links);
   `build` and `picture` replace their own output. Threat model: several runs of this tool by one user at once, a wrong name, a fault or an interrupt in the middle of a call and a disk with no hard
@@ -39,8 +39,8 @@ split as they grow).
   measures) are an extraction of the private engine. A parity test in the private repository compares them with it on random libraries and on the
   sample (the whole document against a private plan without the journal sector). Not compared, because the private engine has nothing to compare
   with: the input checks (and the checks of a city file), the mirror mode (and `complete`), the command line and its summary, the `at` dates of the
-  chronicle, the replay (`first`), the chronicle sentences, and the whole world built by hand (the event log and its fold, the golden-angle sectors,
-  undo, the suggestions, the world file and the SQLite store; its tests pin the sha256 of a scripted world and of the sample cities). `picture` is a
+  chronicle, the replay (`first`), the chronicle sentences, and the whole world built by hand (the event log and its fold, the golden-angle bearings and their nearest-bearing sectors,
+  the branches and the merges at every level, undo, the suggestions, the world file and the SQLite store; its tests pin the sha256 of a scripted world and of the sample cities). `picture` is a
   rewrite of the private SVG renderer (the plan view of a layout v4 document), not an extraction, and it is not under parity either; the pictures of the
   README are made here, from the sample. A change to any of these says so in its commit.
 - No third-party code or data is copied in. Two textbook algorithms (largest-remainder apportionment, Douglas-Peucker simplification) are

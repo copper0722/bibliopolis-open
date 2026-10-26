@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 import refusal_cases as rc
 from hand_support import Hand, every_entry, hid, item, sample_world_items, stamp, topic
-from support import sample
+from support import cells_table, sample
 
 import bibliopolis
 from bibliopolis import cli, hand
@@ -48,18 +48,26 @@ def test_every_json_example_of_the_page_is_an_item_or_an_event_that_the_readers_
 
 
 def test_the_sector_table_is_the_table_of_the_program():
-    rows = re.findall(r"\|\s*(\d+)\s*\|\s*([\d.]+)\s*\|\s*(-?[\d.]+) \.\. (-?[\d.]+)\s*(?=\|)", PAGE)  # (two roads to a line: the left half, then the right half)
+    rows = re.findall(r"^\|\s*(\d+)\s*\|\s*([\d.]+)\s*\|\s*(-?[\d.]+) \.\. (-?[\d.]+)\s*\|\s*([\d.]+)\s*\|$", PAGE, flags=re.M)
     assert sorted(int(k) for k, *_ in rows) == list(range(13))
-    given = []
-    for k in range(13):
-        given.append(hand.ring1_wedge(given, k))
-    for k, bearing, lo, hi in rows:
+    table = cells_table(13)  # found by looking at every other bearing, not by the program's own function
+    assert table == list(hand.sector_table(13))
+    for k, bearing, lo, hi, width in rows:
         k = int(k)
         assert round(float(bearing) * 100) == hand.bearing(k), k
-        assert (round(float(lo) * 100), round(float(hi) * 100)) == given[k], k
-    assert "| 13 | 347.60 | none: inside the sector of k = 0 |" in PAGE and f"{hand.bearing(13) / 100:.2f}" == "347.60"
-    assert "**a town has at most 13 avenues**" in PAGE and "**the 14th category goes below an avenue**" in PAGE and hand.AVENUES == 13
+        assert (round(float(lo) * 100), round(float(hi) * 100)) == table[k][:2], k
+        assert round(float(width) * 100) == table[k][1] - table[k][0], k
+    assert "bearing(k) = (k * 13750776405003785 + 500000000000) // 10**12 % 36000" in PAGE and "[b - min(2000, before // 2), b + min(2000, (after + 1) // 2)]" in PAGE
+    assert "A road holds at most N = `branches` roads directly, at every level" in PAGE and "`branches_full`" in PAGE and "The bearings **do not depend on how many directions there are**" in PAGE
     assert str(hand.GOLDEN) in PAGE and "% 36000" in PAGE and "// 10**12" in PAGE
+
+
+def test_the_radii_the_page_gives_are_the_radii_of_the_program():
+    page = " ".join(PAGE.split())
+    assert "With a `max` of 40 it is 8.5 for 5 and for 13 branches, 9.5 for 21, 16.5 for 34 and 43.5 for 89 (the narrowest sector is 40.00, 26.26, 16.23, 10.03 and 3.83 degrees)" in page
+    for n, radius, narrowest in ((5, 8.5, 40.0), (13, 8.5, 26.26), (21, 9.5, 16.23), (34, 16.5, 10.03), (89, 43.5, 3.83)):
+        assert hand.ring_radius({"max": 40, "branches": n}) == radius
+        assert min(hi - lo for lo, hi, _ in hand.sector_table(n)) / 100 == narrowest
 
 
 def test_the_tables_of_refusal_ids_are_the_ids_the_params_and_the_messages_of_the_program(tmp_path):
@@ -91,9 +99,10 @@ def entries_of_a_world():
 
 def test_the_table_of_chronicle_entries_has_the_keys_the_engine_writes_in_that_order():
     rows = re.findall(r"^\| (?:a |an )(.+?) \| (.+?) \|$", PAGE.split("The chronicle.")[1].split("An event that an undo")[0], flags=re.M)
-    assert len(rows) == 7
+    assert len(rows) == 8
     entries = list(entries_of_a_world().values())
-    kinds = {"road opened": "from", "house filed": "filed", "road renamed": "renamed", "road moved": "moved", "merge of avenues": "merged", "undo": "undone", "change of rule": "rule"}
+    kinds = {"road opened": "from", "house filed": "filed", "road renamed": "renamed", "road moved": "moved", "merge of roads": "merged", "undo": "undone", "change of rule": "rule",
+             "new radius": "resized"}
     for what, cell in rows:
         shown = re.findall(r"`(\w+)`", cell)
         marker = next(v for k, v in kinds.items() if what.startswith(k))
@@ -121,7 +130,7 @@ def test_the_python_of_the_page_runs():
 
 def test_the_help_of_new_auto_says_what_the_page_says_the_rule_does(capsys):
     """An arrival stands on the deepest road whose node it is under, and a place that then holds more than `max` houses opens a road for its largest group, one level of OpenAlex below it:
-    the help of `world new --auto` once said the root zone only."""
+    the help of `world new --auto` once said the ring road only."""
     rule = " ".join(PAGE.split("**The rule `auto`.**")[1].split("**Numbers.**")[0].split())
     with pytest.raises(SystemExit):
         cli.main(["world", "new", "--help"])
@@ -132,7 +141,7 @@ def test_the_help_of_new_auto_says_what_the_page_says_the_rule_does(capsys):
 
 def test_the_notes_of_a_city_say_that_the_rule_auto_splits_a_road_by_itself_and_that_nothing_else_does():
     h = Hand({"max": 5, "min": 2, "auto": True})
-    h.add(8, topic(1, 1, 1, 1))  # the sixth house takes the root zone over 5: a road for the domain, which splits by field, by subfield and by topic in the same event
+    h.add(8, topic(1, 1, 1, 1))  # the sixth house takes the ring road over 5: a road for the domain, which splits by field, by subfield and by topic in the same event
     h.add(2, topic(1, 1, 1, 1))
     state = h.state
     assert list(state.nodes) == ["auto:6", "auto:6.2", "auto:6.3", "auto:6.4"] and [n["parent"] for n in state.nodes.values()] == [None, "auto:6", "auto:6.2", "auto:6.3"]
@@ -190,7 +199,7 @@ def test_the_limits_the_page_states_are_the_limits_of_the_program():
 
 
 def test_the_numbers_the_page_gives_for_the_sample_are_the_numbers_of_the_program():
-    found = re.search(r"the rule makes (\d+) roads \(domains (\d+), fields (\d+), subfields (\d+), topics (\d+)\), and (\d+) houses stay underground", PAGE)
+    found = re.search(r"the rule makes (\d+) roads \(domains (\d+), fields (\d+), subfields (\d+), topics (\d+)\), and (\d+) houses stay on the ring road", PAGE)
     assert found, "the sentence about the sample is not on the page"
     h = Hand({"max": 40, "min": 10, "auto": True})
     h.add_items(sample_world_items())
@@ -200,22 +209,22 @@ def test_the_numbers_the_page_gives_for_the_sample_are_the_numbers_of_the_progra
 
 # ------------------------------------------------------------------------------------------ for a port ----
 def test_the_widths_of_the_sectors_the_page_gives_for_the_merge_are_the_widths_of_the_table_in_whole_tenths_of_a_degree():
-    spans = [hi - lo for lo, hi in hand.SECTORS]
-    assert [f"{n / 100:.2f}" for n in spans] == ["40.00"] * 5 + ["32.46", "32.46", "32.47"] + ["12.52", "12.52", "12.52", "12.53", "12.52"]
-    assert [hand.tenths(n) / 10 for n in spans] == [40.0] * 5 + [32.5] * 3 + [12.5] * 5
+    spans = [hi - lo for lo, hi, _ in hand.sector_table(13)]
+    assert [f"{n / 100:.2f}" for n in spans] == ["26.26", "26.26", "26.26", "26.27", "26.26", "32.46", "32.46", "32.47"] + ["26.26"] * 5
+    assert [hand.tenths(n) / 10 for n in spans] == [26.3] * 5 + [32.5] * 3 + [26.3] * 5
     page = " ".join(PAGE.split())
-    assert "40.0 for the numbers 0 to 4, 32.5 for 5 to 7 (32.46, 32.46 and 32.47) and 12.5 for 8 to 12 (12.52, 12.52, 12.52, 12.53 and 12.52)" in page
-    assert "whole tenths of a degree, rounded half up (`(span + 5) // 10` for a span in units of 1/100 degree)" in page and "so 32.46 and 32.47 are both 325 and 12.52 and 12.53 both 125" in page
+    assert "26.3 for the numbers 0 to 4 and 8 to 12 (26.26 and 26.27) and 32.5 for 5 to 7 (32.46, 32.46 and 32.47)" in page
+    assert "whole tenths of a degree, rounded half up (`(span + 5) // 10` for a span in units of 1/100 degree)" in page and "so 26.26 and 26.27 are both 263 and 32.46 and 32.47 both 325" in page
 
 
 def test_the_check_the_page_names_for_a_port_is_in_the_repository():
     import hand_support
 
     section = PAGE.split("## For a port")[1].split("## Limits")[0]
-    for name in ("scripted", "scripted_nodes", "scripted_merge"):
+    for name in ("scripted", "scripted_nodes", "scripted_merge", "scripted_branches"):
         assert f"`{name}`" in section and callable(getattr(hand_support, name)), name
     pins = (ROOT / "tests" / "test_world_file.py").read_text(encoding="utf-8")
-    assert all(pin in pins for pin in ("PIN_WORLD", "PIN_CITY", "PIN_NODES_WORLD", "PIN_NODES_CITY", "PIN_MERGE_WORLD", "PIN_MERGE_CITY"))
+    assert all(pin in pins for pin in ("PIN_WORLD", "PIN_CITY", "PIN_NODES_WORLD", "PIN_NODES_CITY", "PIN_MERGE_WORLD", "PIN_MERGE_CITY", "PIN_BRANCHES_WORLD", "PIN_BRANCHES_CITY"))
 
 
 def test_a_tie_by_code_point_is_not_a_tie_by_utf_16_unit():
@@ -235,8 +244,8 @@ def test_a_tie_by_code_point_is_not_a_tie_by_utf_16_unit():
 
 def test_the_road_ids_of_the_line_an_avenue_gave_up_are_free_again_and_the_next_road_of_that_name_takes_them():
     h = Hand({"max": 40, "min": 5, "auto": False})
-    for k in range(3):
-        h.add(6)
+    for k, size in enumerate((6, 30, 6)):  # (r1 is long: on the new line its spoke rib leaves r2 no spoke rib nearer than a band)
+        h.add(size)
         h.open(f"r{k}", f"Road {k}", None, h.state.houses_at(None))
     assert h.state.doc["roads"]["road:place:tag:r2"]["kind"] == "spoke" and "road:place:tag:r2@1" not in h.state.doc["roads"]
     h.merge("m", "M", ["r1", "r2"])

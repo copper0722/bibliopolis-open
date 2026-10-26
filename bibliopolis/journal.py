@@ -1,6 +1,6 @@
 """The journal of a hand-built world: its log of events and the world that the log folds to, kept together; and the world file it is written to and read from.
 
-    journal = Journal()                                                      # the rule 40 / 10, `auto` off
+    journal = Journal()                                                      # the rule 40 / 10, 13 branches, `auto` off
     journal.append("add_item", {"item": {...}}, "2026-10-26T09:30:00Z")      # -> a copy of the event, with its `seq`; `Refusal` when the world does not take it
     journal.state.city()                                                     # the layout v4 document of the world now
     text = dumps_world(world_document(journal))                              # the world file: JSON, one item and one event to a line, the canonical number form
@@ -50,7 +50,7 @@ class Journal:
 
     def __init__(self, rule: dict | None = None):
         problems = Problems()
-        checked = check_rule(dict(DEFAULT_RULE) if rule is None else rule, "rule", problems)
+        checked = check_rule(dict(DEFAULT_RULE) if rule is None else rule, "rule", problems, starting=True)
         _refuse(problems)
         self.rule: dict = checked  # type: ignore[assignment]
         self.events: list[dict] = []
@@ -157,7 +157,7 @@ def read_world(doc) -> Journal:
         raise WorldFileError(f"world.format: must be {FORMAT!r}, got {_shown(doc['format'])}", "format_wrong", format=_shown(doc["format"]), expected=FORMAT)
     if doc["version"] != VERSION or isinstance(doc["version"], bool):
         raise WorldFileError(f"world.version: this program reads version {VERSION}, got {_shown(doc['version'])}", "version_wrong", version=_shown(doc["version"]), expected=VERSION)
-    rule = check_rule(doc["rule"], "world.rule", problems)
+    rule = check_rule(doc["rule"], "world.rule", problems, starting=True)
     items, events = [], []
     for name, rows, check in (("items", doc["items"], check_item), ("events", doc["events"], check_event)):
         if not isinstance(rows, list):

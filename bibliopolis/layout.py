@@ -247,7 +247,8 @@ KIND_NOTES = {
     "plaza": "the town hall plaza at the origin: the root of the topic tree (a virtual root over the topic roots when the tree has several)",
     "street": "a road of the city: a topic that has houses on it or below it. shape trunk: a spoke with bands of streets and a wedge; rib: a "
               "street (or a continuation of it) that is a stretch of a band on the trunk of `carrier`; group: a road with roads below it, "
-              "its roads hang on the bands of `carrier`; underground: the root zone, under the plaza",
+              "its roads hang on the bands of `carrier`; ring: the ring road round the plaza (the root of the road tree) or one of its laps, a concentric "
+              "ring road outside it, with lots on both sides of its lane",
     "lot": "one item's house: one cell, id place:article:<item id>",
     "reserved": "an empty lot kept for a house that does not exist yet",
 }
@@ -255,6 +256,7 @@ ROAD_NOTES = {
     "spoke": "a straight road through the plaza along the bisector of a wedge, open outward when `open`",
     "arc": "a connector: an arc around the plaza from a trunk to the axis of a side wedge",
     "lane": "an arc around the plaza across a trunk (a band): one stretch per street, each starting where the previous one ends",
+    "ring": "a closed circle round the plaza (the ring road or one of its laps): a polyline from north clockwise whose last point is its first, with no parent",
 }
 GEOMETRY = {
     "unit": "cell", "x": "east", "z": "south", "angle": "degrees clockwise from north (may be negative or above 360)",
@@ -314,13 +316,12 @@ def ring_walk(places: dict[str, dict], lot: dict, lap: dict) -> float:
 def lot_door_walks(layout: dict) -> dict[str, float]:
     """article id -> length of the road walk from the centre of the plaza to the door of its lot, along the road tree.
 
-    The door of a lot is the point of its lane right in front of it. A house on the ring road walks `ring_walk`. A house of the root zone of a city with no ring
-    road stands under the plaza and walks no road."""
+    The door of a lot is the point of its lane right in front of it. A house on the ring road walks `ring_walk`."""
     places, roads = layout["places"], layout["roads"]
     starts = road_starts(layout)
     out: dict[str, float] = {}
     for p in places.values():
-        if p["kind"] != "lot" or p.get("underground"):
+        if p["kind"] != "lot":
             continue
         owner = places[p["parent"]]
         if owner.get("shape") == "ring":
@@ -345,17 +346,15 @@ def place_root(places: dict[str, dict], pid: str) -> str:
 
 
 def measure(layout: dict) -> dict:
-    """The numbers of a city, read back from the document alone. The surface only: the houses of the root zone (`underground`, a city with no ring road) and the
-    root street stand under the plaza, and a rib that continues a road (`continued`) is the road it continues. A city with a ring road has no underground: its ring
-    and its houses are on the surface like any road's, `ring_lots` counts the houses on every lap of the ring, and the ring counts as one 大道 (its laps are
-    continuations)."""
+    """The numbers of a city, read back from the document alone. Every house is on the surface; a rib that continues a road (`continued`) is the road it continues.
+    `ring_lots` counts the houses on every lap of the ring road, and the ring counts as one 大道 (its laps are continuations)."""
     places, roads = layout["places"], layout["roads"]
-    lots = [p for p in places.values() if p["kind"] == "lot" and not p.get("underground")]
+    lots = [p for p in places.values() if p["kind"] == "lot"]
     reserved = [p for p in places.values() if p["kind"] == "reserved"]
     radius = max([math.hypot(p["position"]["x"], p["position"]["z"]) + 0.71 for p in lots + reserved] + [0.0])
     walks = lot_door_walks(layout)
     values = sorted(walks.values())
-    streets = [p for p in places.values() if p["kind"] == "street" and not p.get("underground")]
+    streets = [p for p in places.values() if p["kind"] == "street"]
     by_class: dict[str, int] = {}
     for p in streets:
         if not p.get("continued"):
@@ -375,10 +374,7 @@ def measure(layout: dict) -> dict:
         "ring1_wedges": [{"place": r["place"], "label": r["label"], "span": r["span"]} for r in ring1],
         "roads": len(roads), "road_length": round(sum(r["length"] for r in roads.values()), 1),
     }
-    if any(p["kind"] == "street" and p.get("shape") == "ring" for p in places.values()):  # a city with the ring road: its houses are in the numbers above
-        out["ring_lots"] = sum(1 for p in lots if places[p["parent"]].get("shape") == "ring")
-    else:
-        out["underground_lots"] = sum(1 for p in places.values() if p["kind"] == "lot" and p.get("underground"))
+    out["ring_lots"] = sum(1 for p in lots if places[p["parent"]].get("shape") == "ring")  # (they are in the numbers above)
     return out
 
 

@@ -6,30 +6,33 @@
 
 There is no library to plan from, so the plan grows with the world and never changes what it has given:
 
-  the root zone   a house starts underground, under the town hall (`add_item`), as in a grown city.
-  a road          a named category the player opens (`open_road`) with a chosen set of houses. It is a topic node of the player's tree. Below the root zone it is a
+  the ring road   the root of the player's tree, `Knowledge` until `rename_road` names it (`road` null), a closed circular road round the town hall (bibliopolis.ring).
+                  The world starts with it, empty, and a house starts on it (`add_item`), as in a grown city. Its radius is `ring_radius(rule)`: it follows the rule.
+  a road          a named category the player opens (`open_road`) with a chosen set of houses. It is a topic node of the player's tree. Below the ring road it is a
                   ring-1 road and takes the next direction of the golden angle (below); below a road it is laid out as the engine lays out a topic the plan does
                   not hold: a rib on the line of its ring-1 road. No trunk is promoted and no heavy path changes (a stated limitation).
-  directions      the k-th direction (k = 0, 1, 2, ...) has the bearing k * 137.50776405003785 degrees, clockwise from north, in whole units of 1/100 degree. Its
-                  sector is the free arc around that bearing, at most 20 degrees to either side, never over the sector of an earlier direction (`SECTORS`, a table of
-                  13: the 14th bearing lies inside a sector already given, so there are 13 directions and a town has at most 13 avenues, the roads of the first ring,
-                  `AVENUES`). A sector never changes. An avenue holds one direction and gives it up when it is no avenue any more: when it moves below another road, or is merged.
-                  A new avenue takes the lowest number that no avenue holds; with all 13 held the event is refused (`Refusal` with the id `ring1_full`, and the remedy
-                  `merge_roads`): the 14th category goes below an avenue, or similar avenues are merged first.
-  merging         `merge_roads` groups avenues upward: the new avenue takes the direction (sector and bearing) of the member whose sector is the widest (it carries all
-                  their houses and needs the room; widths are compared in whole tenths of a degree, rounded half up, so that the hundredths that come of the tiling make
-                  no difference; of two as wide, the one with the most houses on it and below it, then the lower number), the others are free again and the next avenues
-                  take them, the lowest number first (the golden-angle order among the free ones). The members stand below the new avenue as roads of ring 2, as after a
-                  move of a road: only the houses of their subtrees are put again.
+  directions      the k-th direction (k = 0, 1, 2, ...) has the bearing k * 137.50776405003785 degrees, clockwise from north, in whole units of 1/100 degree, whatever the
+                  number of directions is. With N = `rule.branches` directions the spoke of an avenue runs ON its bearing and its sector is the nearest-bearing cell among the
+                  N bearings, cut to 20 degrees either side (`sector_table`); a larger N only narrows the sectors and moves no bearing. An avenue holds one direction number and
+                  gives it up when it is no avenue any more: when it moves below another road, or is merged. A new avenue takes the lowest number that no avenue holds.
+  branches        a road holds at most N roads directly, at every level (the ring road: N avenues). The event that would pass it is refused (`branches_full`, and the remedy
+                  `merge_roads`): the next category goes below one of the roads, or similar roads are merged first. Under `auto` a split that would pass N merges the best
+                  suggestion first (`bibliopolis.suggest.suggest_merge`), then splits.
+  merging         `merge_roads` groups roads that stand directly below one road (the ring road: avenues) upward under a new road that takes their place there. A new avenue takes the
+                  direction (sector and bearing) of the member whose sector is the widest (widths are compared in whole tenths of a degree, rounded half up; of two as wide, the one
+                  with the most houses on it and below it, then the lower number), the others' numbers are free again and the next avenues take them, the lowest number first. The
+                  members stand below the new road one ring down, as after a move of a road: only the houses of their subtrees are put again.
   stability       a house stays on its lot unless an event moves it: opening a road moves the houses chosen, filing a house moves that house, moving a road moves
                   the houses of its subtree. The houses that stay keep their lots, whatever holes the others leave. (`undo` may re-place what came after the event
                   it takes back: the fold of the log without that event.)
   a node          a road may stand for one OpenAlex node (`open_road` `topic`, `{id, level, name}`): the houses chosen are under it, and no other road stands for it.
-  the rule        `max` and `min` are the limits of the player's district rule (`open_road` needs `min` houses; `crowded` lists what is above `max`). The world
+  the rule        `max` and `min` are the limits of the player's district rule (`open_road` needs `min` houses; `crowded` lists what is above `max`), `branches` is N. The world
                   marks nothing over and splits nothing by itself, except under `auto` (bibliopolis.suggest): an arriving house stands on the deepest road whose node
-                  it is under (the root zone when there is none), and a place that then holds more than `max` houses opens a road for its largest group, one level of
+                  it is under (the ring road when there is none), and a place that then holds more than `max` houses opens a road for its largest group, one level of
                   OpenAlex below the place, with the same mechanics as `open_road`, so even then the houses that stay keep their lots. A road so opened is split in
                   turn while it holds more than `max`.
+  a new radius    the ring road holds `max` houses between the gates of its N bearings, so a rule with another N, or a `max` that asks for another radius (`ring_radius`), lays the
+                  whole world out again on the new ring: every house stays on its road and in its place along its street, every avenue keeps its bearing.
   the chronicle   one entry for each road opened (the shape of a split), house filed, road renamed or moved, undo and change of rule, in log order; `event_id` is the
                   `seq` of the event and `at` its `at`.
 """
@@ -37,100 +40,93 @@ There is no library to plan from, so the plan grows with the world and never cha
 from __future__ import annotations
 
 import copy
+import functools
 
 from . import document
 from . import layout as lay
 from . import plan as plan_mod
+from . import ring as ring_mod
 from . import world as zw
-from .events import AUTO_PREFIX, RING_LIMIT, Refusal, standing
-from .suggest import descends, landing, roads_by_node, suggest_road
+from .events import AUTO_PREFIX, BRANCHES_LEAST, DEFAULT_RULE, RING_LIMIT, RULE_KEYS, Refusal, standing
+from .suggest import descends, landing, roads_by_node, suggest_merge, suggest_road
 
 ZONING_VERSION = "hand-1"
 FULL = 360 * lay.UNIT
 HALF_WEDGE = 20 * lay.UNIT  # a ring-1 road takes 20 degrees either side of its bearing at most
 GOLDEN = 13750776405003785  # the golden angle, 137.50776405003785 degrees, in units of 1/100 degree times 10**12: whole numbers only, so a port matches to the unit
 PLAZA = lay.PLAZA_PLACE
+REMEDY = "merge_roads"  # what the refusal `branches_full` names: group similar roads under a new one, which makes room
 
 
 # ------------------------------------------------------------------------------------------------ directions ----
 def bearing(k: int) -> int:
-    """The bearing of the k-th ring-1 road (k = 0 for the first), in units of 1/100 degree clockwise from north, from 0 up to a full circle. The golden angle
-    times k, rounded half up, in whole numbers."""
+    """The bearing of the k-th direction (k = 0 for the first), in units of 1/100 degree clockwise from north, from 0 up to a full circle. The golden angle times k, rounded half
+    up, in whole numbers. It never depends on how many directions there are: raising `branches` adds bearings and moves none."""
     return ((k * GOLDEN + 5 * 10**11) // 10**12) % FULL
 
 
-def _sector(given: list[tuple[int, int]], k: int) -> tuple[int, int] | str:
-    """The sector (lo, hi) of the k-th ring-1 road, or the reason there is none: "inside" (the bearing lies inside a sector given) or "border" (it is on the border of
-    two sectors, with no room between them)."""
-    b = bearing(k)
-    for lo, hi in given:
-        if 0 < (b - lo) % FULL < hi - lo:
-            return "inside"
-    right = min([(lo - b) % FULL for lo, hi in given], default=FULL)  # clockwise from the bearing to the next sector
-    left = min([(b - hi) % FULL for lo, hi in given], default=FULL)  # anticlockwise, to the sector before it
-    lo, hi = b - min(HALF_WEDGE, left), b + min(HALF_WEDGE, right)
-    if hi <= lo:
-        return "border"
-    if lo + hi > FULL:  # the axis is past 180 degrees: the same sector, one turn back
-        lo, hi = lo - FULL, hi - FULL
-    return lo, hi
+@functools.cache
+def sector_table(n: int) -> tuple[tuple[int, int, int], ...]:
+    """The sectors of the ring road when a road holds `n` branches: for each direction number k, 0 to n-1, `(lo, hi, axis)` in units of 1/100 degree. The spoke of the direction
+    runs ON its bearing (`axis`); its sector is the NEAREST-BEARING CELL among the n bearings: from the midpoint with the bearing before it to the midpoint with the one after it
+    (a midpoint of an odd gap is rounded up, so that two cells share it), cut to at most `HALF_WEDGE` either side of the bearing. The cell may be wider on one side of the
+    bearing than on the other. The cells of n directions tile the circle (as far as the cut leaves them) and a larger n only narrows them. The axis is kept between -180
+    and 180 degrees, and `lo <= axis <= hi`."""
+    bearings = [bearing(k) for k in range(n)]
+    assert len(set(bearings)) == n, f"{n} directions: two of them have the same bearing"  # (they are distinct for every n a rule allows, up to BRANCHES_LIMIT)
+    order = sorted(range(n), key=bearings.__getitem__)
+    out: list[tuple[int, int, int] | None] = [None] * n
+    for at, k in enumerate(order):
+        b = bearings[k]
+        before = (b - bearings[order[at - 1]]) % FULL or FULL  # to the bearing before it (the whole circle when it is alone)
+        after = (bearings[order[(at + 1) % n]] - b) % FULL or FULL
+        lo, hi = b - min(HALF_WEDGE, before // 2), b + min(HALF_WEDGE, (after + 1) // 2)
+        turn = FULL if b > FULL // 2 else 0  # the axis is past 180 degrees: the same sector, one turn back
+        out[k] = (lo - turn, hi - turn, b - turn)
+    return tuple(out)  # type: ignore[arg-type]
 
 
-def capacity() -> int:
-    """How many ring-1 roads the first ring holds: the sectors are asked for, one after the other, until there is none."""
-    return len(sector_table())
-
-
-def sector_table() -> list[tuple[int, int]]:
-    """The sectors (lo, hi) of the directions 0, 1, 2, ..., in units of 1/100 degree, each asked for when the ones before it are given, until there is none."""
-    given: list[tuple[int, int]] = []
-    while True:
-        found = _sector(given, len(given))
-        if isinstance(found, str):
-            return given
-        given.append(found)
-
-
-SECTORS = sector_table()  # the 13 sectors: the 14th bearing (347.60 degrees) lies inside the first
-AVENUES = len(SECTORS)  # 13
-REMEDY = "merge_roads"  # what the refusal `ring1_full` names: group similar avenues under a new one, which frees their directions
+def land_of(lo: int, hi: int, axis: int) -> tuple[int, int]:
+    """The wedge, in units of 1/100 degree, that an avenue of the sector `(lo, hi)` with its spoke on `axis` may build in. The engine lays lots the same distance either side
+    of a spoke, so the land is the part of the sector within the narrower side of the axis: `axis` plus and minus `min(axis - lo, hi - axis)`. The one place that decides how the
+    sector of a direction becomes the wedge of its trunk."""
+    side = min(axis - lo, hi - axis)
+    return axis - side, axis + side
 
 
 def tenths(span: int) -> int:
-    """A width given in units of 1/100 degree, in whole tenths of a degree, rounded half up. The sectors tile the circle, so their widths differ in the hundredths (32.46 and 32.47, 12.52
-    and 12.53) by no real difference: in tenths they are 325 and 125, and 400 for the widest."""
+    """A width given in units of 1/100 degree, in whole tenths of a degree, rounded half up. Sectors that tile the circle differ in the hundredths by no real difference: in tenths
+    the widths of the sectors of one table are compared."""
     return (span + 5) // 10
+
+
+def ring_radius(rule: dict) -> float:
+    """The lane radius of the first lap of the ring road for the rule: the least that holds `max` houses between the gates (the bearings of all `branches` directions, so
+    that an avenue that opens later never moves a house of the ring) and gives the narrowest sector the arc of an avenue at the ring's outer edge
+    (`bibliopolis.ring.ring_radius_for`). This is the one place the radius comes from: a change of rule that changes it lays the world out again."""
+    return _radius(rule["branches"], rule["max"])
+
+
+@functools.cache
+def _radius(branches: int, top: int) -> float:
+    table = sector_table(branches)
+    return ring_mod.ring_radius_for(ring_mod.axis_gates([axis for _, _, axis in table]), top, ring_mod.sector_min([(lo, hi) for lo, hi, _ in table]))
 
 
 def ordinal(n: int) -> str:
     return f"{n}{'th' if n % 100 in (11, 12, 13) else {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')}"
 
 
-def ring1_full(number: int) -> Refusal:
-    """The refusal when no direction is left for the `number`-th category of the first ring: it names the remedy."""
-    return Refusal(f"the first ring has at most {AVENUES} avenues and all {AVENUES} directions are used, so the {ordinal(number)} category goes below an avenue, "
-                   f"or similar avenues are merged under a new one ({REMEDY}) to free their directions", "ring1_full", limit=AVENUES, number=number, remedy=REMEDY)
+def branches_full(road: str | None, limit: int, number: int) -> Refusal:
+    """The refusal when `road` (a road id, or None for the ring road) holds `limit` roads directly already, and the `number`-th is asked for: it names the remedy."""
+    holder, what = ("the ring road", "avenues") if road is None else (f"the road {road!r}", "roads")
+    return Refusal(f"{holder} holds {limit} {what} directly, the most the rule allows (branches {limit}), so the {ordinal(number)} category goes below one of them, "
+                   f"or similar {what} are merged under a new one ({REMEDY}) to make room", "branches_full", road=road, limit=limit, number=number, remedy=REMEDY)
 
 
 def too_deep(road: str, ring: int) -> Refusal:
     """The refusal when an event would put a road in a ring deeper than `RING_LIMIT`: `road` is the road the event is about, `ring` the deepest ring that any road would stand in."""
     return Refusal(f"the road {road!r} would put a road in ring {ring}; the most the engine takes is ring {RING_LIMIT}", "too_deep", road=road, ring=ring, limit=RING_LIMIT)
-
-
-def ring1_wedge(given: list[tuple[int, int]], k: int) -> tuple[int, int]:
-    """The sector (lo, hi), in units of 1/100 degree, of the k-th direction when the sectors `given` belong to the earlier ones: the free arc around the bearing
-    `bearing(k)`, at most `HALF_WEDGE` to either side of it, ending where the next sector begins on each side. The axis of the sector (the middle of lo and hi, the
-    direction of the spoke) is kept between -180 and 180 degrees. `Refusal` with the id `ring1_full` (params `limit`, `number`, `remedy`) when the bearing has no room:
-    it lies inside a sector given already, or on the border of two. The bearings and the sectors that come of them are fixed, so there are `AVENUES` = 13 directions,
-    a town has at most 13 avenues (the roads of the first ring), and the 14th category goes below an avenue, or similar avenues are merged to free directions."""
-    found = _sector(given, k)
-    if not isinstance(found, str):
-        return found
-    if len(given) >= AVENUES:
-        raise ring1_full(k + 1)
-    where = "lies inside the sector of an earlier road" if found == "inside" else "is on the border of two sectors, with no room between them"
-    raise Refusal(f"the first ring has no room for avenue number {k + 1}: its bearing, {bearing(k) / lay.UNIT:g} degrees, {where}", "ring1_full",
-                  limit=AVENUES, number=k + 1, remedy=REMEDY)
 
 
 # ---------------------------------------------------------------------------------------------------- the tree ----
@@ -152,10 +148,19 @@ class LiveTree:
         return node["name"] if node is not None else key
 
 
+def ring_params(rule: dict) -> dict:
+    """`params.ring` for the rule: the label, the radius, and the sectors and spoke axes of all N directions (degrees, in the order of the direction numbers), so that the
+    gates of the ring are all there from day one."""
+    table = sector_table(rule["branches"])
+    return {"label": ring_mod.RING_LABEL, "radius": ring_radius(rule), "sectors": [[plan_mod.deg(lo), plan_mod.deg(hi)] for lo, hi, _ in table],
+            "axes": [plan_mod.deg(axis) for _, _, axis in table]}
+
+
 def new_plan(rule: dict) -> dict:
-    """The plan of a world with nothing in it: no sector, no trunk, no street. The sectors are added as the ring-1 roads open."""
+    """The plan of a world with nothing in it: the ring road with the sectors and axes of its directions (`params.ring`), no trunk, no street. The trunks and streets are
+    added as the ring-1 roads open."""
     return {"schema_version": plan_mod.SCHEMA_VERSION, "zoning_version": ZONING_VERSION, "mode": plan_mod.HAND,
-            "params": {"home_max": lay.HOME_MAX, "trunk_min": lay.TRUNK_MIN, "centre_tag": None, "districts": districts_of(rule)},
+            "params": {"home_max": lay.HOME_MAX, "trunk_min": lay.TRUNK_MIN, "centre_tag": None, "districts": districts_of(rule), "ring": ring_params(rule)},
             "ring1": [], "trunks": {}, "streets": {}, "sites": {}}
 
 
@@ -247,15 +252,25 @@ class HandWorld(zw.World):
                 self.roads.delete(rid)
         self.lines.delete(place)
 
-    def merge_avenues(self, key: str, label: str, members: list[str], took: str, keys: list[str], trigger: str) -> list[str]:
-        """The avenue `key` (in the tree and the plan already, with the direction of `took`) has the avenues `members` below it: they and the roads below them (`keys`)
-        are put again (see `put_again`), after the lines of the members are taken away (`drop_line`: the direction is the new avenue's, or free), and one entry of the
-        chronicle says so."""
-        for m in members:
-            self.drop_line(lay.tag_place(m))
+    def merge_roads(self, key: str, label: str, members: list[str], took: str, keys: list[str], trigger: str, below: str) -> list[str]:
+        """The road `key` (in the tree already, standing below the place `below`: the town hall for a new avenue, which has the direction of `took`) has the roads `members` below
+        it: they and the roads below them (`keys`) are put again (see `put_again`), after the lines of the members are taken away when they are avenues (`drop_line`: the
+        direction is the new avenue's, or free), and one entry of the chronicle says so."""
+        place = lay.tag_place(key)
+        if place not in self.road_def:  # (a merge that the rule makes in the middle of an arrival: the road is new to this working copy)
+            self.register_road(place, key, ())
+        if below == PLAZA:
+            for m in members:
+                self.drop_line(lay.tag_place(m))
         ids = self.put_again(keys, trigger)
-        self.note(trigger, merged=lay.tag_place(key), label=label, members=[lay.tag_place(m) for m in members], took=lay.tag_place(took), houses=ids)
+        self.note(trigger, merged=place, label=label, members=[lay.tag_place(m) for m in members], below=below, took=lay.tag_place(took), houses=ids)
         return ids
+
+    def relabel_ring(self, name: str) -> None:
+        """Write the name of the ring road, and of every lap of it, again."""
+        for lap in self.laps():
+            rec = self.places.mut(lap)
+            rec["label"], rec["address"] = name, [name]
 
     def relabel(self, keys: list[str]) -> None:
         """Write the names and addresses of the street records of the roads `keys` (parents first) again, from the tree as it is now."""
@@ -280,14 +295,14 @@ class State:
     on, and the world document of the engine. `apply` takes the next event; the rest is read from it."""
 
     def __init__(self, rule: dict):
-        self.rule = dict(rule)
+        self.rule = {**DEFAULT_RULE, **rule}  # (every key: a rule a test or a caller gives without `branches` has the default)
         self.nodes: dict[str, dict] = {}  # road id -> {"key", "name", "parent"}, in the order the roads were opened
         self.items: dict[str, dict] = {}  # house id -> its item, in arrival order
-        self.road_of: dict[str, str | None] = {}  # house id -> the road it stands on; None: the root zone
+        self.road_of: dict[str, str | None] = {}  # house id -> the road it stands on; None: the ring road
         self.plan = new_plan(self.rule)
         self.tree = LiveTree(self.nodes)
         self.doc = zw.new_world(self.plan)
-        self.held: dict[int, str] = {}  # direction number (0 to 12, see SECTORS) -> the avenue that holds it: a ring-1 road, or a road that moved away and keeps it
+        self.held: dict[int, str] = {}  # direction number (0 to N-1, see `sector_table`) -> the avenue that holds it
         self.kinds: dict[int, str] = {}  # seq -> kind of every event seen, standing or not
         self.effects: dict[int, dict] = {}  # seq -> {"houses": placed or moved by the event, "roads": opened by it}: what a later event can depend on
 
@@ -322,43 +337,84 @@ class State:
     def world(self, event: dict) -> HandWorld:
         return HandWorld(zw.PlanView(self.plan), self.tree, self.doc, event_id=event["seq"])
 
-    def commit(self, w: HandWorld, event: dict, before: int) -> None:
-        """Take the working copy as the world: its delta applied, `at` on the entries it wrote, the sectors of the ring-1 roads that stand."""
+    def commit(self, w: HandWorld, event: dict, before: int, base: dict | None = None) -> None:
+        """Take the working copy as the world: its delta applied (to `base`, the world a layout again starts from, else to the world as it is), `at` on the entries it
+        wrote, the sectors of the ring-1 roads that stand."""
         for entry in w.chronicle[before:]:
             entry["at"] = event["at"]
-        doc = zw.apply_delta(self.doc, w.delta())
+        doc = zw.apply_delta(self.doc if base is None else base, w.delta())
         self.doc = {**doc, "districts": districts_of(self.rule), "composition": {**doc["composition"], "ring1": self.sectors()}}
 
     def sectors(self) -> list[dict]:
         """`composition.ring1`: the sector of every road that is a ring-1 road now, in the order the sectors were given."""
-        return [{"place": r["place"], "label": r["label"], "weight": r["weight"], "from": r["wedge"][0], "to": r["wedge"][1], "span": round(r["wedge"][1] - r["wedge"][0], 3)}
-                for r in self.plan["ring1"] if self.nodes[r["name"]]["parent"] is None]
+        return [{"place": r["place"], "label": r["label"], "weight": r["weight"], "from": r["wedge"][0], "to": r["wedge"][1], "span": round(r["wedge"][1] - r["wedge"][0], 3),
+                 "axis": r["axis"]} for r in self.plan["ring1"] if self.nodes[r["name"]]["parent"] is None]
 
     # ---- roads
     def free_direction(self) -> int:
         """The lowest number of a direction that no avenue holds: the next avenue takes it. A direction that a merge freed has a lower number than any that was never
-        used, so freed directions come first, in the golden-angle order. `Refusal` (`ring1_full`, with the remedy) when all of them are held."""
-        for k in range(AVENUES):
+        used, so freed directions come first, in the golden-angle order. `Refusal` (`branches_full`, with the remedy) when all N of them are held."""
+        for k in range(self.rule["branches"]):
             if k not in self.held:
                 return k
-        raise ring1_full(AVENUES + 1)
+        raise branches_full(None, self.rule["branches"], self.rule["branches"] + 1)
 
     def direction_of(self, road: str) -> int | None:
         """The number of the direction that the road holds, None when it holds none."""
         return next((k for k, holder in self.held.items() if holder == road), None)
 
+    def children(self, parent: str | None) -> list[str]:
+        """The roads that stand directly below `parent` (None: the avenues), in the order they were opened."""
+        return [k for k, node in self.nodes.items() if node["parent"] == parent]
+
+    def room_at(self, parent: str | None) -> None:
+        """`Refusal` (`branches_full`) when `parent` (a road id, None for the ring road) holds `branches` roads directly already: one more is not taken."""
+        held, limit = len(self.children(parent)), self.rule["branches"]
+        if held >= limit:
+            raise branches_full(parent, limit, held + 1)
+
+    def least_branches(self) -> tuple[int, str | None]:
+        """The least `branches` the world as it stands allows, and the road that asks for it (None: the ring road). The ring road needs one more than the highest direction number
+        an avenue holds (the table of fewer directions has no such number); any other road needs as many as it holds roads directly."""
+        need, who = max([BRANCHES_LEAST, *(k + 1 for k in self.held)]), None
+        for parent in dict.fromkeys(node["parent"] for node in self.nodes.values() if node["parent"] is not None):
+            held = len(self.children(parent))
+            if held > need:
+                need, who = held, parent
+        return need, who
+
+    def sector_records(self, direction: int) -> tuple[list[float], float, list[float]]:
+        """(the sector, the axis, the land) of a direction for the rule in force, in degrees: the sector `[lo, hi]`, the bearing of the spoke, and the wedge `[lo, hi]` the
+        avenue builds in (`land_of`)."""
+        lo, hi, axis = sector_table(self.rule["branches"])[direction]
+        land = land_of(lo, hi, axis)
+        return [plan_mod.deg(lo), plan_mod.deg(hi)], plan_mod.deg(axis), [plan_mod.deg(land[0]), plan_mod.deg(land[1])]
+
     def add_sector(self, key: str, name: str, direction: int) -> None:
-        """Give the avenue `key` the direction `direction`: a trunk of the plan with the sector of that direction, and the street that the plan holds for it."""
+        """Give the avenue `key` the direction `direction`: a trunk of the plan with the land of that direction, and the street that the plan holds for it."""
         place = lay.tag_place(key)
-        wedge = SECTORS[direction]
-        lo, hi = plan_mod.deg(wedge[0]), plan_mod.deg(wedge[1])
+        cell, axis, land = self.sector_records(direction)
         self.held[direction] = key
-        self.plan["ring1"].append({"place": place, "name": key, "label": name, "weight": 0, "wedge": [lo, hi]})
+        self.plan["ring1"].append({"place": place, "name": key, "label": name, "weight": 0, "wedge": cell, "axis": axis})
         self.plan["trunks"][place] = {"name": key, "label": name, "ring": 1, "role": "ring1", "side": 0, "parent": None, "line": place, "index": 0,
-                                      "wedge": [lo, hi], "inner": [lo, hi], "heavy": None, "left": [], "right": []}
+                                      "wedge": land, "inner": list(land), "heavy": None, "left": [], "right": []}
         self.plan["streets"][place] = {"name": key, "kind": "leaf", "ring": 1, "label": name, "address": [name], "parent": None, "carrier": place,
                                        "collapsed": [], "absorbed": [], "ribs": [], "weight": 0, "order": len(self.plan["ring1"]) - 1}
         self.plan["sites"][key] = place
+
+    def set_geometry(self) -> None:
+        """Write the ring road of the plan again for the rule in force: its radius, the sectors and axes of its N directions, and the sector and land of every avenue that
+        holds a direction. The label stays. Nothing of the world changes until it is laid out again (`relay`)."""
+        ring, fresh = self.plan["params"]["ring"], ring_params(self.rule)
+        for field in ("radius", "sectors", "axes"):
+            ring[field] = fresh[field]
+        for direction, key in self.held.items():
+            cell, axis, land = self.sector_records(direction)
+            place = lay.tag_place(key)
+            for row in self.plan["ring1"]:
+                if row["name"] == key:
+                    row["wedge"], row["axis"] = cell, axis
+            self.plan["trunks"][place]["wedge"], self.plan["trunks"][place]["inner"] = land, list(land)
 
     def subtree(self, key: str) -> list[str]:
         """The road `key` and every road below it, in the order the roads were opened (a road that moved stays where it was in that order)."""
@@ -388,20 +444,27 @@ class State:
         return [h for h in self.items if self.road_of[h] in roads]
 
     def widest_avenue(self, members: list[str]) -> str:
-        """The avenue of `members` whose direction has the widest sector (`SECTORS`, the widths compared in whole tenths of a degree, `tenths`): a merge gives that sector to the
+        """The avenue of `members` whose direction has the widest sector (`sector_table`, the widths compared in whole tenths of a degree, `tenths`): a merge gives that sector to the
         new avenue, which carries the houses of all of them and needs the room. Of two with sectors as wide, the one with the most houses on it and below it; then the lower number."""
+        table = sector_table(self.rule["branches"])
+
         def rank(m: str) -> tuple[int, int, int]:
             k = self.direction_of(m)
-            return -tenths(SECTORS[k][1] - SECTORS[k][0]), -len(self.houses_below(m)), k
+            return -tenths(table[k][1] - table[k][0]), -len(self.houses_below(m)), k
 
         return min(members, key=rank)
 
+    def houses_under(self, roads: list[str]) -> list[str]:
+        """The houses that stand on any of the roads `roads` or on a road below one of them, in arrival order."""
+        below = {k for r in roads for k in self.subtree(r)}
+        return [h for h in self.items if self.road_of[h] in below]
+
     def houses_at(self, road: str | None) -> list[str]:
-        """The houses that stand directly on a road (None: the root zone), in arrival order."""
+        """The houses that stand directly on a road (None: the ring road), in arrival order."""
         return [h for h in self.items if self.road_of[h] == road]
 
     def where(self, road: str | None) -> str:
-        return "the root zone" if road is None else f"the road {road!r}"
+        return "the ring road" if road is None else f"the road {road!r}"
 
     def open(self, w: HandWorld, key: str, name: str, parent: str | None, ids: list[str], trigger: str, direction: int | None, node: dict | None = None) -> None:
         """Open a road: its node in the player's tree (`topic` is the OpenAlex node it stands for, or None), its direction (a number) when it is a ring-1 road, then the
@@ -418,7 +481,7 @@ class State:
         item = p["item"]
         if item["id"] in self.items:
             raise Refusal(f"{item['id']!r} is a house already", "house_exists", house=item["id"])
-        land = landing(self, item) if self.rule["auto"] else None  # (a road only under `auto`; otherwise the root zone)
+        land = landing(self, item) if self.rule["auto"] else None  # (a road only under `auto`; otherwise the ring road)
         w, before = self.world(e), len(self.doc["chronicle"])
         w.seq += 1  # the arrival number: log order
         w.arrival_ids.add(item["id"])
@@ -431,12 +494,13 @@ class State:
         self.effects[e["seq"]] = {"houses": touched, "roads": opened}
 
     def settle(self, w: HandWorld, e: dict, start: str | None, touched: list[str], opened: list[str]) -> None:
-        """After an arrival, under the rule `auto`: the place the house stands on (`start`: a road, or None for the root zone) is looked at, and while it holds more than `max`
+        """After an arrival, under the rule `auto`: the place the house stands on (`start`: a road, or None for the ring road) is looked at, and while it holds more than `max`
         houses directly, a road is opened for the largest group of its houses (`bibliopolis.suggest.suggest_road`: one level of OpenAlex below the place) and named after the
-        node, with the mechanics of `open_road`: the houses that stay keep their lots. Each road so opened is looked at in turn, in the order they were opened, so that one
-        that holds more than `max` houses splits again. The roads are `auto:<seq>`, `auto:<seq>.2`, ... in that order, roads like any other afterwards. A place with no
-        suggestion (no group of `min`, or a road for a topic, which is not split, or a road in the last ring, `RING_LIMIT`), or the root zone when all 13 directions of the first
-        ring are used, is left as it is, crowded (`bibliopolis.suggest.crowded` says so). Nothing without `auto`."""
+        node, with the mechanics of `open_road`: the houses that stay keep their lots. When the place holds `branches` roads already, the best merge of them
+        (`bibliopolis.suggest.suggest_merge`) is made first, to make room, and then the road is opened: both are entries of the chronicle. Each road so opened is looked at in
+        turn, in the order they were opened, so that one that holds more than `max` houses splits again. The roads are `auto:<seq>`, `auto:<seq>.2`, ... in that order (a merge
+        takes a number as a split does), roads like any other afterwards. A place with no suggestion (no group of `min`, or a road for a topic, which is not split, or a road
+        in the last ring, `RING_LIMIT`), or with no room and nothing to merge, is left as it is, crowded (`bibliopolis.suggest.crowded` says so). Nothing without `auto`."""
         if not self.rule["auto"]:
             return
         n, queue, seen = 0, [start], set(touched)
@@ -446,12 +510,18 @@ class State:
                 suggestion = suggest_road(self, at)
                 if suggestion is None:
                     break
-                try:
-                    direction = self.free_direction() if at is None else None
-                except Refusal:
-                    break
                 n += 1
                 key = f"{AUTO_PREFIX}{e['seq']}" + (f".{n}" if n > 1 else "")
+                if len(self.children(at)) >= self.rule["branches"]:  # no room at `at`: merge first, then the loop looks again (the merge may change the suggestion)
+                    merge = suggest_merge(self, at)
+                    if merge is None:
+                        break
+                    moved = self.merge(w, key, merge["name"], at, merge["members"], "add_item", merge["topic"], e=e)
+                    touched.extend(h for h in moved if h not in seen)
+                    seen.update(moved)
+                    opened.append(key)
+                    continue
+                direction = self.free_direction() if at is None else None
                 self.open(w, key, suggestion["name"], at, suggestion["houses"], "add_item", direction, suggestion["topic"])
                 touched.extend(h for h in suggestion["houses"] if h not in seen)
                 seen.update(suggestion["houses"])
@@ -490,6 +560,8 @@ class State:
                     raise Refusal(f"the house {h!r} is not under the {node['level']} {node['id']!r}, which the road stands for", "house_not_under_node",
                                   house=h, level=node["level"], topic=node["id"])
         direction = self.free_direction() if parent is None else None  # (may refuse: before anything changes)
+        if parent is not None:
+            self.room_at(parent)
         w, before = self.world(e), len(self.doc["chronicle"])
         self.open(w, key, name, parent, ids, "open_road", direction, node)
         self.commit(w, e, before)
@@ -511,6 +583,17 @@ class State:
 
     def do_rename_road(self, e: dict, p: dict) -> None:
         key, name = p["road"], p["name"]
+        if key is None:  # the ring road
+            was = self.plan["params"]["ring"]["label"]
+            if was == name:
+                raise Refusal(f"the ring road is called {name!r} already", "same_name", road=None, name=name)
+            self.plan["params"]["ring"]["label"] = name
+            w, before = self.world(e), len(self.doc["chronicle"])
+            w.relabel_ring(name)
+            w.note("rename_road", renamed=zw.ROOT_PLACE, was=was, label=name)
+            self.commit(w, e, before)
+            self.effects[e["seq"]] = {"houses": [], "roads": []}
+            return
         if key not in self.nodes:
             raise Refusal(f"there is no road {key!r}", "no_road", road=key)
         was = self.nodes[key]["name"]
@@ -545,6 +628,7 @@ class State:
         reach = self.ring(parent) + 1 + max(self.ring(k) for k in below) - self.ring(key)  # the ring of the deepest road of the subtree once it stands below `parent`
         if reach > RING_LIMIT:
             raise too_deep(key, reach)
+        self.room_at(parent)
         moved = [h for h in self.items if self.road_of[h] in below]
         self.nodes[key]["parent"] = parent
         if old is None:  # an avenue below another road is no avenue: its direction is free (the next avenue takes the lowest free number)
@@ -557,20 +641,22 @@ class State:
         self.effects[e["seq"]] = {"houses": moved, "roads": []}
 
     def do_merge_roads(self, e: dict, p: dict) -> None:
-        key, name, members, node = p["road"], p["name"], p["members"], p.get("topic")
+        key, name, parent, members, node = p["road"], p["name"], p["parent"], p["members"], p.get("topic")
         if key in self.nodes:
             raise Refusal(f"there is a road {key!r} already", "road_exists", road=key)
+        if parent is not None and parent not in self.nodes:
+            raise Refusal(f"there is no road {parent!r} to merge roads below", "parent_missing", parent=parent)
         for m in members:
             if m not in self.nodes:
                 raise Refusal(f"there is no road {m!r}", "no_road", road=m)
-            if self.nodes[m]["parent"] is not None:
-                raise Refusal(f"the road {m!r} is not an avenue: it is below {self.nodes[m]['parent']!r}, and only avenues of the first ring are merged", "not_an_avenue", road=m)
-        below = {m: set(self.subtree(m)) for m in members}  # (before anything moves)
-        keys = [k for k in self.nodes if any(k in roads for roads in below.values())]  # in the order the roads were opened
+            if self.nodes[m]["parent"] != parent:
+                here = "an avenue" if self.nodes[m]["parent"] is None else f"below {self.nodes[m]['parent']!r}"
+                raise Refusal(f"the road {m!r} does not stand directly below {self.where(parent)}: it is {here}, and only the roads that stand directly below one road are merged under "
+                              "a new one there", "not_a_child", road=m, parent=parent)
         reach = self.merge_reach(members)
         if reach > RING_LIMIT:
             raise too_deep(key, reach)
-        moved = [h for h in self.items if any(self.road_of[h] in roads for roads in below.values())]
+        moved = self.houses_under(members)
         if node is not None:
             taken = roads_by_node(self).get((node["level"], node["id"]))
             if taken is not None:
@@ -580,18 +666,35 @@ class State:
                 if not descends(self.items[h]["openalex"], node["level"], node["id"]):
                     raise Refusal(f"the house {h!r} is not under the {node['level']} {node['id']!r}, which the road stands for", "house_not_under_node",
                                   house=h, level=node["level"], topic=node["id"])
-        held = {m: self.direction_of(m) for m in members}
-        took = self.widest_avenue(members)  # the widest sector; of two as wide, the most houses on it and below it; then the lower number
-        for m in members:  # the directions of the members are free; the new avenue takes the one of the member with the widest sector
+        self.merge(None, key, name, parent, members, "merge_roads", node, e=e)
+        self.effects[e["seq"]] = {"houses": moved, "roads": [key]}
+
+    def merge(self, w: HandWorld | None, key: str, name: str, parent: str | None, members: list[str], trigger: str, node: dict | None, *, e: dict) -> list[str]:
+        """Group the roads `members` (all directly below `parent`, None: the ring road, so avenues) under the new road `key`, which takes their place there. A new avenue takes the
+        direction of the member with the widest sector and the others' are free; below the ring road the new road has no direction and the member that was opened first is the
+        one it `took`. The roads of the subtrees of the members and their houses are put again. `w` is the working copy of the event, or None to make it here and commit it
+        (a merge that is the event itself). Returns the ids of the houses put again."""
+        below = {k for m in members for k in self.subtree(m)}
+        keys = [k for k in self.nodes if k in below]  # in the order the roads were opened (before anything moves)
+        moved = self.houses_under(members)
+        held = {m: self.direction_of(m) for m in members} if parent is None else {}
+        opened = list(self.nodes)
+        took = self.widest_avenue(members) if parent is None else min(members, key=opened.index)  # the widest sector, then the most houses, then the lower number; below: the first opened
+        for m in held:  # the directions of the members are free; the new avenue takes the one of the member with the widest sector
             del self.held[held[m]]
-        self.nodes[key] = {"key": key, "name": name, "parent": None, "topic": node}
+        self.nodes[key] = {"key": key, "name": name, "parent": parent, "topic": node}
         for m in members:
             self.nodes[m]["parent"] = key
-        self.add_sector(key, name, held[took])
-        w, before = self.world(e), len(self.doc["chronicle"])
-        w.merge_avenues(key, name, members, took, keys, "merge_roads")
-        self.commit(w, e, before)
-        self.effects[e["seq"]] = {"houses": moved, "roads": [key]}
+        if parent is None:
+            self.add_sector(key, name, held[took])
+        own = w is None
+        if own:
+            w = self.world(e)
+        before = len(self.doc["chronicle"]) if own else 0
+        w.merge_roads(key, name, members, took, keys, trigger, PLAZA if parent is None else lay.tag_place(parent))
+        if own:
+            self.commit(w, e, before)
+        return moved
 
     def do_undo(self, e: dict, p: dict) -> None:
         w, before = self.world(e), len(self.doc["chronicle"])
@@ -600,15 +703,59 @@ class State:
         self.effects[e["seq"]] = {"houses": [], "roads": []}
 
     def do_set_rule(self, e: dict, p: dict) -> None:
-        rule = {"max": p["max"], "min": p["min"], "auto": p["auto"]}
+        rule = {k: p[k] for k in RULE_KEYS}
         if rule == self.rule:
-            raise Refusal("the rule is this already", "rule_unchanged", max=rule["max"], min=rule["min"], auto=rule["auto"])
+            raise Refusal("the rule is this already", "rule_unchanged", max=rule["max"], min=rule["min"], auto=rule["auto"], branches=rule["branches"])
+        need, who = self.least_branches()
+        if rule["branches"] < need:
+            where = "an avenue holds the direction number " + str(need - 1) if who is None else f"the road {who!r} holds {need} roads"
+            raise Refusal(f"{rule['branches']} branches would leave the world over: {where}, so the rule needs {need} at least (merge or move roads first)",
+                          "branches_below_standing", road=who, needs=need, branches=rule["branches"])
+        ring = self.plan["params"]["ring"]
+        was = {"radius": ring["radius"], "sectors": ring["sectors"], "axes": ring["axes"], "branches": self.rule["branches"]}
         self.rule = rule
         self.plan["params"]["districts"] = districts_of(rule)
-        w, before = self.world(e), len(self.doc["chronicle"])
-        w.note("set_rule", rule=dict(rule))
-        self.commit(w, e, before)
+        self.set_geometry()
+        if (ring["radius"], ring["sectors"], ring["axes"]) == (was["radius"], was["sectors"], was["axes"]):
+            w, before = self.world(e), len(self.doc["chronicle"])
+            w.note("set_rule", rule=dict(rule))
+            self.commit(w, e, before)
+        else:  # the ring road is another one (more directions, or a `max` it cannot hold at its radius): the whole world is laid out again on it
+            w, base, put = self.relay(e)
+            before = len(base["chronicle"])
+            w.note("set_rule", rule=dict(rule))
+            w.note("set_rule", resized=zw.ROOT_PLACE, was_radius=was["radius"], radius=ring["radius"], was_branches=was["branches"], branches=rule["branches"], houses=put)
+            self.commit(w, e, before, base)
         self.effects[e["seq"]] = {"houses": [], "roads": []}
+
+    def layout_order(self) -> list[tuple[str, list[dict]]]:
+        """(place, its lots) for the ring road and then each road in the order the roads were opened, the lots of each in the order they stand along it: the laps of the
+        ring in turn and the ribs of a road in turn, a slot at a time. A hole between two houses is not part of the order."""
+        places, out = self.doc["places"], []
+        lots: dict[str, list[dict]] = {}
+        for lot in places.values():
+            if lot["kind"] == "lot":
+                lots.setdefault(lot["street"], []).append(lot)
+        for place in (zw.ROOT_PLACE, *(lay.tag_place(k) for k in self.nodes)):
+            rec = places.get(place)
+            if rec is None or place not in lots:
+                continue
+            carriers = ([place] if "rib" in rec or place == zw.ROOT_PLACE else []) + list(rec.get("lanes", []))
+            out.append((place, sorted(lots[place], key=lambda lot: (carriers.index(lot["parent"]), lot["slot"]))))
+        return out
+
+    def relay(self, e: dict) -> tuple[HandWorld, dict, list[str]]:
+        """The world laid out again on the plan as it is now: a fresh world (the ring road of the plan, no road, no line, no rib), the chronicle and the arrivals of the
+        old one kept, and every house put again, the ring road's first and then each road's, in the order they stood along their streets. Nothing changes road, no
+        house passes another along its street and no avenue changes direction; where a hole stood the next house closes it. Returns the working copy, the fresh world it
+        starts from (for `commit`) and the ids of the houses put again, in the order they were put."""
+        old = self.doc
+        base = {**zw.new_world(self.plan), "seq": old["seq"], "chronicle": [dict(c) for c in old["chronicle"]]}
+        w, put = HandWorld(zw.PlanView(self.plan), self.tree, base, event_id=e["seq"]), []
+        for place, lots in self.layout_order():
+            w.add_houses(place, [{"article": lot["article"], "tag": lot["tag"], "seq": lot["seq"]} for lot in lots], "set_rule")
+            put.extend(lot["article"] for lot in lots)
+        return w, base, put
 
     # ---- what the world holds
     def count(self, road: str | None) -> int:

@@ -9,7 +9,7 @@ from pathlib import Path
 import hand_support
 import pytest
 from schema_support import faults
-from test_world_file import PIN_CITY, PIN_MERGE_CITY, PIN_MERGE_WORLD, PIN_NODES_CITY, PIN_NODES_WORLD, PIN_WORLD
+from test_world_file import PIN_BRANCHES_CITY, PIN_BRANCHES_WORLD, PIN_CITY, PIN_MERGE_CITY, PIN_MERGE_WORLD, PIN_NODES_CITY, PIN_NODES_WORLD, PIN_WORLD
 
 from bibliopolis import cli
 from bibliopolis import layout as lay
@@ -23,6 +23,7 @@ WORLDS = {
     "scripted": ("scripted.world.json", PIN_WORLD, PIN_CITY),
     "scripted_nodes": ("scripted_nodes.world.json", PIN_NODES_WORLD, PIN_NODES_CITY),
     "scripted_merge": ("scripted_merge.world.json", PIN_MERGE_WORLD, PIN_MERGE_CITY),
+    "scripted_branches": ("scripted_branches.world.json", PIN_BRANCHES_WORLD, PIN_BRANCHES_CITY),
 }
 FILES = sorted([name for name, _, _ in WORLDS.values()] + ["worlds.json"])
 
@@ -48,7 +49,7 @@ def made(script):
     return script.worlds()
 
 
-def test_the_script_makes_the_three_world_files_and_the_index(made):
+def test_the_script_makes_the_four_world_files_and_the_index(made):
     assert sorted(made) == FILES
 
 

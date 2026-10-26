@@ -18,7 +18,8 @@ from pathlib import Path
 
 from . import inputs, picture, store
 from ._version import __version__
-from .city import build_city, chronicle_lines, root_words, summary
+from .city import build_city, chronicle_lines, summary
+from .events import BRANCHES_DEFAULT, BRANCHES_LEAST, BRANCHES_LIMIT
 from .journal import dumps_world, load_world_file, world_document
 from .layout import render
 from .plan import GROW, MAX_HOUSES, MIN_HOUSES, MODES
@@ -58,8 +59,10 @@ def build_parser() -> argparse.ArgumentParser:
     n.add_argument("--world", metavar="PATH", help=where)
     n.add_argument("--max-houses", type=int, default=MAX_HOUSES, metavar="N", help="the most a road is meant to hold; `crowded` lists what holds more (default: %(default)s)")
     n.add_argument("--min-houses", type=int, default=MIN_HOUSES, metavar="N", help="the least a new road takes (default: %(default)s)")
+    n.add_argument("--branches", type=int, default=BRANCHES_DEFAULT, metavar="N",
+                   help=f"how many roads a road holds directly, and how many avenues leave the ring road: {BRANCHES_LEAST} to {BRANCHES_LIMIT} (default: %(default)s)")
     n.add_argument("--auto", action="store_true",
-                   help="turn the rule `auto` on: an arriving item stands on the deepest road whose node it is under, and a road or the root zone that then holds more than the most opens a road "
+                   help="turn the rule `auto` on: an arriving item stands on the deepest road whose node it is under, and a road or the ring road that then holds more than the most opens a road "
                         "for the largest group of its houses one level below the place (docs/world.md, 'The rule auto')")
     i = ws.add_parser("import", help="read a world file into a new SQLite world (an existing world is never overwritten)")
     i.add_argument("file", metavar="FILE", help="the world file (JSON)")
@@ -99,7 +102,7 @@ def build_command(args: argparse.Namespace) -> int:
     doc = build_city(library, tree, mode=args.mode, max_houses=args.max_houses, min_houses=args.min_houses, first=args.first)
     write_text_atomically(Path(args.out), render(doc))
     s = summary(doc)
-    print(f"wrote {args.out}: {s['houses']} houses on {s['roads']} roads, {root_words(s)}, "
+    print(f"wrote {args.out}: {s['houses']} houses on {s['roads']} roads, {s['ring']} on the ring road, "
           f"{s['splits']} splits, {s['over']} over (mode {s['mode']})", file=sys.stderr)
     return 0
 
@@ -139,9 +142,9 @@ def world_path(args: argparse.Namespace) -> Path:
 def world_command(args: argparse.Namespace) -> int:
     path = world_path(args)
     if args.world_command == "new":
-        made = store.Store.create(path, {"max": args.max_houses, "min": args.min_houses, "auto": args.auto})
+        made = store.Store.create(path, {"max": args.max_houses, "min": args.min_houses, "auto": args.auto, "branches": args.branches})
         rule = made.journal().rule
-        print(f"made {path}: a world with no house yet (at most {rule['max']}, at least {rule['min']}, auto {'on' if rule['auto'] else 'off'})", file=sys.stderr)
+        print(f"made {path}: a world with no house yet (at most {rule['max']}, at least {rule['min']}, {rule['branches']} branches, auto {'on' if rule['auto'] else 'off'})", file=sys.stderr)
     elif args.world_command == "import":
         journal = load_world_file(args.file)
         store.Store.import_journal(path, journal)
@@ -157,7 +160,7 @@ def world_command(args: argparse.Namespace) -> int:
         doc = journal.state.city()
         store.publish_text(args.out, render(doc))
         s = summary(doc)
-        print(f"wrote {args.out}: {s['houses']} houses on {s['roads']} roads, {root_words(s)}, "
+        print(f"wrote {args.out}: {s['houses']} houses on {s['roads']} roads, {s['ring']} on the ring road, "
               f"{s['splits']} splits, {s['over']} over (mode {s['mode']})", file=sys.stderr)
     return 0
 

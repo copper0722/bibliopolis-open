@@ -105,12 +105,12 @@ def road_of(doc, item):
 
 
 def roads_of(doc):
-    """{road place: street record} of the roads (the street records with a key); the root zone and the continuation ribs are not roads."""
+    """{road place: street record} of the roads (the street records with a key); the ring road and the continuation ribs are not roads."""
     return {pid: p for pid, p in doc["places"].items() if p["kind"] == "street" and "lane_of" not in p and p.get("tag") is not None}
 
 
 def direct_counts(doc):
-    """{road or root zone place: houses standing on it directly} - on its ribs, never on a road below it."""
+    """{road or ring road place: houses standing on it directly} - on its ribs, never on a road below it."""
     counts = Counter()
     for p in doc["places"].values():
         if p["kind"] == "lot":
@@ -144,18 +144,51 @@ def laps_of(doc):
 
 def gates_of(plan, sides=False):
     """G1 (G2 with `sides`) stated from the plan file alone: the axis of a trunk is the middle of its wedge, in whole hundredths of a degree, mod 360, to 3
-    decimals."""
+    decimals. A plan that names the spoke axes of its sectors (`params.ring.axes`: a world built by hand) has the gates of all of them, whichever roads are open."""
     out = set()
+    for axis_deg in plan["params"]["ring"].get("axes", []):
+        out.add(round((round(axis_deg * 100) / 100) % 360, 3) + 0.0)
     for rec in plan["trunks"].values():
-        if rec["role"] == "ring1" or (sides and rec["role"] == "side"):
+        if ("axes" not in plan["params"]["ring"] and rec["role"] == "ring1") or (sides and rec["role"] == "side"):
             lo, hi = (round(v * 100) for v in rec["wedge"])
             out.add(round(((lo + hi) / 200) % 360, 3) + 0.0)
     return sorted(out)
 
 
+GOLDEN = 13750776405003785  # the golden angle in units of 1/100 degree times 10**12 (docs/world.md, "The sectors")
+
+
+def bearing_of_direction(k):
+    return ((k * GOLDEN + 5 * 10**11) // 10**12) % 36000
+
+
+def cells_table(n):
+    """The sectors of n directions stated apart from the engine (docs/world.md): for k in range(n), (lo, hi, axis) in units of 1/100 degree. The spoke is ON the bearing; the sector is
+    the cell that is nearest to it among the n bearings - to the midpoint with the nearest bearing on either side - cut to 20 degrees each side, a midpoint of an odd gap rounded up;
+    the axis is kept between -180 and 180 degrees. Found by looking at every other bearing, not by sorting them as the engine does."""
+    bearings = [bearing_of_direction(k) for k in range(n)]
+    out = []
+    for k, b in enumerate(bearings):
+        others = [x for j, x in enumerate(bearings) if j != k]
+        clockwise = min(((x - b) % 36000 for x in others), default=36000)
+        anticlockwise = min(((b - x) % 36000 for x in others), default=36000)
+        turn = 36000 if b > 18000 else 0
+        out.append((b - min(2000, anticlockwise // 2) - turn, b + min(2000, (clockwise + 1) // 2) - turn, b - turn))
+    return out
+
+
 def capacity(radius, gates):
     """What a lap holds, from the independent cells of tests/checks.py."""
     return 2 * len(checks.free_cells(radius, gates))
+
+
+def radius_for(gates, max_houses, w_min=None):
+    """R(N) stated apart from the engine, with the independent cells: the least 8.5 + k such that lap 1 holds `max_houses` between the gates AND the narrowest sector
+    holds an avenue at the ring's outer edge (`w_min` None: no sector, only the first)."""
+    k = 0
+    while not (capacity(8.5 + k, gates) >= max_houses and (w_min is None or (8.5 + k + 1.5) * math.radians(w_min) >= 3.0 - 1e-9)):
+        k += 1
+    return 8.5 + k
 
 
 def slot_cell(radius, gates, slot):
@@ -252,33 +285,6 @@ def ring_root_problems(places, pv):
     return bad
 
 
-def root_zone_problems(places):
-    """The root zone of a world on a plan with no ring road: under the town hall, no road, no rib, lots on the cells of a grid in slot order (the first ones inside
-    the plaza)."""
-    root = zw.ROOT_PLACE
-    rec = places.get(root)
-    under = sorted((p for p in places.values() if p["kind"] == "lot" and p["street"] == root), key=lambda p: p["slot"])
-    bad = []
-    if rec is None:
-        if under:
-            bad.append((root, "houses without a root zone"))
-    else:
-        want = {"kind": "street", "shape": "underground", "underground": True, "label": "根區", "address": ["根區"], "parent": lay.PLAZA_PLACE}
-        bad += [(root, f"{k} is {rec.get(k)!r}") for k, v in want.items() if rec.get(k) != v]
-        bad += [(root, f"the root zone has a {k}") for k in ("rib", "road", "lane", "lanes", "tag", "carrier") if k in rec]
-        if rec["lots"] != len(under) or rec["reserved"] != 0:
-            bad.append((root, f"counters {rec['lots']}/{rec['reserved']} for {len(under)} houses"))
-    if [p["slot"] for p in under] != sorted(set(p["slot"] for p in under)):
-        bad.append((root, "two houses in one slot"))
-    for p in under:
-        x, z = zw.underground_cell(p["slot"])
-        if p["parent"] != root or p["order"] != p["slot"] or (p["position"]["x"], p["position"]["z"]) != (x, z):
-            bad.append((p["article"], "an underground house is not on the cell of its slot"))
-        if p["slot"] < 89 and math.hypot(abs(x) + 0.5, abs(z) + 0.5) > lay.PLAZA_RADIUS + 1e-9:
-            bad.append((p["article"], "one of the first 89 cells is not inside the plaza"))
-    return bad
-
-
 def district_problems(doc, plan, tree):
     """Violations of the rule in a world with districts (empty: sound), read from the world document alone and from a fresh `World` (the lookup
     of the road of a topic is asked again, not remembered). A world only grows here, so the ribs of a road fill in order: a rib has houses only
@@ -292,7 +298,7 @@ def district_problems(doc, plan, tree):
     counts = direct_counts(doc)
     roads = roads_of(doc)
     fresh = zw.World(pv, tv, doc)
-    # every house stands where the rule says: the nearest open road at or above its topic, the root zone when there is none
+    # every house stands where the rule says: the nearest open road at or above its topic, the ring road when there is none
     for pid, p in places.items():
         if p["kind"] != "lot":
             continue
@@ -303,12 +309,9 @@ def district_problems(doc, plan, tree):
             bad.append((pid, "its road is not a street of the world"))
         elif places[p["parent"]].get("lane_of", p["parent"]) != p["street"]:
             bad.append((pid, "stands in a rib that is not of its road"))
-        if pv.ring is not None:  # the ring road is on the surface: nothing is underground
-            if "underground" in p:
-                bad.append((pid, "a house of a world with the ring road is not underground"))
-        elif bool(p.get("underground")) != (p["street"] == root):
-            bad.append((pid, "a house is underground when and only when it stands in the root zone"))
-    bad += ring_root_problems(places, pv) if pv.ring is not None else root_zone_problems(places)
+        if "underground" in p:
+            bad.append((pid, "a house of a world with the ring road is not underground"))
+    bad += ring_root_problems(places, pv)
     # no street of any other kind, and the topics a road holds are held once
     held = Counter()
     for pid, r in roads.items():

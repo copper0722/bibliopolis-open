@@ -100,7 +100,7 @@ def test_the_check_is_red_when_moving_a_road_also_puts_a_house_of_another_road_a
 
     def careless(self, key, keys, was_below, below, trigger):
         out = original(self, key, keys, was_below, below, trigger)
-        repack(self, "place:root", trigger)  # the root zone has nothing to do with the move
+        repack(self, "place:root", trigger)  # the ring road has nothing to do with the move
         return out
 
     monkeypatch.setattr(hand.HandWorld, "move_subtree", careless)
@@ -193,7 +193,7 @@ def test_the_check_is_red_when_the_rule_moves_houses_to_a_road_that_is_not_one_o
     def straying(self, w, e, start, touched, opened):
         original(self, w, e, start, touched, opened)
         stray = next((x for x in self.items if self.road_of[x] is None and x not in touched), None)
-        if opened and stray is not None:  # one house of the root zone goes with the group that the rule took from a road
+        if opened and stray is not None:  # one house of the ring road goes with the group that the rule took from a road
             w.file_house(stray, opened[0], "add_item")
             self.road_of[stray] = opened[0]
 

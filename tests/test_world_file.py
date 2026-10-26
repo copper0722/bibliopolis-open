@@ -10,7 +10,7 @@ from contextlib import closing
 from pathlib import Path
 
 import pytest
-from hand_support import Hand, hid, item, play, scripted, scripted_merge, scripted_nodes, stamp, topic
+from hand_support import Hand, hid, item, play, scripted, scripted_branches, scripted_merge, scripted_nodes, stamp, topic
 
 from bibliopolis import events as ev
 from bibliopolis import layout as lay
@@ -43,7 +43,7 @@ def text_of(journal):
 
 # -------------------------------------------------------------------------------------------- the file ----
 def test_an_empty_world_is_this_text():
-    assert dumps_world(world_document(Journal())) == ('{\n "format": "bibliopolis.world",\n "version": 1,\n "rule": {"max":40,"min":10,"auto":false},\n'
+    assert dumps_world(world_document(Journal())) == ('{\n "format": "bibliopolis.world",\n "version": 1,\n "rule": {"max":40,"min":10,"auto":false,"branches":13},\n'
                                                       ' "items": [],\n "events": []\n}\n')
 
 
@@ -51,7 +51,7 @@ def test_a_world_file_has_the_header_then_one_item_and_one_event_to_a_line():
     j = small()
     text = text_of(j)
     lines = text.split("\n")
-    assert lines[:3] == ['{', ' "format": "bibliopolis.world",', ' "version": 1,'] and lines[3] == ' "rule": {"max":20,"min":5,"auto":false},'
+    assert lines[:3] == ['{', ' "format": "bibliopolis.world",', ' "version": 1,'] and lines[3] == ' "rule": {"max":20,"min":5,"auto":false,"branches":13},'
     assert lines[4] == ' "items": [' and lines[4 + 14 + 1] == ' ],' and lines[4 + 14 + 2] == ' "events": [' and lines[-3] == ' ]' and lines[-2:] == ['}', '']
     items, events = lines[5:19], lines[4 + 14 + 3:-3]
     assert len(items) == 14 and len(events) == len(j.events) == 14 + 3
@@ -63,9 +63,9 @@ def test_the_document_of_a_journal_says_the_rule_it_started_with_and_the_items_o
     j = small()
     doc = world_document(j)
     assert list(doc) == ["format", "version", "rule", "items", "events"] and (doc["format"], doc["version"]) == (FORMAT, VERSION) == ("bibliopolis.world", 1)
-    assert doc["rule"] == {"max": 20, "min": 5, "auto": False} and [i["id"] for i in doc["items"]] == houses(1, 14) and doc["events"] == j.events
-    j.append("set_rule", {"max": 7, "min": 2, "auto": True}, stamp(99))
-    assert world_document(j)["rule"] == {"max": 20, "min": 5, "auto": False}  # the rule of the start; a set_rule event is in the log
+    assert doc["rule"] == {"max": 20, "min": 5, "auto": False, "branches": 13} and [i["id"] for i in doc["items"]] == houses(1, 14) and doc["events"] == j.events
+    j.append("set_rule", {"max": 7, "min": 2, "auto": True, "branches": 13}, stamp(99))
+    assert world_document(j)["rule"] == {"max": 20, "min": 5, "auto": False, "branches": 13}  # the rule of the start; a set_rule event is in the log
 
 
 @pytest.mark.parametrize("seed", [1, 4, 9, 16])
@@ -97,12 +97,14 @@ def test_a_file_with_a_byte_order_mark_or_that_is_not_json_is_read_or_refused_by
         load_world_file(path)
 
 
-PIN_WORLD = "d4ac8dbde73d982905bf7f4505bbed1dc8e9c3807472e662fba73c2d53e23da4"  # the sha256 of the world file of the scripted log (hand_support.scripted)
-PIN_CITY = "4c6285059b51ec8e3583a7cb00f69efe3adf5c2f7c4c7d6d0ce16cb768f42d1a"  # ... and of the text of the city that it folds to; change them on purpose, with the engine
-PIN_NODES_WORLD = "fee2dd7f74da8af729f2193e61122ecd74cead594bfad049dafce5a9f8361252"  # the same for the log with OpenAlex topics (hand_support.scripted_nodes): roads for nodes, the rule auto
-PIN_NODES_CITY = "09638ab236de4f9f193e46cfeeacdabb9626975aa1b48489ad1cd0e3de1e1b9f"
-PIN_MERGE_WORLD = "02ae4cc1706d3befd8671bf3438ed9b183b94ab6cbfa07f2b6008fc217b94870"  # ... and for the log in which the first ring fills and is merged (hand_support.scripted_merge)
-PIN_MERGE_CITY = "81daf2b55c0960c29e608a2838395d93f00f8b2c21e51d9e58d615fddce935c6"
+PIN_WORLD = "00cdd986d9c25997ee18ef20d8995e1e843f0bbe36d7f93bc9e95e5e7a351ea1"  # the sha256 of the world file of the scripted log (hand_support.scripted)
+PIN_CITY = "57e3d960c0cb3bc05c66634d54b2844797c60219bd31dc5c45cab9c43c851185"  # ... and of the text of the city that it folds to; change them on purpose, with the engine
+PIN_NODES_WORLD = "909c0564d34aca455dab84f7c659faf891f6e3a875d733ac6c1086561d860243"  # the same for the log with OpenAlex topics (hand_support.scripted_nodes): roads for nodes, the rule auto
+PIN_NODES_CITY = "bcf9eee0e772d6cde66b420b9070d82bf8e79115338a32b5c3266d03762cd5f6"
+PIN_MERGE_WORLD = "f8ef1194ff53f26e2d908c6e677f8b1fe62507ff89b0780a28028f04aded5274"  # ... and for the log in which the first ring fills and is merged (hand_support.scripted_merge)
+PIN_MERGE_CITY = "436c7e3276f229dd7ad47fa423476189984b7a0c319c9bb4125714a27d35b68c"
+PIN_BRANCHES_WORLD = "8bca726c6f6558d4b946f76c04a5de67540e528801c1fd600711e893886b5faf"  # ... and for the log of the branches (hand_support.scripted_branches): the rule merges a full ring itself, a merge below a road, the expansion
+PIN_BRANCHES_CITY = "1d46fb02cccb325502a49d293117d5b2fb72cbb2457ba27eda1b709b34471db6"
 
 
 def test_the_scripted_world_and_its_city_are_pinned_by_their_sha256():
@@ -116,6 +118,9 @@ def test_the_scripted_world_and_its_city_are_pinned_by_their_sha256():
     merged = scripted_merge().journal
     assert hashlib.sha256(text_of(merged).encode("utf-8")).hexdigest() == PIN_MERGE_WORLD
     assert hashlib.sha256(lay.render(merged.state.city()).encode("utf-8")).hexdigest() == PIN_MERGE_CITY
+    branches = scripted_branches().journal
+    assert hashlib.sha256(text_of(branches).encode("utf-8")).hexdigest() == PIN_BRANCHES_WORLD
+    assert hashlib.sha256(lay.render(branches.state.city()).encode("utf-8")).hexdigest() == PIN_BRANCHES_CITY
 
 
 def test_titles_and_names_in_any_script_are_written_as_they_are_and_read_back(tmp_path):
@@ -211,10 +216,10 @@ def test_a_store_is_made_with_a_rule_and_nothing_else_and_is_never_overwritten(t
     made = Store.create(path, {"max": 25, "min": 6, "auto": True})
     assert made.path == path and path.is_file()
     j = made.journal()
-    assert (j.rule, j.events, list(j.state.items)) == ({"max": 25, "min": 6, "auto": True}, [], [])
+    assert (j.rule, j.events, list(j.state.items)) == ({"max": 25, "min": 6, "auto": True, "branches": 13}, [], [])
     with pytest.raises(Refusal, match="is there already; a world is not overwritten"):
         Store.create(path)
-    assert Store(path).journal().rule == {"max": 25, "min": 6, "auto": True}
+    assert Store(path).journal().rule == {"max": 25, "min": 6, "auto": True, "branches": 13}
     with pytest.raises(Refusal, match="min"):
         Store.create(tmp_path / "bad.sqlite", {"max": 5, "min": 9, "auto": False})
     assert not (tmp_path / "bad.sqlite").exists()  # a rule that cannot be leaves no file behind
@@ -241,7 +246,7 @@ def test_the_tables_of_a_store_are_world_item_and_event_with_the_payloads_as_can
         head = db.execute("SELECT format, version, rule FROM world").fetchall()
         events = db.execute("SELECT seq, at, kind, payload FROM event ORDER BY seq").fetchall()
         items = db.execute("SELECT seq, id, json FROM item ORDER BY seq").fetchall()
-    assert tables == ["event", "item", "world"] and head == [("bibliopolis.world", 1, '{"max":20,"min":5,"auto":false}')]
+    assert tables == ["event", "item", "world"] and head == [("bibliopolis.world", 1, '{"max":20,"min":5,"auto":false,"branches":13}')]
     assert [(r[0], r[1], r[2]) for r in events] == [(e["seq"], e["at"], e["kind"]) for e in j.events]
     assert events[14][3] == '{"road":"a","name":"Alpha","parent":null,"houses":[' + ",".join(f'"{x}"' for x in houses(1, 10)) + '],"topic":null}'
     assert [(r[0], r[1]) for r in items] == [(i, hid(i)) for i in range(1, 15)] and json.loads(items[0][2]) == j.items()[0]
@@ -338,7 +343,7 @@ def test_the_log_of_a_store_is_append_only_the_file_itself_refuses_an_update_or_
 
 REPLACING_ROWS = {  # a row for each table with the key of a row that is there: (the columns, the values, the key, the column to change)
     "world": ("id, format, version, rule", "1, 'bibliopolis.world', 1, '{\"max\":1,\"min\":1,\"auto\":false}'", "id", "rule"),
-    "event": ("seq, at, kind, payload", "1, '2030-01-01', 'set_rule', '{\"max\":9,\"min\":3,\"auto\":false}'", "seq", "payload"),
+    "event": ("seq, at, kind, payload", "1, '2030-01-01', 'set_rule', '{\"max\":9,\"min\":3,\"auto\":false,\"branches\":13}'", "seq", "payload"),
     "item": ("seq, id, json", "1, 'changed', '{\"id\":\"changed\"}'", "seq", "json"),
 }
 REPLACING_FORMS = {
@@ -371,7 +376,7 @@ def test_a_row_with_a_new_key_goes_in_as_before_and_a_plain_insert_of_a_key_that
     path = tmp_path / "w.sqlite"
     Store.import_journal(path, small())  # 17 events
     with closing(sqlite3.connect(path)) as db, db:
-        db.execute("INSERT INTO event VALUES (18, '2030-01-01', 'set_rule', '{\"max\":9,\"min\":3,\"auto\":false}')")
+        db.execute("INSERT INTO event VALUES (18, '2030-01-01', 'set_rule', '{\"max\":9,\"min\":3,\"auto\":false,\"branches\":13}')")
         assert db.execute("SELECT COUNT(*) FROM event").fetchone() == (18,)
     with closing(sqlite3.connect(path)) as db:
         with pytest.raises(sqlite3.IntegrityError):
@@ -495,7 +500,7 @@ def test_a_world_that_was_tampered_with_is_refused_where_the_log_stops_making_se
     skipped = tmp_path / "skipped.sqlite"
     Store.import_journal(skipped, small())
     with sqlite3.connect(skipped) as db:
-        db.execute("INSERT INTO event VALUES (19, '2026-01-01', 'set_rule', '{\"max\":9,\"min\":3,\"auto\":false}')")
+        db.execute("INSERT INTO event VALUES (19, '2026-01-01', 'set_rule', '{\"max\":9,\"min\":3,\"auto\":false,\"branches\":13}')")
     with pytest.raises(WorldFileError, match="event 19 comes in place 18"):
         Store(skipped).journal()
     broken = tmp_path / "broken.sqlite"
@@ -510,7 +515,7 @@ def test_an_item_table_that_does_not_say_what_the_events_say_is_refused(tmp_path
     path = tmp_path / "w.sqlite"
     Store.import_journal(path, small())
     with sqlite3.connect(path) as db:
-        db.execute("INSERT INTO event VALUES (18, '2026-01-02', 'set_rule', '{\"max\":9,\"min\":3,\"auto\":false}')")
+        db.execute("INSERT INTO event VALUES (18, '2026-01-02', 'set_rule', '{\"max\":9,\"min\":3,\"auto\":false,\"branches\":13}')")
         db.execute("INSERT INTO item VALUES (18, 'ghost', '{\"id\":\"ghost\"}')")
     with pytest.raises(WorldFileError, match="the item table is not the items of the add_item events"):
         Store(path).journal()

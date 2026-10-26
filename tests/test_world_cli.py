@@ -54,9 +54,9 @@ def test_new_makes_an_empty_world_in_the_home_folder_made_on_first_use_and_says_
     assert code == 0 and (folder / "world.sqlite").is_file()
     lines = err.splitlines()
     assert lines[0] == f"home: {folder} (made now)"
-    assert lines[1] == f"made {folder / 'world.sqlite'}: a world with no house yet (at most 40, at least 10, auto off)" and len(lines) == 2
+    assert lines[1] == f"made {folder / 'world.sqlite'}: a world with no house yet (at most 40, at least 10, 13 branches, auto off)" and len(lines) == 2
     j = Store(folder / "world.sqlite").journal()
-    assert j.events == [] and j.rule == {"max": 40, "min": 10, "auto": False}
+    assert j.events == [] and j.rule == {"max": 40, "min": 10, "auto": False, "branches": 13}
 
 
 def test_new_never_overwrites_a_world_and_the_second_time_the_home_folder_is_not_made_now(capsys):
@@ -77,11 +77,16 @@ def test_a_world_of_a_file_of_the_callers_does_not_touch_the_home_folder(tmp_pat
 def test_new_takes_the_rule_and_a_rule_that_cannot_be_leaves_no_file(tmp_path, capsys):
     path = tmp_path / "w.sqlite"
     code, err, _ = run_main(capsys, "world", "new", "--world", str(path), "--max-houses", "12", "--min-houses", "4", "--auto")
-    assert code == 0 and err.strip() == f"made {path}: a world with no house yet (at most 12, at least 4, auto on)"
-    assert Store(path).journal().rule == {"max": 12, "min": 4, "auto": True}
+    assert code == 0 and err.strip() == f"made {path}: a world with no house yet (at most 12, at least 4, 13 branches, auto on)"
+    assert Store(path).journal().rule == {"max": 12, "min": 4, "auto": True, "branches": 13}
     other = tmp_path / "bad.sqlite"
     code, err, _ = run_main(capsys, "world", "new", "--world", str(other), "--min-houses", "50")
     assert code == 2 and "min (50) is more than max (40)" in err and not other.exists()
+    third = tmp_path / "branches.sqlite"
+    code, err, _ = run_main(capsys, "world", "new", "--world", str(third), "--branches", "21")
+    assert code == 0 and Store(third).journal().rule["branches"] == 21 and "21 branches" in err
+    code, err, _ = run_main(capsys, "world", "new", "--world", str(tmp_path / "one.sqlite"), "--branches", "1")
+    assert code == 2 and "from 2 to 1000" in err and not (tmp_path / "one.sqlite").exists()
 
 
 # -------------------------------------------------------------------------------------- import and export ----
@@ -362,9 +367,9 @@ def test_fold_writes_the_city_as_build_does_and_the_picture_and_the_chronicle_re
     code, err, _ = run_main(capsys, "world", "fold", "--out", str(city_file), "--world", str(tmp_path / "w.sqlite"))
     city = journal.state.city()
     assert code == 0 and city_file.read_text(encoding="utf-8") == lay.render(city)
-    s = {"houses": city["world"]["houses"], "roads": city["composition"]["streets"]["total"], "under": city["composition"]["measure"]["underground_lots"]}
+    s = {"houses": city["world"]["houses"], "roads": city["composition"]["streets"]["total"], "ring": city["composition"]["measure"]["ring_lots"]}
     splits = sum(1 for e in city["world"]["chronicle"] if "from" in e)
-    assert err.strip() == f"wrote {city_file}: {s['houses']} houses on {s['roads']} roads, {s['under']} under the town hall, {splits} splits, 0 over (mode hand)"
+    assert err.strip() == f"wrote {city_file}: {s['houses']} houses on {s['roads']} roads, {s['ring']} on the ring road, {splits} splits, 0 over (mode hand)"
     svg = tmp_path / "city.svg"
     assert run_main(capsys, "picture", "--city", str(city_file), "--out", str(svg))[0] == 0
     assert ET.fromstring(svg.read_text(encoding="utf-8")).tag.endswith("svg")
@@ -386,11 +391,11 @@ def test_a_world_with_merged_avenues_goes_through_import_fold_the_picture_and_th
     assert merged[0].endswith("3 avenues (Field 1.1, Field 1.2, Field 1.3) are merged below the new avenue Domain 1, which takes the direction of Field 1.3; 21 houses are put again.")
 
 
-def test_fold_of_an_empty_world_is_the_town_hall_alone(tmp_path, capsys):
+def test_fold_of_an_empty_world_is_the_town_hall_and_the_empty_ring_road(tmp_path, capsys):
     run_main(capsys, "world", "new", "--world", str(tmp_path / "w.sqlite"))
     out = tmp_path / "city.json"
     code, err, _ = run_main(capsys, "world", "fold", "--out", str(out), "--world", str(tmp_path / "w.sqlite"))
-    assert code == 0 and err.strip() == f"wrote {out}: 0 houses on 0 roads, 0 under the town hall, 0 splits, 0 over (mode hand)"
+    assert code == 0 and err.strip() == f"wrote {out}: 0 houses on 1 roads, 0 on the ring road, 0 splits, 0 over (mode hand)"
     assert json.loads(out.read_text(encoding="utf-8"))["world"]["houses"] == 0
 
 

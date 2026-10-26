@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""The golden files of the engine: three world files and their index.
+"""The golden files of the engine: four world files and their index.
 
     python3 examples/make_worlds.py [--out examples]
 
-`scripted.world.json`, `scripted_nodes.world.json` and `scripted_merge.world.json` are logs of events (docs/world.md) that the helpers of `tests/hand_support.py` build: every
-kind of event; OpenAlex topics, the node of a road and the rule `auto`; the first ring filled and merged. `worlds.json` is their index: for each file, the sha256 of the file and the
+`scripted.world.json`, `scripted_nodes.world.json`, `scripted_merge.world.json` and `scripted_branches.world.json` are logs of events (docs/world.md) that the helpers of
+`tests/hand_support.py` build: every kind of event; OpenAlex topics, the node of a road and the rule `auto`; the first ring filled and merged; the branches (a small ring that the rule
+merges by itself, a merge below a road, the expansion of the city, the ring road renamed). `worlds.json` is their index: for each file, the sha256 of the file and the
 sha256 of the city that it folds to, as `python3 -m bibliopolis world fold` writes it. A port in another language folds the files and compares what it writes with those numbers.
 
 Nothing in them is typed by hand. The tests make the files again and compare them with the committed ones byte for byte, and fold each to the pinned city: when the engine changes
@@ -24,7 +25,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))  # the helpers that build the logs
 
-from hand_support import scripted, scripted_merge, scripted_nodes  # noqa: E402
+from hand_support import scripted, scripted_branches, scripted_merge, scripted_nodes  # noqa: E402
 
 from bibliopolis import layout  # noqa: E402
 from bibliopolis.canonical import dumps  # noqa: E402
@@ -34,12 +35,15 @@ OUT = ROOT / "examples"
 ABOUT = ("The golden files of the engine for a port (docs/world.md, 'For a port'). Each world file is a log of events; folding it gives a city whose text, as 'python3 -m bibliopolis "
          "world fold' writes it, has the sha256 below. tests/test_world_examples.py keeps these files, this index and the engine equal.")
 WORLDS = (
-    ("scripted.world.json", "scripted", scripted, "every kind of event but a merge: roads opened from the middle of the root zone, houses filed out of roads and out of the root zone, a road "
+    ("scripted.world.json", "scripted", scripted, "every kind of event but a merge: roads opened from the middle of the ring road, houses filed out of roads and out of the ring road, a road "
                                                  "with roads below it moved, a rename, a rule, an undo from the middle; items with no topic"),
     ("scripted_nodes.world.json", "scripted_nodes", scripted_nodes, "OpenAlex topics: a suggestion taken as it stands, roads that stand for nodes, a house with topics in two domains, "
                                                                     "the rule auto splitting a road three levels down in one event, a move of a road for a node, an undo"),
     ("scripted_merge.world.json", "scripted_merge", scripted_merge, "the first ring filled (13 avenues) and merged: a merge by suggestion and one by hand, avenues in the freed "
                                                                     "directions, an avenue moved below another road (its direction is free for the next), a rename, a filing, an undo"),
+    ("scripted_branches.world.json", "scripted_branches", scripted_branches, "the branches: a ring of five that the rule auto merges by itself when a domain needs an avenue (a merge and a "
+                                                                              "split in one event), the ring road renamed, a merge below a road, the branches raised and lowered and a larger max (the whole "
+                                                                              "world laid out again), an undo"),
 )
 
 
@@ -48,7 +52,7 @@ def sha256(text: str) -> str:
 
 
 def worlds() -> dict[str, str]:
-    """file name -> its text: the three world files, then the index."""
+    """file name -> its text: the four world files, then the index."""
     out: dict[str, str] = {}
     rows = []
     for name, helper, build, what in WORLDS:

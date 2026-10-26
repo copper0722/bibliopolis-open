@@ -75,13 +75,21 @@ def test_the_item_given_is_not_changed_and_the_one_returned_does_not_share_its_l
 
 
 # ------------------------------------------------------------------------------------------------------ rules ----
-def test_a_rule_is_two_whole_numbers_and_a_boolean():
-    assert checked(ev.check_rule, {"auto": True, "min": 5, "max": 9}) == ({"max": 9, "min": 5, "auto": True}, [])
-    assert checked(ev.check_rule, ev.DEFAULT_RULE) == ({"max": 40, "min": 10, "auto": False}, [])
-    for bad, fragment in (({"max": 9, "min": 10, "auto": False}, "more than max"), ({"max": 0, "min": 0, "auto": False}, "from 1 to"),
-                          ({"max": 9.5, "min": 1, "auto": False}, "whole number"), ({"max": True, "min": 1, "auto": False}, "whole number"),
-                          ({"max": 9, "min": 1, "auto": 1}, "true or false"), ({"max": 9, "min": 1}, "missing auto"),
-                          ({"max": 9, "min": 1, "auto": False, "x": 1}, "unknown x"), ({"max": ev.RULE_LIMIT + 1, "min": 1, "auto": False}, "from 1 to"), ([], "must be an object")):
+def test_a_rule_is_three_whole_numbers_and_a_boolean_and_a_starting_rule_may_leave_the_branches_out():
+    assert checked(ev.check_rule, {"auto": True, "min": 5, "max": 9, "branches": 8}) == ({"max": 9, "min": 5, "auto": True, "branches": 8}, [])
+    assert checked(ev.check_rule, ev.DEFAULT_RULE) == ({"max": 40, "min": 10, "auto": False, "branches": 13}, [])
+    out, found = checked(ev.check_rule, {"auto": True, "min": 5, "max": 9})
+    assert out is None and found == ["x: missing branches"]  # (an event carries every key)
+    problems = ev.Problems()
+    assert ev.check_rule({"auto": True, "min": 5, "max": 9}, "x", problems, starting=True) == {"max": 9, "min": 5, "auto": True, "branches": 13} and problems.found == []
+    b = 13
+    for bad, fragment in (({"max": 9, "min": 10, "auto": False, "branches": b}, "more than max"), ({"max": 0, "min": 0, "auto": False, "branches": b}, "from 1 to"),
+                          ({"max": 9.5, "min": 1, "auto": False, "branches": b}, "whole number"), ({"max": True, "min": 1, "auto": False, "branches": b}, "whole number"),
+                          ({"max": 9, "min": 1, "auto": 1, "branches": b}, "true or false"), ({"max": 9, "min": 1, "branches": b}, "missing auto"),
+                          ({"max": 9, "min": 1, "auto": False, "branches": b, "x": 1}, "unknown x"), ({"max": ev.RULE_LIMIT + 1, "min": 1, "auto": False, "branches": b}, "from 1 to"),
+                          ({"max": 9, "min": 1, "auto": False, "branches": 1}, "from 2 to 1000"), ({"max": 9, "min": 1, "auto": False, "branches": 1001}, "from 2 to 1000"),
+                          ({"max": 9, "min": 1, "auto": False, "branches": 2.5}, "whole number"), ({"max": 9, "min": 1, "auto": False, "branches": True}, "whole number"),
+                          ([], "must be an object")):
         out, found = checked(ev.check_rule, bad)
         assert out is None and any(fragment in line for line in found), (bad, found)
 
@@ -93,7 +101,7 @@ GOOD = [("add_item", {"item": item(1)}), ("open_road", {"road": "r1", "name": "R
         ("rename_road", {"road": "r1", "name": "New"}), ("move_road", {"road": "r2", "parent": "r1"}),
         ("merge_roads", {"road": "m1", "name": "Merged", "parent": None, "members": ["r1", "r3"], "topic": None}),
         ("merge_roads", {"road": "m2", "name": "Domain 1", "parent": None, "members": ["r1", "r3", "r4"], "topic": NODE}), ("undo", {"seq": 1}),
-        ("set_rule", {"max": 40, "min": 10, "auto": False})]
+        ("set_rule", {"max": 40, "min": 10, "auto": False, "branches": 13})]
 
 
 @pytest.mark.parametrize("kind, payload", GOOD, ids=[k for k, _ in GOOD])
@@ -161,7 +169,7 @@ def test_the_node_of_a_merge_may_be_left_out_too_and_is_kept_as_null_last():
     (lambda: event("merge_roads", {"road": "m", "name": "M", "parent": None, "members": ["a", "a"]}), "chosen twice"),
     (lambda: event("merge_roads", {"road": "m", "name": "M", "parent": None, "members": "ab"}), "must be a list of at least 2 road ids"),
     (lambda: event("merge_roads", {"road": "m", "name": "M", "parent": None, "members": ["a", 5]}), "must be a string"),
-    (lambda: event("merge_roads", {"road": "m", "name": "M", "parent": "r", "members": ["a", "b"]}), "must be null, the town hall"),
+    (lambda: event("merge_roads", {"road": "m", "name": "M", "parent": 5, "members": ["a", "b"]}), "must be a string"),
     (lambda: event("merge_roads", {"road": "auto:3", "name": "M", "parent": None, "members": ["a", "b"]}), "starts with 'auto:'"),
     (lambda: event("merge_roads", {"road": "lane:x:2", "name": "M", "parent": None, "members": ["a", "b"]}), "continuation rib"),
     (lambda: event("merge_roads", {"road": "m", "name": "", "parent": None, "members": ["a", "b"]}), "must not be empty"),
@@ -170,7 +178,7 @@ def test_the_node_of_a_merge_may_be_left_out_too_and_is_kept_as_null_last():
     (lambda: event("rename_road", {"road": "r", "name": ""}), "must not be empty"),
     (lambda: event("undo", {"seq": 0}), "number of an event"),
     (lambda: event("undo", {"seq": "3"}), "number of an event"),
-    (lambda: event("set_rule", {"max": 5, "min": 6, "auto": False}), "more than max"),
+    (lambda: event("set_rule", {"max": 5, "min": 6, "auto": False, "branches": 13}), "more than max"),
 ])
 def test_an_event_of_the_wrong_shape_is_refused_with_its_place(make, fragment):
     out, found = checked(ev.check_event, make(), "event")
@@ -249,7 +257,7 @@ def test_references_are_the_roads_and_the_houses_a_payload_names_other_than_the_
     assert ev.references(event("rename_road", {"road": "r", "name": "N"})) == ({"r"}, set())
     assert ev.references(event("move_road", {"road": "r", "parent": "p"})) == ({"r", "p"}, set())
     assert ev.references(event("merge_roads", {"road": "m", "name": "M", "parent": None, "members": ["a", "b"]})) == ({"a", "b"}, set())  # (the roads it merges; the road it creates is not named)
-    for kind, payload in (("add_item", {"item": item(1)}), ("undo", {"seq": 1}), ("set_rule", {"max": 40, "min": 10, "auto": False})):
+    for kind, payload in (("add_item", {"item": item(1)}), ("undo", {"seq": 1}), ("set_rule", {"max": 40, "min": 10, "auto": False, "branches": 13})):
         assert ev.references(event(kind, payload)) == (set(), set())
 
 
@@ -264,9 +272,10 @@ HUGE = [10**400, -(10**400), 10**5000]  # (a Python integer of more than 4300 di
 @pytest.mark.parametrize("value", HUGE, ids=["10**400", "-10**400", "10**5000"])
 def test_an_integer_too_large_for_the_field_is_a_problem_with_its_place_and_not_an_overflow_or_a_crash(value):
     cases = [(ev.check_item, {**item(1), "year": value}, "item.year"),
-             (ev.check_rule, {"max": value, "min": 1, "auto": False}, "rule.max"),
-             (ev.check_rule, {"max": 5, "min": value, "auto": False}, "rule.min"),
-             (ev.check_rule, {"max": 5, "min": 1, "auto": value}, "rule.auto"),
+             (ev.check_rule, {"max": value, "min": 1, "auto": False, "branches": 13}, "rule.max"),
+             (ev.check_rule, {"max": 5, "min": value, "auto": False, "branches": 13}, "rule.min"),
+             (ev.check_rule, {"max": 5, "min": 1, "auto": value, "branches": 13}, "rule.auto"),
+             (ev.check_rule, {"max": 5, "min": 1, "auto": False, "branches": value}, "rule.branches"),
              (ev.check_event, event("undo", {"seq": value}), "event.payload.seq"),
              (ev.check_event, event("file", {"house": "a", "road": "b"}, seq=value), "event.seq"),
              (ev.check_event, event(value, {}), "event.kind")]

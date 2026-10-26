@@ -62,6 +62,8 @@ def test_the_schema_names_the_keys_the_kinds_and_the_limits_of_the_program():
     assert tuple(SCHEMA["required"]) == FILE_KEYS and set(SCHEMA["properties"]) == set(FILE_KEYS)
     assert SCHEMA["properties"]["format"]["const"] == FORMAT and SCHEMA["properties"]["version"]["const"] == VERSION
     assert tuple(DEFS["rule"]["required"]) == ev.RULE_KEYS and set(DEFS["rule"]["properties"]) == set(ev.RULE_KEYS)
+    assert tuple(DEFS["start_rule"]["required"]) == tuple(k for k in ev.RULE_KEYS if k not in ev.START_OPTIONAL) and set(DEFS["start_rule"]["properties"]) == set(ev.RULE_KEYS)
+    assert (DEFS["rule"]["properties"]["branches"]["minimum"], DEFS["rule"]["properties"]["branches"]["maximum"]) == (ev.BRANCHES_LEAST, ev.BRANCHES_LIMIT)
     assert (DEFS["limit"]["minimum"], DEFS["limit"]["maximum"]) == (1, ev.RULE_LIMIT) and DEFS["count"]["maximum"] == inputs.COUNT
     item = DEFS["item"]
     assert tuple(item["required"]) == ev.ITEM_REQUIRED and set(item["properties"]) == set(ev.ITEM_KEYS)
@@ -159,7 +161,7 @@ WRONG = [
      "matches 0 of oneOf"),
     ("a merge with one member", "merge", lambda d: next(e for e in d["events"] if e["kind"] == "merge_roads")["payload"].update(members=["f0"]), "matches 0 of oneOf"),
     ("a merge with a member twice", "merge", lambda d: next(e for e in d["events"] if e["kind"] == "merge_roads")["payload"].update(members=["f0", "f0"]), "matches 0 of oneOf"),
-    ("a merge below a road", "merge", lambda d: next(e for e in d["events"] if e["kind"] == "merge_roads")["payload"].update(parent="mine"), "matches 0 of oneOf"),
+    ("a merge below something that is no road id", "merge", lambda d: next(e for e in d["events"] if e["kind"] == "merge_roads")["payload"].update(parent=5), "matches 0 of oneOf"),
     ("a merge with a road of the rule", "merge", lambda d: next(e for e in d["events"] if e["kind"] == "merge_roads")["payload"].update(road="auto:9"), "matches 0 of oneOf"),
     ("a merge with no members", "merge", lambda d: next(e for e in d["events"] if e["kind"] == "merge_roads")["payload"].pop("members"), "matches 0 of oneOf"),
     ("a move_road to the town hall", "scripted", lambda d: next(e for e in d["events"] if e["kind"] == "move_road")["payload"].update(parent=None), "matches 0 of oneOf"),
@@ -191,7 +193,7 @@ CANNOT = [
                                                                                        "payload": {"seq": 99}}), "names an earlier event"),
     ("a date that is not a date", "small", lambda d: d["events"][0].update(at="yesterday"), "is not an ISO 8601 date"),
     ("a merge of a road that is below another road", "merge", lambda d: d["events"].append({"seq": len(d["events"]) + 1, "at": "2026-01-01", "kind": "merge_roads", "payload": {
-        "road": "again", "name": "Again", "parent": None, "members": ["f0", "f5"]}}), "is not an avenue"),
+        "road": "again", "name": "Again", "parent": None, "members": ["f0", "f5"]}}), "does not stand directly below the ring road"),
     ("a merge of a road that is not there", "merge", lambda d: d["events"].append({"seq": len(d["events"]) + 1, "at": "2026-01-01", "kind": "merge_roads", "payload": {
         "road": "again", "name": "Again", "parent": None, "members": ["f5", "ghost"]}}), "there is no road 'ghost'"),
     ("a node that another road stands for", "taken", lambda d: d["events"].append({"seq": len(d["events"]) + 1, "at": "2026-01-01", "kind": "open_road", "payload": {

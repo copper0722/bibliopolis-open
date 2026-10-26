@@ -7,9 +7,9 @@ Two kinds, each a function that returns the list of violations (empty when the c
   on a world only            (it needs the `lines` a world keeps) positions are the centres of their slots, the carve-out beyond a branch
                               circle, the registry of bands and members, and the bookkeeping of lots, ribs and streets
 
-Pure Python, no fixtures. The houses of the root zone of a city with no ring road stand under the plaza and have no rib: every check leaves them out.
+Pure Python, no fixtures.
 
-A city with the ring road has lots that stand on a lap of the ring instead of a rib: a lot of the ring road is a polar cell of its lap (the lane radius is
+The lots of the ring road stand on a lap of the ring instead of a rib: a lot of the ring road is a polar cell of its lap (the lane radius is
 `ring.radius` of its lap, as `rib.s` is a band's), one cell from the lane, never within TRUNK_LANE of a gate axis (`ring.gaps`) on either row, and in no wedge (the
 ring stands round the plaza); in such a city a road with no parent is the ring road, which starts on its circle, or a ring-1 spoke, which starts at the outer edge
 of the ring (R1 + TRUNK_LANE); and a lap road that crosses a spoke at one of its gates is a crossroads, not a fault. `ring_problems` re-derives the cells of every
@@ -47,7 +47,7 @@ def lot_cells(layout):
     places = layout["places"]
     out = []
     for pid, p in places.items():
-        if p["kind"] not in ("lot", "reserved") or p.get("underground"):
+        if p["kind"] not in ("lot", "reserved"):
             continue
         pos = p["position"]
         if is_ring_lot(places, p):  # a lap of the ring road: a polar cell of the lane of the lap
@@ -91,7 +91,7 @@ def not_adjacent(layout):
     places = layout["places"]
     bad = []
     for pid, p in places.items():
-        if p["kind"] not in ("lot", "reserved") or p.get("underground"):
+        if p["kind"] not in ("lot", "reserved"):
             continue
         owner = places[p["parent"]]
         pos = p["position"]
@@ -325,7 +325,7 @@ def cells_of(doc):
     """(place id, record, axis, rib) of every lot and reserved lot of a world."""
     places, lines = doc["places"], doc["lines"]
     for pid, p in places.items():
-        if p["kind"] in ("lot", "reserved") and not p.get("underground") and not is_ring_lot(places, p):  # (the ring road stands round the plaza: ring_problems reads its lots)
+        if p["kind"] in ("lot", "reserved") and not is_ring_lot(places, p):  # (the ring road stands round the plaza: ring_problems reads its lots)
             rib = places[p["parent"]]["rib"]
             yield pid, p, lines[rib["line"]]["axis"], rib
 
@@ -490,24 +490,28 @@ def ring_problems(doc):
     laps = [RING_ROOT] + list(root.get("lanes", []))
     if root["parent"] != "place:plaza" or "lane_of" in root or root["level"] != 1 or root["class"] != "大道" or root["address"] != [root["label"]] or root["reserved"] != 0:
         bad.append((RING_ROOT, "the root of the ring is not a 大道 of level 1 with its label as address under the plaza"))
-    for k, lap in enumerate(laps, start=1):
+    last = None  # the lap before (a lap that no house stands on is left out of the document, so the numbers of the laps listed may skip)
+    for lap in laps:
         rec = places.get(lap)
         if rec is None:
             bad.append((lap, "a lap the root lists is not a street of the world"))
             continue
         ring = rec["ring"]
-        if lap != (RING_ROOT if k == 1 else f"{RING_ROOT}:lap:{k}") or ring["lap"] != k or rec["shape"] != "ring" or rec["kind"] != "street":
+        k = ring["lap"]
+        if not isinstance(k, int) or k < 1 or lap != (RING_ROOT if k == 1 else f"{RING_ROOT}:lap:{k}") or rec["shape"] != "ring" or rec["kind"] != "street" \
+                or (last is not None and k <= last):
             bad.append((lap, "lap is not numbered as its place says"))
         if k > 1 and (rec.get("lane_of") != RING_ROOT or rec.get("ordinal") != k or rec.get("continued") is not True or rec["parent"] != RING_ROOT
                       or (rec["label"], rec["address"], rec["level"], rec["class"]) != (root["label"], root["address"], 1, "大道")):
             bad.append((lap, "a lap is not the same road: lane_of, ordinal, continued, parent, label, address, level, class"))
-        if rec["reserved"] != 0 or any(x in rec for x in ("rib", "tag", "carrier", "underground", "wedge")):
-            bad.append((lap, "a lap has an empty-lot count, a rib, a tag, a carrier, a wedge or the underground flag"))
+        if rec["reserved"] != 0 or any(x in rec for x in ("rib", "tag", "carrier", "wedge")):
+            bad.append((lap, "a lap has an empty-lot count, a rib, a tag, a carrier or a wedge"))
         cells = free_cells(ring["radius"], ring["gaps"])
         if ring["slots"] != 2 * len(cells):
             bad.append((lap, f"slots {ring['slots']} but {2 * len(cells)} lots fit between the gates"))
-        if k > 1 and ring["radius"] < places[laps[k - 2]]["ring"]["radius"] + BAND - 1e-9:
+        if last is not None and ring["radius"] < places[laps[laps.index(lap) - 1]]["ring"]["radius"] + BAND - 1e-9:
             bad.append((lap, "a lap lies closer than a band to the lap before it"))
+        last = k if isinstance(k, int) else last
         road = roads.get(rec["road"])
         if road is None or rec["road"] != f"road:{lap}" or road["street"] != lap or road["kind"] != "ring" or road["parent"] is not None or road["at"] != 0 \
                 or road["radius"] != ring["radius"] or road["class"] != "大道":
@@ -539,8 +543,6 @@ def ring_problems(doc):
             bad.append((pid, "the position is not the centre of its slot"))
         if abs((facing - p["facing"] + 180.0) % 360.0 - 180.0) > 2e-3:
             bad.append((pid, f"it faces {p['facing']}, not the ring road ({facing:.3f})"))
-        if "underground" in p:
-            bad.append((pid, "a house of the ring road is not underground"))
     for lap in laps:
         held = per_lap.get(lap, [])
         slots = [p["slot"] for p in held]

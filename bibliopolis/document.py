@@ -21,22 +21,18 @@ Keys:
               they happened (bibliopolis.world, "Roads"); a chronicle entry made by `bibliopolis.city` also says `at`, the `added_at` of the item
               whose arrival caused it. A full road continues as a rib of the SAME road: a lane record with `continued: true`, the road's own label,
               level, class and address; the counts `composition.streets` count the road once (`continuations` is an extra key). The root is one of two things:
-                RING ROAD (a city made on a plan with `params.ring`: every city `build` writes). The street `place:root` ({shape "ring", level 1, class 大道,
-                label, address [label], parent plaza, lots, reserved 0, road "road:place:root", ring {lap 1, radius, slots, gaps}, [lanes]}) is a closed
-                circular road round the plaza and stands from day one, with its road (kind "ring", parent null, `radius`, a closed polyline from north
-                clockwise). Its houses are ordinary surface lots on both sides of it: lots with parent the lap, `slot` within the lap (even: the inner row,
-                odd: the outer row) and no empty-lot records (the cell of a slot is a function of the slot; `ring.gaps` are the gate bearings its cells keep
-                clear). When it is full it goes on as a LAP: a street of shape "ring" with `lane_of: place:root`, `ordinal`, `continued: true`, the ring's
-                label, address and class, its own `ring` and its own road `road:place:root:lap:<k>`. `measure.ring_lots` counts the houses on every lap;
-                `composition.streets` counts the ring as one street (`ring` = the records of shape ring, laps included; the laps are `continuations`).
-                ROOT ZONE (a world built by hand, for now: the plan has no ring). The street `place:root` (根區) is ({shape "underground", underground true,
-                label, address, parent plaza, lots, reserved}: no road, no rib; it stands once it exists, empty or not, for the chronicle names it), and its
-                lots say `underground: true`: they stand on a compact grid under the plaza and are left out of the coast, the roads and the surface measures
-                (`measure.underground_lots` counts them; `composition.streets.underground` counts the zone).
+                The root is the RING ROAD. The street `place:root` ({shape "ring", level 1, class 大道, label, address [label], parent plaza, lots, reserved 0,
+                road "road:place:root", ring {lap 1, radius, slots, gaps}, [lanes]}) is a closed circular road round the plaza and stands from day one, with
+                its road (kind "ring", parent null, `radius`, a closed polyline from north clockwise). Its houses are ordinary surface lots on both sides of
+                it: lots with parent the lap, `slot` within the lap (even: the inner row, odd: the outer row) and no empty-lot records (the cell of a slot is a
+                function of the slot; `ring.gaps` are the gate bearings its cells keep clear). When it is full it goes on as a LAP: a street of shape "ring"
+                with `lane_of: place:root`, `ordinal`, `continued: true`, the ring's label, address and class, its own `ring` and its own road
+                `road:place:root:lap:<k>`. `measure.ring_lots` counts the houses on every lap; `composition.streets` counts the ring as one street (`ring` = the
+                records of shape ring, laps included; the laps are `continuations`).
   composition home_max trunk_min articles buildings reserved_lots ring1 streets measure. `articles` = `buildings` = the houses in this
               document; `reserved_lots` = the empty lots in this document (0 without `with_reserved`); `ring1` is the plan's, every sector of
               it, built or not (the pinned directions).
-  places      plaza {kind label position radius [tag]}; lot {kind article parent order slot position facing seq [underground]}; reserved {kind
+  places      plaza {kind label position radius [tag]}; lot {kind article parent order slot position facing seq}; reserved {kind
               parent slot end position facing} (with_reserved only); street, in the shapes
                 trunk  address axis bands class kind level lots open order parent reserved road s0 s_end shape wedge weight
                        [carrier collapsed heavy label lane lanes rib tag over]
@@ -56,7 +52,6 @@ from __future__ import annotations
 
 from . import layout as lay
 from ._version import __version__
-from .ring import ROOT_PLACE
 
 GENERATOR = {"tool": "bibliopolis", "version": __version__,
              "input": "a library of items and a topic tree (docs/format.md), folded in arrival order into a world of roads and houses"}
@@ -72,27 +67,22 @@ NOTES_DISTRICTS = {
                        "gives one, its date `at`)",
     "street.over": "the road holds more than `max` houses directly and no group of at least `min` can open a road: the topic tree needs sorting",
     "street.continued": "a rib that continues a full road: the same road (its label, level, class and address), not a road of its own",
-    "street.underground": "the root zone (根區): the street under the town hall; it has no road, no rib and nothing on the surface",
-    "lot.underground": "the house stands in the root zone: its cell is on a compact grid under the plaza, outside the coast, the roads and the surface measures",
-}
-NOTES_RING = {  # a city with the ring road: the notes above without the underground ones, and the ring's own
-    **{k: v for k, v in NOTES_DISTRICTS.items() if "underground" not in k},
     "street.ring": "the ring road round the town hall (the root of the road tree) or one of its laps: a closed circular road with houses on both sides; a lap "
                    "(`lane_of`, `continued`) is the same road, a concentric ring outside the first when it is full; `ring` = {lap, radius, slots, gaps}",
     "road.ring": "a closed circle round the plaza, from north clockwise (the last point is the first), radius `radius`; it has no parent",
     "lot.slot": "on the ring road: slot s stands in cell s // 2 of its lap, the inner row (even s) or the outer row (odd s); the cells keep clear of `ring.gaps`",
 }
-KIND_NOTES_RING = {**lay.KIND_NOTES, "street": lay.KIND_NOTES["street"].replace("; underground: the root zone, under the plaza", "")
-                   + "; ring: the ring road round the plaza (the root of the road tree) or one of its laps, a concentric ring road outside it, with lots on both sides of its lane"}
-ROAD_NOTES_RING = {**lay.ROAD_NOTES, "ring": "a closed circle round the plaza (the ring road or one of its laps): a polyline from north clockwise whose last point is its first, "
-                                              "with no parent"}
 NOTES_HAND = {
     "world.mode": "hand: the world is the fold of a log of events that the player appended (docs/world.md); a road is a category the player opened or, under the rule `auto`, a road "
                   "that the rule opened for a node of OpenAlex; nothing is marked over, and nothing splits by itself except under `auto`",
     "world.districts": "the rule of the player (docs/world.md): `max` is how many houses a road is meant to hold, `min` is the least a new road takes; the world marks nothing over, "
-                       "and only under the rule `auto` does a place that holds more than `max` open a road, for its largest group of at least `min`",
-    "world.chronicle": "every road opened, house filed, road renamed or moved, avenues merged, undo and change of rule, in the order of the log (`event_id` is the number of the event, "
-                       "`seq` the arrivals so far, `at` the `at` of the event)",
+                       "and only under the rule `auto` does a place that holds more than `max` open a road, for its largest group of at least `min`; the ring road holds `max` houses "
+                       "between the gates of its `branches` directions, and a road holds at most `branches` roads",
+    "world.chronicle": "every road opened, house filed, road renamed or moved, roads merged, undo, change of rule and new radius of the ring road, in the order of the log "
+                       "(`event_id` is the number of the event, `seq` the arrivals so far, `at` the `at` of the event)",
+    "composition.ring1": "the avenues that stand: `from` and `to` bound the sector of the direction the avenue holds (the cell nearest its bearing among the bearings of all the "
+                         "directions), `axis` is the bearing of its spoke, which need not be the middle of the sector; the street's `wedge` is its land, the part of the sector "
+                         "within the narrower side of the spoke",
 }
 HAND_INPUT = "a log of events (docs/world.md), folded in order into a world of roads and houses"
 LOT_KEYS = ("kind", "article", "parent", "order", "slot", "position", "facing")
@@ -104,14 +94,14 @@ HIDDEN_STREET_KEYS = frozenset({"line", "role", "side", "inner"})  # what the pl
 def needed(doc: dict, with_reserved: bool) -> tuple[set[str], set[str]]:
     """(streets, roads) the document needs: the streets that carry a lot, then whatever those point at - the street above, the street a
     continuation belongs to, the trunk that carries a rib, their roads, the road above each road, and the street of every road.
-    The root zone (an `underground` street) stands once it exists, whatever it holds: the chronicle names it (`from`) after a split that left it empty.
-    So does the ring road (the root street of shape ring, lap 1): from day one, whatever it holds; a lap beyond it stands when a house stands on it.
+    The ring road (the root street, lap 1) stands from day one, whatever it holds: the chronicle names it (`from`) after a split that left it empty. A lap beyond
+    it stands when a house stands on it.
     In a `mirror` city every road stands once it exists, with a house on it or below it or not."""
     places, roads = doc["places"], doc["roads"]
     streets: set[str] = set()
     out_roads: set[str] = set()
     seeds = {p["parent"] for p in places.values() if p["kind"] == "lot" or (with_reserved and p["kind"] == "reserved")}
-    seeds |= {pid for pid, p in places.items() if p["kind"] == "street" and (p.get("underground") or (p.get("shape") == "ring" and "lane_of" not in p))}
+    seeds |= {pid for pid, p in places.items() if p["kind"] == "street" and p.get("shape") == "ring" and "lane_of" not in p}
     if doc.get("mode") == "mirror":
         seeds |= {pid for pid, p in places.items() if p["kind"] == "street" and "lane_of" not in p and p.get("tag") is not None}
     street_todo = sorted(seeds)
@@ -160,18 +150,14 @@ def street_view(pid: str, rec: dict, roads: dict, streets: set[str], heavy_of: d
 
 def street_counts(places: dict[str, dict]) -> dict:
     """The `composition.streets` counts of a document (the streets in it). A road is counted once whatever the ribs it has (`continuations` are its
-    ribs after the first). With the ring road the ring is a street like any: `total` counts it once (a lap is a continuation) and `ring` is the number of street
-    records of shape ring, laps included; without it the root zone is apart (`underground`)."""
+    ribs after the first). The ring road is a street like any: `total` counts it once (a lap is a continuation) and `ring` is the number of street records of shape
+    ring, laps included."""
     recs = [p for p in places.values() if p["kind"] == "street"]
-    own = [p for p in recs if "lane_of" not in p and not p.get("underground")]
+    own = [p for p in recs if "lane_of" not in p]
     out = {"total": len(own), "containers": sum(1 for p in own if p["shape"] in ("trunk", "group")), "leaves": sum(1 for p in own if p["shape"] == "rib"),
            "trunks": sum(1 for p in own if p["shape"] == "trunk"), "groups": sum(1 for p in own if p["shape"] == "group"),
            "spokes": sum(1 for p in own if p["shape"] == "spoke"), "lanes": sum(1 for p in recs if "lane_of" in p and not p.get("continued")),
-           "continuations": sum(1 for p in recs if p.get("continued"))}
-    if any(p.get("shape") == "ring" for p in recs):
-        out["ring"] = sum(1 for p in recs if p.get("shape") == "ring")
-    else:
-        out["underground"] = sum(1 for p in recs if p.get("underground"))
+           "continuations": sum(1 for p in recs if p.get("continued")), "ring": sum(1 for p in recs if p.get("shape") == "ring")}
     return out
 
 
@@ -198,8 +184,6 @@ def world_layout(doc: dict, *, with_reserved: bool = False, with_coast: bool = T
             rec = {k: p[k] for k in LOT_KEYS}
             rec["position"] = dict(p["position"])
             rec["seq"] = p["seq"]
-            if p.get("underground"):
-                rec["underground"] = True
             out[pid] = rec
             n_lots += 1
         elif p["kind"] == "reserved" and with_reserved:
@@ -213,11 +197,10 @@ def world_layout(doc: dict, *, with_reserved: bool = False, with_coast: bool = T
         kinds[p["kind"]] = kinds.get(p["kind"], 0) + 1
     c = doc["composition"]
     by_hand = doc.get("mode") == "hand"
-    ring = places.get(ROOT_PLACE, {}).get("shape") == "ring"  # a city with the ring road
     world = {"format": doc["schema_version"], "zoning_version": doc.get("zoning_version"), "mode": doc.get("mode"), "seq": doc.get("seq", 0),
              "houses": n_lots, "unbuilt": sum(1 for p in places.values() if p["kind"] == "reserved"),
              "districts": dict(doc["districts"]), "chronicle": [dict(e) for e in doc["chronicle"]],
-             "notes": {**NOTES, **(NOTES_RING if ring else NOTES_DISTRICTS), **(NOTES_HAND if by_hand else {})}}
+             "notes": {**NOTES, **NOTES_DISTRICTS, **(NOTES_HAND if by_hand else {})}}
     layout = {
         "schema_version": lay.SCHEMA_VERSION, "layout_version": lay.LAYOUT_VERSION,
         "centre": dict(doc["centre"]),
@@ -227,7 +210,7 @@ def world_layout(doc: dict, *, with_reserved: bool = False, with_coast: bool = T
             "articles": n_lots, "buildings": n_lots, "reserved_lots": n_reserved,
             "ring1": [dict(r) for r in c["ring1"]], "streets": street_counts(out),
         },
-        "geometry": dict(lay.GEOMETRY), "kinds": dict(KIND_NOTES_RING if ring else lay.KIND_NOTES), "roads_kinds": dict(ROAD_NOTES_RING if ring else lay.ROAD_NOTES),
+        "geometry": dict(lay.GEOMETRY), "kinds": dict(lay.KIND_NOTES), "roads_kinds": dict(lay.ROAD_NOTES),
         "counts": dict(sorted(kinds.items())),
         "world": world,
         "roads": out_roads, "places": out,

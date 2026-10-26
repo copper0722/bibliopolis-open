@@ -7,7 +7,7 @@ Writes `tree.json` and `library.json` (the formats of docs/format.md) into the o
 `10.0000/ex.<number>` (a prefix no registry hands out), the titles are made of word lists and the authors of initials and common family names.
 The library is written in id order, not in arrival order: the engine sorts by `added_at` (ties by id), so the order of the file does not matter.
 
-The counts are chosen to show what the engine does with a library of this size: a root zone that fills up to 40 houses, splits at the 41st, roads that
+The counts are chosen to show what the engine does with a library of this size: a ring road that fills up to 40 houses, splits at the 41st, roads that
 split again, one topic that holds more than 40 houses of its own and so is over (Networks), a chain of topics that collapse into one road
 (Humanities, History), topics too thin to open a road (they stay under the town hall), and a handful of items that have no topic at all.
 

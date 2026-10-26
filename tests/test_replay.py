@@ -154,7 +154,7 @@ def test_a_spoke_grows_longer_as_houses_arrive():
 def test_a_later_split_repacks_the_houses_that_stay_so_a_lot_can_stand_elsewhere_in_the_full_city():
     tree, library = sample()
     full, part = bibliopolis.build_city(library, tree), bibliopolis.build_city(library, tree, first=150)
-    moved = [pid for pid, p in part["places"].items() if p["kind"] == "lot" and not p.get("underground") and pid in full["places"]
+    moved = [pid for pid, p in part["places"].items() if p["kind"] == "lot" and pid in full["places"]
              and full["places"][pid]["parent"] == p["parent"] and full["places"][pid]["position"] != p["position"]]
     assert moved  # the same house, on the same road, in another cell
 

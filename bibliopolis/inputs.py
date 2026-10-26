@@ -323,10 +323,9 @@ def _check_places(problems: _Problems, name: str, places: dict) -> None:
         if not isinstance(p, dict) or p.get("kind") not in PLACE_KINDS:
             problems.add(where, f"must be an object whose kind is one of {', '.join(PLACE_KINDS)}")
             continue
-        surface = not p.get("underground")
-        if "position" in p or (p["kind"] in ("lot", "reserved") and surface):
+        if "position" in p or p["kind"] in ("lot", "reserved"):
             pos = p.get("position")
-            if surface and (not isinstance(pos, dict) or not _number(pos.get("x")) or not _number(pos.get("z"))):
+            if not isinstance(pos, dict) or not _number(pos.get("x")) or not _number(pos.get("z")):
                 problems.add(f"{where}.position", "must be {x, z}: two numbers")
         if p["kind"] == "street":
             _check_street(problems, where, p)
@@ -358,15 +357,14 @@ def _check_composition(problems: _Problems, name: str, comp: dict) -> None:
             _typed(problems, here, sector, "label", _is_text, "a string")
             _typed(problems, here, sector, "from", _number, "a bearing in degrees")
             _typed(problems, here, sector, "to", _number, "a bearing in degrees")
+            _typed(problems, here, sector, "axis", _number, "a bearing in degrees", required=False)  # (a world built by hand: the bearing of the spoke, which need not be the middle)
     _typed(problems, where, comp, "buildings", _number, "a number")
     for key in ("measure", "streets"):
         if not isinstance(comp.get(key), dict):
             problems.add(f"{where}.{key}", "must be an object")
     if isinstance(comp.get("measure"), dict):
-        for key in ("max_radius", "walk_mean", "walk_longest"):
+        for key in ("max_radius", "walk_mean", "walk_longest", "ring_lots"):
             _typed(problems, f"{where}.measure", comp["measure"], key, _number, "a number")
-        _typed(problems, f"{where}.measure", comp["measure"], "underground_lots", _number, "a number", required=False)
-        _typed(problems, f"{where}.measure", comp["measure"], "ring_lots", _number, "a number", required=False)
     if isinstance(comp.get("streets"), dict):
         _typed(problems, f"{where}.streets", comp["streets"], "total", _number, "a number")
 
@@ -384,7 +382,7 @@ def _check_coast(problems: _Problems, name: str, coast) -> None:
             problems.add(f"{name}.coast.polygons[{i}]", "must be a list of at least three [x, z] corners")
 
 
-HAND_ENTRIES = ("filed", "renamed", "moved", "merged", "undone", "rule")  # the keys that tell the entries of a world built by hand from a split and an over
+HAND_ENTRIES = ("filed", "renamed", "moved", "merged", "undone", "resized", "rule")  # the keys that tell the entries of a world built by hand from a split and an over
 
 
 def _check_world(problems: _Problems, name: str, world: dict) -> None:
@@ -426,17 +424,26 @@ def _check_world(problems: _Problems, name: str, world: dict) -> None:
             _typed(problems, here, e, "below", _is_text, "the place it stands below now (a string)")
             _typed(problems, here, e, "was_below", _is_text, "the place it stood below (a string)")
             _typed(problems, here, e, "houses", lambda v: isinstance(v, list), "the list of the houses that were put again")
-        elif "merged" in e:  # avenues merged under a new avenue
+        elif "merged" in e:  # roads merged under a new road (avenues: under a new avenue)
             _typed(problems, here, e, "merged", _is_text, "a place id (a string)")
-            _typed(problems, here, e, "label", _is_text, "the name of the new avenue (a string)")
+            _typed(problems, here, e, "label", _is_text, "the name of the new road (a string)")
             _typed(problems, here, e, "members", lambda v: isinstance(v, list) and all(_is_text(x) for x in v), "the list of the places that were merged (strings)")
-            _typed(problems, here, e, "took", _is_text, "the place whose direction the new avenue took (a string)")
+            _typed(problems, here, e, "below", _is_text, "the place the new road stands below, the town hall for an avenue (a string)")
+            _typed(problems, here, e, "took", _is_text, "the place whose direction or place the new road took (a string)")
             _typed(problems, here, e, "houses", lambda v: isinstance(v, list), "the list of the houses that were put again")
         elif "undone" in e:  # an event taken back
             _typed(problems, here, e, "undone", lambda v: _whole(v) and v >= 1, "the number of the event (a whole number, 1 or more)")
             _typed(problems, here, e, "of", _is_text, "the kind of that event (a string)")
+        elif "resized" in e:  # the ring road has another radius and the world was laid out again
+            _typed(problems, here, e, "resized", _is_text, "a place id (a string)")
+            _typed(problems, here, e, "was_radius", lambda v: _number(v) and v > 0, "the radius before (a number above 0)")
+            _typed(problems, here, e, "radius", lambda v: _number(v) and v > 0, "the radius now (a number above 0)")
+            _typed(problems, here, e, "was_branches", lambda v: _whole(v) and v >= 1, "the branches before (a whole number)")
+            _typed(problems, here, e, "branches", lambda v: _whole(v) and v >= 1, "the branches now (a whole number)")
+            _typed(problems, here, e, "houses", lambda v: isinstance(v, list), "the list of the houses that were put again")
         elif "rule" in e:  # the district rule changed
-            _typed(problems, here, e, "rule", lambda v: isinstance(v, dict) and _whole(v.get("max")) and _whole(v.get("min")), "an object with whole numbers max and min")
+            _typed(problems, here, e, "rule", lambda v: isinstance(v, dict) and _whole(v.get("max")) and _whole(v.get("min")) and _whole(v.get("branches")),
+                   "an object with whole numbers max, min and branches")
         else:
             problems.add(here, "must be a split (from, label, houses, count_before, count_after) or an over (over, count), or one of the entries of a world "
                                f"built by hand ({', '.join(HAND_ENTRIES)})")
@@ -489,7 +496,7 @@ def _check_links(problems: _Problems, name: str, doc: dict) -> None:
         above = places.get(p["parent"])
         if above is None or above["kind"] != "street":
             problems.add(f"{name}.places[{pid!r}].parent", f"{p['parent']!r} is not a street")
-        elif not p.get("underground") and top.get(p["parent"]) is not None and top[p["parent"]] not in ring1:
+        elif top.get(p["parent"]) is not None and top[p["parent"]] not in ring1:
             outside.setdefault(p["parent"], pid)
         elif top.get(p["parent"]) in rings and above.get("shape") != "ring":  # a house of the ring road stands in a lap of it, the polar cell of the lane of the lap
             astray.setdefault(p["parent"], pid)

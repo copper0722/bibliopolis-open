@@ -13,19 +13,21 @@ from pathlib import Path
 import checks
 import pytest
 from hand_support import Hand, hand_problems, hid, lot_snapshot, play, stamp, text_problems
+from support import cells_table
 
 import bibliopolis
 from bibliopolis import hand, inputs, picture, plan
 from bibliopolis import layout as lay
 from bibliopolis.city import chronicle_lines, summary
 from bibliopolis.events import Refusal
-from bibliopolis.hand import GOLDEN, bearing, fold, ring1_wedge
+from bibliopolis.hand import GOLDEN, bearing, fold, sector_table
 from bibliopolis.journal import Journal
 from bibliopolis.tree import TreeView
 
 ROOT = Path(__file__).resolve().parents[1]
-FIRST_RING = [(-2000, 2000), (11751, 15751), (-10498, -6498), (3252, 7252), (-18997, -14997), (-5246, -2000), (8505, 11751), (-13745, -10498), (2000, 3252),
-              (15751, 17003), (-6498, -5246), (7252, 8505), (-14997, -13745)]  # the thirteen sectors, in units of 1/100 degree
+FIRST_RING = [(-1623, 1003, 0), (12128, 14754, 13751), (-10121, -7495, -8498), (3629, 6256, 5252), (-18620, -15994, -16997), (-4869, -1623, -3246), (8882, 12128, 10505),
+              (-13368, -10121, -11745), (1003, 3629, 2006), (14754, 17380, 15757), (-7495, -4869, -6492), (6256, 8882, 7259), (-15994, -13368, -14991)]  # the thirteen sectors of a
+# ring road of 13 branches, (lo, hi, axis) in units of 1/100 degree: the spoke is on the bearing of the number, the sector is its nearest-bearing cell
 
 
 def sound(h):
@@ -69,59 +71,74 @@ def test_the_bearing_of_the_k_th_road_is_k_golden_angles_in_units_of_a_hundredth
     assert bearing(1000) == (1000 * 13750776405003785 + 5 * 10**11) // 10**12 % lay.FULL  # whole-number arithmetic whatever k is
 
 
-def test_a_town_has_at_most_thirteen_avenues_with_these_sectors_and_the_fourteenth_category_goes_below_an_avenue():
-    given = []
-    for k, want in enumerate(FIRST_RING):
-        sector = ring1_wedge(given, k)
-        assert sector == want
-        given.append(sector)
-    spans = [hi - lo for lo, hi in given]
-    assert spans[:5] == [4000] * 5 and max(spans) == 4000 and min(spans) == 1252 and sum(spans) == lay.FULL  # the sectors tile the circle: nothing is left
-    assert hand.AVENUES == hand.capacity() == 13 == len(FIRST_RING) and hand.SECTORS == FIRST_RING  # (the number is read off the sectors, not written down)
-    with pytest.raises(Refusal) as why:
-        ring1_wedge(given, 13)
-    assert str(why.value) == ("the first ring has at most 13 avenues and all 13 directions are used, so the 14th category goes below an avenue, "
-                              "or similar avenues are merged under a new one (merge_roads) to free their directions")
-    assert why.value.code == "ring1_full" and why.value.params == {"limit": 13, "number": 14, "remedy": "merge_roads"}  # the id and the values a page translates from
+def test_the_sector_of_a_direction_is_the_cell_nearest_its_bearing_among_the_bearings_cut_to_twenty_degrees_either_side():
+    assert list(sector_table(13)) == FIRST_RING == cells_table(13)  # the table of the default, stated twice: written out here, and found by looking at every other bearing
+    spans = [hi - lo for lo, hi, _ in FIRST_RING]
+    assert sorted(set(spans)) == [2626, 2627, 3246, 3247] and sum(spans) == lay.FULL  # the cells tile the circle: nothing is left
+    assert [hand.tenths(x) for x in spans] == [263, 263, 263, 263, 263, 325, 325, 325, 263, 263, 263, 263, 263]  # in tenths: the hundredths are the tiling, not a difference
+    for k, (lo, hi, axis) in enumerate(FIRST_RING):
+        assert axis % lay.FULL == bearing(k) and lo <= axis <= hi  # the spoke runs ON the bearing, which lies inside the sector, not always in the middle of it
+        assert -lay.FULL // 2 <= axis <= lay.FULL // 2 and hi - lo <= 2 * 2000  # the axis is kept between -180 and 180 degrees, and no sector is wider than 40
+    assert FIRST_RING[0] == (-1623, 1003, 0) and (1003 - 0, 0 - -1623) == (1003, 1623)  # the first bearing has 10.03 degrees to its right, 16.23 to its left: not the middle
+    assert sector_table(1) == ((-2000, 2000, 0),) and sector_table(2)[0] == (-2000, 2000, 0)  # alone, or with room all round: 20 degrees either side
+    assert sector_table(2)[1] == (13751 - 2000, 13751 + 2000, 13751)
 
 
-def test_a_sector_has_its_bearing_inside_it_at_most_twenty_degrees_either_side_and_never_overlaps_one_given():
-    for k, (lo, hi) in enumerate(FIRST_RING):
-        b = bearing(k)
-        assert hi - lo <= 4000
-        assert any(lo <= b + turn <= hi for turn in (-lay.FULL, 0, lay.FULL)), k  # the bearing lies in the sector (or on its edge)
-        assert -lay.FULL < lo + hi <= lay.FULL  # the axis, (lo + hi) / 2, is kept between -180 and 180 degrees
-        for lo2, hi2 in FIRST_RING[:k]:
-            assert not (0 < (lo - lo2) % lay.FULL < hi2 - lo2 or 0 < (lo2 - lo) % lay.FULL < hi - lo or (lo - lo2) % lay.FULL == 0)
-    assert ring1_wedge([], 0) == (-2000, 2000) and ring1_wedge([], 1) == (13751 - 2000, 13751 + 2000)  # nothing to clip: 20 degrees either side
+@pytest.mark.parametrize("n", [1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233])
+def test_the_table_the_engine_makes_is_the_table_found_by_looking_at_every_other_bearing(n):
+    assert list(sector_table(n)) == cells_table(n)
+    cells = sector_table(n)
+    assert len({axis % lay.FULL for _, _, axis in cells}) == n  # no two directions share a bearing
 
 
-def test_a_sector_stops_where_the_next_one_begins_on_each_side_and_a_bearing_on_an_edge_has_room_on_one_side_only():
-    assert ring1_wedge([(1000, 2000)], 0) == (-2000, 1000)  # bearing 0, the sector given begins at 10 degrees
-    assert ring1_wedge([(-1500, -200)], 0) == (-200, 2000)  # ... the one given ends at -2 degrees
-    assert ring1_wedge([(0, 1000)], 0) == (-2000, 0)  # the bearing is on the edge of a sector: room on the left only
-    with pytest.raises(Refusal, match="its bearing, 0 degrees, lies inside the sector of an earlier road") as inside:
-        ring1_wedge([(-100, 1000)], 0)
-    with pytest.raises(Refusal, match="is on the border of two sectors, with no room between them") as border:
-        ring1_wedge([(-1000, 0), (0, 1000)], 0)  # the bearing is on the border of two sectors
-    assert [(e.value.code, e.value.params) for e in (inside, border)] == [("ring1_full", {"limit": 13, "number": 1, "remedy": "merge_roads"})] * 2
+def test_a_larger_n_moves_no_bearing_and_only_narrows_the_sectors():
+    for n in range(1, 120):
+        before, after = sector_table(n), sector_table(n + 1)
+        for k in range(n):
+            assert after[k][2] == before[k][2], (n, k)  # the spoke of a direction never turns
+            assert after[k][0] >= before[k][0] and after[k][1] <= before[k][1], (n, k)  # its sector narrows or stays
 
 
-def test_a_sector_past_the_south_is_turned_back_one_circle_and_is_still_the_same_sector_of_the_circle():
-    lo, hi = ring1_wedge([], 4)  # the bearing is 190.03 degrees
-    assert (lo, hi) == (-18997, -14997) and (lo + hi) / 2 == -16997  # the axis is -169.97 degrees, which is 190.03 degrees
-    assert (lo + lay.FULL, hi + lay.FULL) == (17003, 21003)
+@pytest.mark.parametrize("n", range(1, 130))
+def test_the_cells_of_n_directions_tile_the_circle_as_far_as_the_cut_to_twenty_degrees_leaves_them(n):
+    cells = sorted(sector_table(n), key=lambda c: c[2] % lay.FULL)
+    for here, there in zip(cells, cells[1:] + cells[:1]):
+        gap = (there[2] - here[2]) % lay.FULL or lay.FULL
+        cut = here[1] - here[2] == 2000 or there[2] - there[0] == 2000
+        assert cut or (here[1] - here[2]) + (there[2] - there[0]) == gap, (n, here, there)  # the two halves of the gap are the two cells' shares of it, or one is cut
+
+
+def test_the_land_of_an_avenue_is_the_part_of_its_sector_within_the_narrower_side_of_its_spoke():
+    for n in (1, 5, 13, 21, 34, 89):
+        for lo, hi, axis in sector_table(n):
+            land_lo, land_hi = hand.land_of(lo, hi, axis)
+            assert land_lo >= lo and land_hi <= hi and (land_lo + land_hi) == 2 * axis  # inside the sector, and the spoke is the middle of it
+            assert min(axis - land_lo, land_hi - axis) == min(axis - lo, hi - axis) and land_hi - axis == axis - land_lo
+
+
+def test_a_town_has_as_many_avenues_as_branches_and_the_next_category_goes_below_an_avenue():
+    h = town(10, {"max": 40, "min": 10, "auto": False, "branches": 5})
+    for k in range(5):
+        if k:
+            h.add(10)
+        h.open(f"r{k}", f"Road {k}", None, h.state.houses_at(None)[:10])
+    h.add(10)
+    err = refuses(h, "the ring road holds 5 avenues directly, the most the rule allows (branches 5), so the 6th category goes below one of them, "
+                     "or similar avenues are merged under a new one (merge_roads) to make room", "open_road",
+                  {"road": "r5", "name": "Road 5", "parent": None, "houses": h.state.houses_at(None)[:10]})
+    assert err.code == "branches_full" and err.params == {"road": None, "limit": 5, "number": 6, "remedy": "merge_roads"}  # the id and the values a page translates from
 
 
 # ----------------------------------------------------------------------------------------------- add_item ----
-def test_an_item_becomes_a_house_underground_and_the_town_has_no_road_yet():
+def test_an_item_becomes_a_house_on_the_ring_road_and_the_town_has_no_road_but_the_ring_yet():
     h = town(3)
     state = sound(h)
     city = state.city()
     assert [state.road_of[hid(i)] for i in (1, 2, 3)] == [None] * 3 and list(state.nodes) == []
-    assert summary(city) == {"mode": "hand", "houses": 3, "roads": 0, "underground": 3, "splits": 0, "over": 0}
+    assert summary(city) == {"mode": "hand", "houses": 3, "roads": 1, "ring": 3, "splits": 0, "over": 0}
     lots = lot_snapshot(state)
-    assert [lots[hid(i)]["slot"] for i in (1, 2, 3)] == [0, 1, 2] and all(lots[hid(i)].get("underground") for i in (1, 2, 3))
+    assert [lots[hid(i)]["slot"] for i in (1, 2, 3)] == [0, 1, 2] and all(lots[hid(i)]["parent"] == "place:root" for i in (1, 2, 3))
+    assert city["places"]["place:root"]["label"] == "Knowledge" and city["places"]["place:root"]["lots"] == 3
     assert city["world"]["mode"] == "hand" and city["world"]["chronicle"] == [] and city["composition"]["ring1"] == []
     assert state.items[hid(2)]["title"] == "Title 2" and state.items[hid(2)]["openalex"] == []
 
@@ -136,11 +153,11 @@ def test_an_item_that_is_a_house_already_is_refused_and_may_come_again_after_an_
     sound(h)
 
 
-def test_a_41st_house_just_lands_underground_nothing_splits_nothing_is_over_and_the_chronicle_stays_empty():
+def test_a_41st_house_just_lands_on_the_ring_nothing_splits_nothing_is_over_and_the_chronicle_stays_empty():
     h = town(41)
     state = sound(h)
     city = state.city()
-    assert summary(city) == {"mode": "hand", "houses": 41, "roads": 0, "underground": 41, "splits": 0, "over": 0}
+    assert summary(city) == {"mode": "hand", "houses": 41, "roads": 1, "ring": 41, "splits": 0, "over": 0}
     assert city["world"]["chronicle"] == [] and not any(p.get("over") for p in state.doc["places"].values())
 
 
@@ -150,7 +167,7 @@ def test_log_order_is_arrival_order_and_the_date_of_an_event_is_only_written_dow
         h.journal.append("add_item", {"item": {"id": hid(i), "title": "", "authors": [], "year": None, "type": "article"}}, at)
     lots = lot_snapshot(h.state)
     assert [lots[hid(i)]["seq"] for i in (1, 2, 3)] == [1, 2, 3] and [lots[hid(i)]["slot"] for i in (1, 2, 3)] == [0, 1, 2]
-    h.journal.append("set_rule", {"max": 30, "min": 5, "auto": False}, "1999-12-31")
+    h.journal.append("set_rule", {"max": 30, "min": 5, "auto": False, "branches": 13}, "1999-12-31")
     entry = h.state.city()["world"]["chronicle"][0]
     assert entry["at"] == "1999-12-31" and entry["event_id"] == 4 and entry["trigger"] == "set_rule"
 
@@ -175,11 +192,11 @@ def test_the_first_road_opens_at_the_north_with_the_houses_chosen_and_the_others
     assert [after[hid(i)]["slot"] for i in (13, 14, 15)] == [12, 13, 14]
     street = the_street(h, "a")
     assert (street["shape"], street["level"], street["class"], street["address"], street["lots"], street["parent"]) == ("trunk", 1, "大道", ["Alpha"], 12, "place:plaza")
-    assert (street["wedge"], street["axis"]) == ([-20.0, 20.0], 0.0)
+    assert (street["wedge"], street["axis"]) == ([-10.03, 10.03], 0.0)  # the land: within the narrower side (10.03) of the spoke, which is on the bearing
     assert [after[x]["slot"] for x in chosen] == list(range(12)) and {after[x]["parent"] for x in chosen} == {"place:tag:a"}
     city = state.city()
-    assert city["composition"]["ring1"] == [{"place": "place:tag:a", "label": "Alpha", "weight": 0, "from": -20.0, "to": 20.0, "span": 40.0}]
-    assert city["composition"]["measure"]["underground_lots"] == 3 and summary(city)["roads"] == 1
+    assert city["composition"]["ring1"] == [{"place": "place:tag:a", "label": "Alpha", "weight": 0, "from": -16.23, "to": 10.03, "span": 26.26, "axis": 0.0}]
+    assert city["composition"]["measure"]["ring_lots"] == 3 and summary(city)["roads"] == 2  # (the ring road and the avenue)
     (entry,) = city["world"]["chronicle"]
     assert entry == {"n": 1, "event_id": 16, "seq": 15, "trigger": "open_road", "from": "place:root", "to": "place:tag:a", "label": "Alpha", "houses": chosen,
                      "count_before": 15, "count_after": 3, "at": stamp(16)}
@@ -195,7 +212,7 @@ def test_the_next_ring_one_roads_take_the_next_directions_of_the_golden_angle():
     h.open("c", "Gamma", None, houses(21, 30))
     state = sound(h)
     sectors = state.city()["composition"]["ring1"]
-    assert [(s["label"], s["from"], s["to"]) for s in sectors] == [("Alpha", -20.0, 20.0), ("Beta", 117.51, 157.51), ("Gamma", -104.98, -64.98)]
+    assert [(s["label"], s["from"], s["to"]) for s in sectors] == [("Alpha", -16.23, 10.03), ("Beta", 121.28, 147.54), ("Gamma", -101.21, -74.95)]
     assert [the_street(h, k)["axis"] for k in "abc"] == [0.0, 137.51, -84.98]
 
 
@@ -217,7 +234,7 @@ def test_a_road_below_a_road_is_a_rib_on_the_line_of_its_ring_one_road_and_the_h
     assert all(state.road_of[x] == "a1" for x in below)
     entry = state.city()["world"]["chronicle"][-1]
     assert (entry["from"], entry["to"], entry["count_before"], entry["count_after"]) == ("place:tag:a", "place:tag:a1", 25, 15)
-    assert state.city()["composition"]["streets"]["total"] == 2
+    assert state.city()["composition"]["streets"]["total"] == 3  # (the ring road, the avenue and the road below it)
 
 
 def test_a_road_below_a_road_below_a_road_is_a_ring_three_lane_of_the_same_line():
@@ -234,7 +251,7 @@ def test_a_road_below_a_road_below_a_road_is_a_ring_three_lane_of_the_same_line(
 
 def test_a_road_opens_from_a_place_that_holds_the_least_and_with_the_least_chosen_and_the_world_says_why_not():
     h = town(9)
-    refuses(h, "the root zone holds 9 houses directly; a road is opened from a place that holds at least 10", "open_road",
+    refuses(h, "the ring road holds 9 houses directly; a road is opened from a place that holds at least 10", "open_road",
             {"road": "a", "name": "A", "parent": None, "houses": houses(1, 9)})
     h.add(5)
     refuses(h, "9 houses are chosen; a road takes at least 10", "open_road", {"road": "a", "name": "A", "parent": None, "houses": houses(1, 9)})
@@ -242,10 +259,10 @@ def test_a_road_opens_from_a_place_that_holds_the_least_and_with_the_least_chose
     refuses(h, "there is no road 'ghost' to open a road below", "open_road", {"road": "a", "name": "A", "parent": "ghost", "houses": houses(1, 10)})
     h.open("a", "A", None, houses(1, 10))
     refuses(h, "there is a road 'a' already", "open_road", {"road": "a", "name": "A again", "parent": None, "houses": houses(11, 14)})
-    h.add(10)  # the root zone holds 14 again
-    refuses(h, "the house 'h0001' does not stand directly on the root zone; it stands on the road 'a'", "open_road",
+    h.add(10)  # the ring road holds 14 again
+    refuses(h, "the house 'h0001' does not stand directly on the ring road; it stands on the road 'a'", "open_road",
             {"road": "b", "name": "B", "parent": None, "houses": houses(1, 10)})
-    refuses(h, "the house 'h0011' does not stand directly on the road 'a'; it stands on the root zone", "open_road",
+    refuses(h, "the house 'h0011' does not stand directly on the road 'a'; it stands on the ring road", "open_road",
             {"road": "b", "name": "B", "parent": "a", "houses": houses(11, 20)})
     sound(h)
 
@@ -255,7 +272,7 @@ def test_the_least_a_road_takes_is_the_rule_in_force():
     refuses(h, "holds 8 houses directly", "open_road", {"road": "a", "name": "A", "parent": None, "houses": houses(1, 8)})
     h.rule(40, 5)
     h.add(2)
-    h.open("a", "A", None, houses(1, 5))  # five houses are enough now, and five are left in the root zone
+    h.open("a", "A", None, houses(1, 5))  # five houses are enough now, and five are left on the ring road
     refuses(h, "4 houses are chosen; a road takes at least 5", "open_road", {"road": "b", "name": "B", "parent": None, "houses": houses(6, 9)})
     sound(h)
 
@@ -277,11 +294,11 @@ def test_the_fourteenth_road_of_the_first_ring_is_refused_and_a_road_below_a_roa
             h.add(10)
         h.open(f"r{k}", f"Road {k}", None, h.state.houses_at(None)[:10])
     state = sound(h)
-    assert [(s["from"], s["to"]) for s in state.city()["composition"]["ring1"]] == [(lo / 100, hi / 100) for lo, hi in FIRST_RING]
+    assert [(s["from"], s["to"], s["axis"]) for s in state.city()["composition"]["ring1"]] == [(lo / 100, hi / 100, axis / 100) for lo, hi, axis in FIRST_RING]
     h.add(10)
-    err = refuses(h, "at most 13 avenues and all 13 directions are used, so the 14th category goes below an avenue", "open_road",
+    err = refuses(h, "the ring road holds 13 avenues directly, the most the rule allows (branches 13), so the 14th category goes below one of them", "open_road",
                   {"road": "r13", "name": "Road 13", "parent": None, "houses": h.state.houses_at(None)[:10]})
-    assert (err.code, err.params) == ("ring1_full", {"limit": 13, "number": 14, "remedy": "merge_roads"})
+    assert (err.code, err.params) == ("branches_full", {"road": None, "limit": 13, "number": 14, "remedy": "merge_roads"})
     h.open("r13", "Road 13", "r0", h.state.houses_at("r0"))
     assert sound(h).nodes["r13"]["parent"] == "r0"
 
@@ -408,7 +425,7 @@ def test_a_ring_one_road_may_move_below_a_road_and_then_its_direction_is_free_fo
     h.open("c", "C", None, h.state.houses_at(None)[:10])
     state = sound(h)
     assert state.held == {0: "a", 1: "c"}  # the third road takes the lowest free number: the one that b gave up
-    assert [s["from"] for s in state.city()["composition"]["ring1"]] == [-20.0, 117.51]  # the sector and the bearing of number 1
+    assert [s["from"] for s in state.city()["composition"]["ring1"]] == [-16.23, 121.28]  # the sector and the bearing of number 1
 
 
 def test_a_road_moves_only_below_a_road_that_is_not_its_own_and_not_where_it_is_already():
@@ -427,18 +444,18 @@ def test_the_rule_changes_from_its_event_on_and_is_written_in_the_document():
     h = town(30)
     h.rule(25, 5, True)
     state = sound(h)
-    assert state.rule == {"max": 25, "min": 5, "auto": True} and state.city()["world"]["districts"] == {"max": 25, "min": 5, "extract": "largest", "count": "direct"}
+    assert state.rule == {"max": 25, "min": 5, "auto": True, "branches": 13} and state.city()["world"]["districts"] == {"max": 25, "min": 5, "extract": "largest", "count": "direct"}
     entry = state.city()["world"]["chronicle"][-1]
-    assert (entry["trigger"], entry["rule"], entry["seq"]) == ("set_rule", {"max": 25, "min": 5, "auto": True}, 30)
-    refuses(h, "the rule is this already", "set_rule", {"max": 25, "min": 5, "auto": True})
+    assert (entry["trigger"], entry["rule"], entry["seq"]) == ("set_rule", {"max": 25, "min": 5, "auto": True, "branches": 13}, 30)
+    refuses(h, "the rule is this already", "set_rule", {"max": 25, "min": 5, "auto": True, "branches": 13})
     with pytest.raises(Refusal, match="more than max"):
         h.rule(5, 6)
-    assert chronicle_lines(state.city())[-1].endswith("the rule is now 25 houses at most and 5 at least for a new road, auto on.")
+    assert chronicle_lines(state.city())[-1].endswith("the rule is now 25 houses at most and 5 at least for a new road, 13 branches to a road, auto on.")
 
 
 def test_the_rule_at_the_start_of_the_world_is_the_rule_the_journal_was_made_with():
     h = Hand({"max": 12, "min": 3, "auto": False})
-    assert h.state.city()["world"]["districts"]["max"] == 12 and h.journal.rule == {"max": 12, "min": 3, "auto": False}
+    assert h.state.city()["world"]["districts"]["max"] == 12 and h.journal.rule == {"max": 12, "min": 3, "auto": False, "branches": 13}  # (the default is written in)
     h.add(3)
     h.open("a", "A", None, h.state.houses_at(None))
     sound(h)
@@ -474,7 +491,7 @@ def test_the_events_are_undone_from_the_end_backwards_down_to_an_empty_world():
         sound(h)
     assert h.state.nodes == {} and set(h.state.road_of.values()) == {None}
     lots = lot_snapshot(h.state)
-    assert len(lots) == 40 and all(lots[x].get("underground") for x in lots)
+    assert len(lots) == 40 and all(lots[x]["parent"] == "place:root" for x in lots)
     assert [e["trigger"] for e in h.state.city()["world"]["chronicle"]] == ["undo", "undo", "undo"]
 
 
@@ -545,11 +562,11 @@ def test_giving_an_event_back_is_refused_when_a_later_event_could_not_be_taken_a
     h = town(40)
     h.open("a", "A", None, houses(1, 10))  # 41
     h.file(hid(11), "a")  # 42
-    h.undo(42)  # 43: the house is in the root zone again
+    h.undo(42)  # 43: the house is on the ring road again
     h.open("b", "B", None, houses(11, 20))  # 44: ... and event 44 takes it from there
     # no event names anything that event 43 (an undo) opened or placed, but the log with event 42 given back would file house 11 onto a first,
-    # and then event 44 would take it from the root zone, where it is not
-    refuses(h, "event 43 cannot be undone: event 44 (open_road): the house 'h0011' does not stand directly on the root zone; it stands on the road 'a'", "undo", {"seq": 43})
+    # and then event 44 would take it from the ring road, where it is not
+    refuses(h, "event 43 cannot be undone: event 44 (open_road): the house 'h0011' does not stand directly on the ring road; it stands on the road 'a'", "undo", {"seq": 43})
     sound(h)
 
 
@@ -609,7 +626,7 @@ def test_the_city_of_a_hand_built_world_is_read_by_picture_and_chronicle_and_say
     assert ET.fromstring(picture.render(read)).tag.endswith("svg")
     lines = chronicle_lines(read)
     assert len(lines) == 5
-    assert lines[0] == "event 81, 2026-01-01: The root zone held 80 houses. A opens as a road with 30 of them; 50 stay."
+    assert lines[0] == "event 81, 2026-01-01: Knowledge held 80 houses. A opens as a road with 30 of them; 50 stay."
     assert lines[4] == "event 85, 2026-01-01: A one moves from below A to below B, with 12 houses."
 
 
@@ -640,4 +657,4 @@ def test_the_modes_of_build_are_still_grow_and_mirror_and_hand_is_not_one_of_the
 
 def test_the_module_names_the_limits_it_has():
     text = " ".join(hand.__doc__.split())
-    assert "at most 13 avenues" in text and "14th category goes below an avenue" in text and "No trunk is promoted" in text
+    assert "a road holds at most N roads directly, at every level" in text and "the next category goes below one of the roads" in text and "No trunk is promoted" in text

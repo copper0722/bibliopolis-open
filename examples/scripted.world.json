@@ -1,7 +1,7 @@
 {
  "format": "bibliopolis.world",
  "version": 1,
- "rule": {"max":40,"min":10,"auto":false},
+ "rule": {"max":40,"min":10,"auto":false,"branches":13},
  "items": [
   {"id":"h0001","title":"Title 1","authors":["A. Author"],"year":2020,"doi":"10.0000/h.0001","type":"article","openalex":[]},
   {"id":"h0002","title":"Title 2","authors":["A. Author"],"year":2020,"doi":"10.0000/h.0002","type":"article","openalex":[]},
@@ -177,7 +177,7 @@
   {"seq":85,"at":"2026-01-01T00:14:10Z","kind":"file","payload":{"house":"h0005","road":"b"}},
   {"seq":86,"at":"2026-01-01T00:14:20Z","kind":"open_road","payload":{"road":"a1","name":"A one","parent":"a","houses":["h0006","h0007","h0008","h0009","h0010","h0011","h0012","h0013","h0014","h0015","h0016","h0017"],"topic":null}},
   {"seq":87,"at":"2026-01-01T00:14:30Z","kind":"rename_road","payload":{"road":"a","name":"Alpha"}},
-  {"seq":88,"at":"2026-01-01T00:14:40Z","kind":"set_rule","payload":{"max":30,"min":5,"auto":false}},
+  {"seq":88,"at":"2026-01-01T00:14:40Z","kind":"set_rule","payload":{"max":30,"min":5,"auto":false,"branches":13}},
   {"seq":89,"at":"2026-01-01T00:14:50Z","kind":"move_road","payload":{"road":"a1","parent":"b"}},
   {"seq":90,"at":"2026-01-01T00:15:00Z","kind":"add_item","payload":{"item":{"id":"h0081","title":"Title 81","authors":["A. Author"],"year":2020,"doi":"10.0000/h.0081","type":"article","openalex":[]}}},
   {"seq":91,"at":"2026-01-01T00:15:10Z","kind":"add_item","payload":{"item":{"id":"h0082","title":"Title 82","authors":["A. Author"],"year":2020,"doi":"10.0000/h.0082","type":"article","openalex":[]}}},

@@ -35,7 +35,7 @@ def open_node(h, road, level, *numbers, parent=None, members=None):
     return h.open(road, n["name"], parent, members or under, n)
 
 
-# ------------------------------------------------------------------------- the root zone: by domain ----
+# ------------------------------------------------------------------------- the ring road: by domain ----
 def test_the_root_zone_is_grouped_by_domain_whatever_the_levels_below_say():
     h = Hand()
     h.add(8, T(1, 1, 1, 1))
@@ -91,7 +91,7 @@ def test_only_the_houses_that_stand_directly_at_the_place_count_and_a_road_that_
     s = suggest_road(h.state, None)
     assert s["houses"] == houses(1, 12)
     h.take(s, "d1")
-    assert suggest_road(h.state, None) is None  # two houses are left in the root zone
+    assert suggest_road(h.state, None) is None  # two houses are left in the ring road
     s = suggest_road(h.state, "d1")
     assert (s["at"], s["topic"], s["houses"]) == ("d1", node("field", 1, 1), houses(1, 12))
     h.take(s, "f1")
@@ -190,7 +190,7 @@ def test_a_node_that_a_road_stands_for_is_left_out_whichever_place_has_the_house
     h = Hand()
     h.add(12, T(1, 1, 1, 1))
     open_node(h, "d1", "domain", 1, members=houses(1, 10))
-    h.add(14, T(1, 1, 1, 1))  # domain 1 again in the root zone (no rule auto): its node has a road
+    h.add(14, T(1, 1, 1, 1))  # domain 1 again in the ring road (no rule auto): its node has a road
     assert suggest_road(h.state, None) is None  # (the group of domain 1 is 16 houses, and it is not offered a second time)
     h.add(10, T(2, 1, 1, 1))
     assert suggest_road(h.state, None)["topic"] == node("domain", 2)
@@ -240,7 +240,7 @@ def test_the_node_stays_with_the_road_when_it_is_renamed_or_moved_and_an_undo_gi
 
 # --------------------------------------------------------------------- a category the player named ----
 def category(rows, least=10):
-    """A category with no node ('p') that holds houses with the topics of `rows`, [(count, topic, ...), ...] (the houses are brought to the root zone and put on it)."""
+    """A category with no node ('p') that holds houses with the topics of `rows`, [(count, topic, ...), ...] (the houses are brought to the ring road and put on it)."""
     h = Hand({"max": 100, "min": least, "auto": False})
     for count, *topics in rows:
         h.add(count, *topics)
@@ -253,7 +253,7 @@ def category(rows, least=10):
     ([(14, T(1, 1, 1, 1)), (10, T(1, 1, 2, 1)), (5, T(3, 1, 1, 1))], node("subfield", 1, 1, 1),
      "five strays of another domain do not hide it: all but fewer than 10 of the 29 houses are in field 1"),
     ([(14, T(1, 1, 1, 1)), (10, T(1, 2, 1, 1))], node("field", 1, 1), "the houses share the domain and split below it, by field: 14 and 10"),
-    ([(12, T(1, 1, 1, 1)), (11, T(2, 1, 1, 1)), (10, T(3, 1, 1, 1))], node("domain", 1), "no domain is shared by all but fewer than 10 of 33: it is split by domain, like the root zone"),
+    ([(12, T(1, 1, 1, 1)), (11, T(2, 1, 1, 1)), (10, T(3, 1, 1, 1))], node("domain", 1), "no domain is shared by all but fewer than 10 of 33: it is split by domain, like the ring road"),
     ([(12, T(1, 1, 1, 1))], None, "every house is under topic 1.1.1.1: nothing is left to split by"),
     ([(8, T(1, 1, 1, 1)), (2, T(1, 1, 1, 2))], None, "ten houses all carrying domain 1 (and the same field, subfield): the groups below are 8 and 2"),
     ([(30, ), (14, T(1, 1, 1, 1)), (10, T(1, 1, 2, 1))], node("subfield", 1, 1, 1), "houses with no topic are not counted among those that share"),
@@ -410,7 +410,7 @@ def test_the_places_that_hold_more_than_max_are_listed_the_root_zone_first_and_n
     assert crowded(h.state) == [{"at": None, "name": None, "houses": 30}]
     h.open("a", "A", None, houses(1, 14))
     h.open("b", "B", None, houses(15, 20))
-    assert crowded(h.state) == [{"at": "a", "name": "A", "houses": 14}]  # the root zone holds 10 now, and b 6
+    assert crowded(h.state) == [{"at": "a", "name": "A", "houses": 14}]  # the ring road holds 10 now, and b 6
     h.add(5)
     assert [(c["at"], c["houses"]) for c in crowded(h.state)] == [(None, 15), ("a", 14)]
     h.rule(14, 5)
@@ -429,7 +429,7 @@ def test_the_rule_opens_a_road_for_the_largest_domain_when_the_41st_house_arrive
     h.add(20, T(2, 1, 1, 1))
     state = h.state
     assert not state.nodes and state.count(None) == 40  # 40 houses: nothing yet
-    h.add(1, T(1, 1, 1, 1))  # the 41st: the root zone holds more than 40
+    h.add(1, T(1, 1, 1, 1))  # the 41st: the ring road holds more than 40
     state = h.state
     assert list(state.nodes) == ["auto:41"] and state.nodes["auto:41"] == {"key": "auto:41", "name": "Domain 1", "parent": None, "topic": node("domain", 1)}
     assert state.houses_at("auto:41") == [*houses(1, 20), hid(41)] and state.count(None) == 20
@@ -467,7 +467,7 @@ def test_a_road_that_the_rule_opened_is_a_road_like_any_other_it_is_renamed_and_
     assert list(h.state.nodes) == [] and hid(41) not in h.state.items and hand_problems(h.state) == []
 
 
-def test_an_arrival_stands_on_the_deepest_road_whose_node_it_is_under_and_otherwise_underground():
+def test_an_arrival_stands_on_the_deepest_road_whose_node_it_is_under_and_otherwise_on_the_ring_road():
     h = auto_town()
     h.add(41, T(1, 1, 1, 1))  # the 41st opens domain 1, then (it holds 41) field 1, subfield 1 and topic 1 below it, one in each step
     assert list(h.state.nodes) == ["auto:41", "auto:41.2", "auto:41.3", "auto:41.4"]
@@ -515,7 +515,7 @@ def test_a_planted_fault_in_the_order_of_the_topics_turns_the_check_of_the_prima
     check_the_primary_topic_decides()
 
 
-def test_there_are_never_two_roads_for_one_node_and_the_arrivals_of_a_node_with_a_road_do_not_wait_underground():
+def test_there_are_never_two_roads_for_one_node_and_the_arrivals_of_a_node_with_a_road_do_not_wait_on_the_ring_road():
     h = auto_town(12, 5)
     for _ in range(30):
         h.add(1, T(1, 1, 1, 1))
@@ -551,7 +551,7 @@ def test_two_roads_in_one_arrival_are_auto_n_and_auto_n_dot_2():
     for k in range(3):
         h.add(10, T(k + 1, 1, 1, 1))
     h.rule(12, 10, True)
-    h.add(1, T(1, 1, 1, 1))  # 31 houses in the root zone, 12 at most: two domains leave
+    h.add(1, T(1, 1, 1, 1))  # 31 houses in the ring road, 12 at most: two domains leave
     assert [(k, n["topic"]["id"]) for k, n in h.state.nodes.items()] == [("auto:32", "ex:d1"), ("auto:32.2", "ex:d2")]  # (event 31 was the rule, event 32 the arrival)
     assert h.state.count(None) == 10 and hand_problems(h.state) == []
     assert [e["trigger"] for e in h.state.city()["world"]["chronicle"][1:]] == ["add_item", "add_item"]
@@ -590,16 +590,16 @@ def test_the_rule_opens_nothing_without_auto_and_a_set_rule_alone_opens_nothing_
     assert list(h.state.nodes)[0] == "auto:22"
 
 
-def test_the_place_that_is_looked_at_is_the_one_the_house_landed_on_so_a_crowded_root_zone_waits_for_an_arrival_that_stays_underground():
+def test_the_place_that_is_looked_at_is_the_one_the_house_landed_on_so_a_crowded_root_zone_waits_for_an_arrival_that_stays_on_the_ring_road():
     h = Hand({"max": 12, "min": 5, "auto": False})
     h.add(13, T(1, 1, 1, 1))
     h.add(6, T(2, 1, 1, 1))
     open_node(h, "d2", "domain", 2)
     h.rule(12, 5, True)
     assert h.state.count(None) == 13 and not [k for k in h.state.nodes if k.startswith("auto:")]
-    h.add(1, T(2, 1, 1, 1))  # lands on the road of domain 2: the root zone is not looked at
+    h.add(1, T(2, 1, 1, 1))  # lands on the road of domain 2: the ring road is not looked at
     assert h.state.count(None) == 13 and h.state.road_of[hid(20)] == "d2"
-    h.add(1, T(1, 1, 1, 1))  # stays underground (no road for domain 1): the root zone has 14 and is split
+    h.add(1, T(1, 1, 1, 1))  # stays on the ring road (no road for domain 1): the ring road has 14 and is split
     assert h.state.count(None) == 0 and h.state.road_of[hid(21)] == "auto:23.4"  # (events 20 to 23: the road of domain 2, the rule, two arrivals)
 
 
@@ -761,7 +761,7 @@ def shallowest_landing(world, item):
     return min(found, key=lambda r: (found[r][0], found[r][1])) if found else None
 
 
-FAULTS = ["shallowest road", "no landing", "root zone only"]
+FAULTS = ["shallowest road", "no landing", "ring road only"]
 
 
 def plant(fault, monkeypatch):
@@ -772,7 +772,7 @@ def plant(fault, monkeypatch):
         monkeypatch.setattr(hand_module, "landing", shallowest_landing)
     elif fault == "no landing":
         monkeypatch.setattr(hand_module, "landing", lambda world, item: None)
-    else:  # looks at the root zone after each arrival, not at the place the house landed on and the roads the split opens
+    else:  # looks at the ring road after each arrival, not at the place the house landed on and the roads the split opens
         real = hand_module.State.settle
         monkeypatch.setattr(hand_module.State, "settle", lambda self, w, e, start, touched, opened: real(self, w, e, None, touched, opened))
 
@@ -860,18 +860,18 @@ def test_the_rule_auto_on_the_sample_builds_the_tree_of_openalex_level_by_level(
     for k, n in state.nodes.items():  # the level of a road is its ring: a node is one level below the node of the road it is below
         assert ORDER.index(n["topic"]["level"]) == depth(state, k) - 1 and n["name"] == n["topic"]["name"]
     assert len(roads_by_node(state)) == len(state.nodes)  # no two roads for one node
-    assert state.count(None) == 15  # the 15 arrivals that no road took: 'methods' has 40 houses and the root zone never passed 40 with them
+    assert state.count(None) == 15  # the 15 arrivals that no road took: 'methods' has 40 houses and the ring road never passed 40 with them
     assert crowded(state) == [{"at": "auto:575", "name": "Topic networks", "houses": 44}]  # a topic is not split: its 44 houses stay on one road
     chronicle = [e for e in state.city()["world"]["chronicle"] if "from" in e]
     assert len(chronicle) == 23 and all(e["trigger"] == "add_item" and len(e["houses"]) >= 10 for e in chronicle) and chronicle[-1]["event_id"] == 593
-    assert sum(1 for e in chronicle if e["from"] == "place:root") == 6  # the six domains come from the root zone; the others from the road above them
+    assert sum(1 for e in chronicle if e["from"] == "place:root") == 6  # the six domains come from the ring road; the others from the road above them
     assert stability_violations(auto_sample.journal.events, auto_sample.journal.rule) == []
     assert landing_violations(auto_sample.journal.events, auto_sample.journal.rule) == []
 
 
-def test_no_house_of_the_sample_is_underground_that_a_road_would_take_and_no_crowded_road_has_a_group_left_to_split_off(auto_sample):
+def test_no_house_of_the_sample_is_left_on_the_ring_road_that_a_road_would_take_and_no_crowded_road_has_a_group_left_to_split_off(auto_sample):
     state = auto_sample.state
-    assert all(landing(state, state.items[h]) is None for h in state.houses_at(None))  # no road would take an underground house now
+    assert all(landing(state, state.items[h]) is None for h in state.houses_at(None))  # no road would take a house of the ring road now
     for road in state.nodes:
         if state.count(road) > state.rule["max"]:
             assert suggest_road(state, road) is None

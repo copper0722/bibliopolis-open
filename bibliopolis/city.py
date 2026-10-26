@@ -57,21 +57,13 @@ def build_city(library: dict, tree: dict, *, mode: str = GROW, max_houses: int =
 
 
 def summary(doc: dict) -> dict:
-    """The numbers of a city document: houses, roads (continuations are not counted twice; the ring road counts as one), the houses on the ring road (`ring`) or,
-    in a city with no ring road, under the town hall (`underground`), splits, and the streets that are over now (a road or the root that holds more than `max`
-    houses and cannot split). The chronicle remembers every road that was ever over; a road that a later split brought back under `max` is in the chronicle and no
-    longer counts here."""
+    """The numbers of a city document: houses, roads (continuations are not counted twice; the ring road counts as one), the houses on the ring road (`ring`), splits,
+    and the streets that are over now (a road or the ring road that holds more than `max` houses and cannot split). The chronicle remembers every road that was ever
+    over; a road that a later split brought back under `max` is in the chronicle and no longer counts here."""
     streets = doc["composition"]["streets"]
     chronicle = doc["world"]["chronicle"]
-    measure = doc["composition"]["measure"]
-    root = {"ring": measure["ring_lots"]} if "ring_lots" in measure else {"underground": measure["underground_lots"]}
-    return {"mode": doc["world"]["mode"], "houses": doc["world"]["houses"], "roads": streets["total"], **root,
+    return {"mode": doc["world"]["mode"], "houses": doc["world"]["houses"], "roads": streets["total"], "ring": doc["composition"]["measure"]["ring_lots"],
             "splits": sum(1 for e in chronicle if "from" in e), "over": sum(1 for p in doc["places"].values() if p["kind"] == "street" and p.get("over"))}
-
-
-def root_words(s: dict) -> str:
-    """Where the houses of the root stand, for the line the command line prints."""
-    return f"{s['ring']} on the ring road" if "ring" in s else f"{s['underground']} under the town hall"
 
 
 _DAY = re.compile(r"\d{4}-\d\d-\d\d")
@@ -84,13 +76,12 @@ def chronicle_lines(doc: dict, limit: int | None = None) -> list[str]:
     places = doc["places"]
     rule = doc["world"]["districts"]
 
-    def name(pid: str, lead: bool = True) -> str:  # the root zone, the town hall, or a road by the last word of its address (`lead`: the first word of a sentence)
+    def name(pid: str, lead: bool = True) -> str:  # the town hall, or a road (the ring road too) by the last word of its address (`lead`: the first word of a sentence)
         place = places.get(pid)
         if place is None:
             return pid
-        if place.get("underground") or place.get("kind") == "plaza":
-            words = "the root zone" if place.get("underground") else "the town hall"
-            return words.capitalize() if lead else words
+        if place.get("kind") == "plaza":
+            return "The town hall" if lead else "the town hall"
         return (place.get("address") or [pid])[-1]
 
     lines = []
@@ -112,11 +103,21 @@ def chronicle_lines(doc: dict, limit: int | None = None) -> list[str]:
         elif "moved" in e:
             lines.append(f"{when}: {name(e['moved'])} moves from below {name(e['was_below'], False)} to below {name(e['below'], False)}, with {len(e['houses'])} houses.")
         elif "merged" in e:
-            lines.append(f"{when}: {len(e['members'])} avenues ({', '.join(name(m, False) for m in e['members'])}) are merged below the new avenue {e['label']}, "
-                         f"which takes the direction of {name(e['took'], False)}; {len(e['houses'])} houses are put again.")
+            members = ', '.join(name(m, False) for m in e['members'])
+            if places.get(e["below"], {}).get("kind") == "plaza":  # avenues: the new avenue takes a direction
+                lines.append(f"{when}: {len(e['members'])} avenues ({members}) are merged below the new avenue {e['label']}, "
+                             f"which takes the direction of {name(e['took'], False)}; {len(e['houses'])} houses are put again.")
+            else:
+                lines.append(f"{when}: {len(e['members'])} roads ({members}) are merged below the new road {e['label']}, which stands below {name(e['below'], False)} "
+                             f"in the place of {name(e['took'], False)}; {len(e['houses'])} houses are put again.")
+        elif "resized" in e:
+            radius = (f"{'grows' if e['radius'] > e['was_radius'] else 'shrinks'} from radius {e['was_radius']:g} to {e['radius']:g}" if e["radius"] != e["was_radius"]
+                      else f"keeps radius {e['radius']:g}")
+            branches = f" as the branches go from {e['was_branches']} to {e['branches']}" if e["branches"] != e["was_branches"] else ""
+            lines.append(f"{when}: the ring road {name(e['resized'], False)} {radius}{branches}; {len(e['houses'])} houses are put again, in the order they stood.")
         elif "undone" in e:
             lines.append(f"{when}: event {e['undone']} ({e['of']}) is undone.")
         else:
             r = e["rule"]
-            lines.append(f"{when}: the rule is now {r['max']} houses at most and {r['min']} at least for a new road, auto {'on' if r.get('auto') else 'off'}.")
+            lines.append(f"{when}: the rule is now {r['max']} houses at most and {r['min']} at least for a new road, {r['branches']} branches to a road, auto {'on' if r.get('auto') else 'off'}.")
     return lines

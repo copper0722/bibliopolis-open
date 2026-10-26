@@ -16,8 +16,9 @@ from bibliopolis.journal import Journal, dumps_world, read_world, world_document
 
 
 def test_a_journal_starts_with_the_rule_40_10_and_auto_off_or_the_one_it_is_given():
-    assert Journal().rule == {"max": 40, "min": 10, "auto": False} and Journal().events == []
-    assert Journal({"max": 12, "min": 4, "auto": True}).rule == {"max": 12, "min": 4, "auto": True}
+    assert Journal().rule == {"max": 40, "min": 10, "auto": False, "branches": 13} and Journal().events == []
+    assert Journal({"max": 12, "min": 4, "auto": True}).rule == {"max": 12, "min": 4, "auto": True, "branches": 13}
+    assert Journal({"max": 12, "min": 4, "auto": True, "branches": 21}).rule == {"max": 12, "min": 4, "auto": True, "branches": 21}
     for bad in ({"max": 3, "min": 4, "auto": False}, {"max": 3}, [], {"max": 3, "min": 1, "auto": 0}):
         with pytest.raises(Refusal):
             Journal(bad)
@@ -198,7 +199,7 @@ NEXT = {
     "move_road": lambda h: {"road": "a1", "parent": "b"},
     "merge_roads": lambda h: {"road": "m", "name": "M", "parent": None, "members": ["a", "b"]},
     "undo": lambda h: {"seq": len(h.journal.events)},
-    "set_rule": lambda h: {"max": 9, "min": 3, "auto": True},
+    "set_rule": lambda h: {"max": 9, "min": 3, "auto": True, "branches": 13},
 }
 AT = "2026-10-26T12:00:00Z"
 PLACING = ("add_item", "open_road", "file", "move_road", "merge_roads")  # the kinds that put houses on a road
@@ -317,7 +318,7 @@ def test_an_arrival_that_fails_after_the_rule_opened_some_roads_leaves_no_road_b
         return real(self, *args, **kw)
 
     monkeypatch.setattr(State, "open", the_third_fails)
-    with pytest.raises(RuntimeError, match="a fault"):  # the sixth house takes the root zone over 5: the domain and the field are opened, the subfield is not
+    with pytest.raises(RuntimeError, match="a fault"):  # the sixth house takes the ring road over 5: the domain and the field are opened, the subfield is not
         h.add(1, topic(1, 1, 1, 1))
     monkeypatch.undo()
     assert len(calls) == 3 and journal_value(h.journal) == before and not h.state.nodes
@@ -373,12 +374,12 @@ def thirteen_avenues_and_a_fourteenth():
 def test_the_id_of_a_refusal_survives_the_replay_and_the_fold_of_a_log_that_the_world_would_not_take():
     journal, log = thirteen_avenues_and_a_fourteenth()
     assert log[-1]["seq"] == 154  # 13 roads of 10 houses and an open_road each, and ten houses more
-    message = ("event 154 (open_road): the first ring has at most 13 avenues and all 13 directions are used, so the 14th category goes below an avenue, "
-               "or similar avenues are merged under a new one (merge_roads) to free their directions")
+    message = ("event 154 (open_road): the ring road holds 13 avenues directly, the most the rule allows (branches 13), so the 14th category goes below one of them, "
+               "or similar avenues are merged under a new one (merge_roads) to make room")
     for refuse in (lambda: Journal.replay(journal.rule, log), lambda: hand.fold(log, journal.rule)):
         with pytest.raises(Refusal) as why:
             refuse()
-        assert str(why.value) == message and (why.value.code, why.value.params) == ("ring1_full", {"limit": 13, "number": 14, "remedy": "merge_roads"})
+        assert str(why.value) == message and (why.value.code, why.value.params) == ("branches_full", {"road": None, "limit": 13, "number": 14, "remedy": "merge_roads"})
     with pytest.raises(Refusal) as why:
         journal.append(log[-1]["kind"], log[-1]["payload"], log[-1]["at"])
-    assert str(why.value) == message.split(": ", 1)[1] and why.value.code == "ring1_full"
+    assert str(why.value) == message.split(": ", 1)[1] and why.value.code == "branches_full"

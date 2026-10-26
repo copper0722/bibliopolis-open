@@ -73,7 +73,7 @@ def test_a_whole_road_is_its_record_plus_its_continuation_lanes_and_not_the_road
     places = doc["places"]
     direct = Counter(p["street"] for p in world["places"].values() if p["kind"] == "lot")
     empty = Counter(p["parent"] for p in world["places"].values() if p["kind"] == "reserved")
-    roads = [pid for pid, rec in places.items() if rec["kind"] == "street" and "lane_of" not in rec and not rec.get("underground")]
+    roads = [pid for pid, rec in places.items() if rec["kind"] == "street" and "lane_of" not in rec]
     assert len(roads) >= 22
     for pid in roads:
         segments = [places[pid], *(places[lane] for lane in places[pid].get("lanes", []))]
@@ -101,7 +101,7 @@ def test_the_houses_of_the_roads_below_a_road_are_not_its_own(sample):
     direct = Counter(p["street"] for p in world["places"].values() if p["kind"] == "lot")
     children: dict[str, list[str]] = {}
     for pid, rec in doc["places"].items():
-        if rec["kind"] == "street" and "lane_of" not in rec and not rec.get("underground") and rec["parent"] != "place:plaza":
+        if rec["kind"] == "street" and "lane_of" not in rec and rec["parent"] != "place:plaza":
             children.setdefault(rec["parent"], []).append(pid)
 
     def subtree(pid):

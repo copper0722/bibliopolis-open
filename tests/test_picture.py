@@ -116,7 +116,7 @@ def test_a_name_of_a_sector_stands_clear_of_the_houses_of_that_sector(cities):
         places = city["places"]
         housed: dict[str, list[tuple[float, float]]] = {}
         for p in places.values():
-            if p["kind"] == "lot" and not p.get("underground"):
+            if p["kind"] == "lot":
                 housed.setdefault(picture.ring1_place(places, p["parent"]), []).append((p["position"]["x"], p["position"]["z"]))
         for sector in city["composition"]["ring1"]:
             if sector["place"] not in places:

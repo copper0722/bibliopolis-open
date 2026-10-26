@@ -393,7 +393,7 @@ def test_picture_and_chronicle_give_the_same_bytes_whatever_the_hash_seed(city_f
 
 # ------------------------------------------------------------------------------------ a city file that is wrong ----
 def own_parent(doc):
-    street = next(pid for pid, p in doc["places"].items() if p["kind"] == "street" and not p.get("underground"))
+    street = next(pid for pid, p in doc["places"].items() if p["kind"] == "street" and p.get("shape") != "ring")
     doc["places"][street]["parent"] = street  # `picture` once looped for ever on this
 
 

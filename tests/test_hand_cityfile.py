@@ -12,7 +12,7 @@ from test_cityfile import WRONG, at, fuzz
 from bibliopolis import city, inputs, picture
 from bibliopolis import layout as lay
 
-KINDS = ("from", "filed", "renamed", "moved", "merged", "undone", "rule")  # the entries of a world built by hand: a road opened, and the six that only it writes
+KINDS = ("from", "filed", "renamed", "moved", "merged", "undone", "resized", "rule")  # the entries of a world built by hand: a road opened, and the six that only it writes
 
 
 def base_city():
@@ -78,15 +78,15 @@ def test_the_control_a_reader_that_lets_everything_through_is_caught_by_the_same
     failures, tally = break_in(base_city(), lambda doc: doc)
     assert tally["refused"] == 0 and failures
     assert {"KeyError", "TypeError"} <= {f[4].split(":")[0] for f in failures}  # crashes ...
-    assert {f[0] for f in failures} >= {"filed", "renamed", "moved", "merged", "undone", "rule"}  # ... in the entries that only a world built by hand writes, merges included
+    assert {f[0] for f in failures} >= {"filed", "renamed", "moved", "merged", "undone", "resized", "rule"}  # ... in the entries that only a world built by hand writes, merges included
 
 
 def test_a_merge_entry_with_a_wrong_field_is_refused_with_its_place_and_what_it_should_be():
     base = base_city()
     i = next(i for i, e in enumerate(base["world"]["chronicle"]) if kind_of(e) == "merged")
     for key, wrong, should in (("members", "x", "the list of the places that were merged"), ("members", [1, 2], "the list of the places that were merged"),
-                               ("took", 5, "the place whose direction the new avenue took"), ("houses", None, "the list of the houses that were put again"),
-                               ("label", 3, "the name of the new avenue"), ("merged", None, "a place id")):
+                               ("took", 5, "the place whose direction or place the new road took"), ("houses", None, "the list of the houses that were put again"),
+                               ("below", 7, "the place the new road stands below"), ("label", 3, "the name of the new road"), ("merged", None, "a place id")):
         doc = copy.deepcopy(base)
         doc["world"]["chronicle"][i][key] = wrong
         with pytest.raises(inputs.InputError, match=rf"chronicle\[{i}\]\.{key}: must be {should}"):

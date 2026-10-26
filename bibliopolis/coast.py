@@ -27,10 +27,9 @@ def coast_of(layout: dict, buffer: float = COAST_BUFFER, tolerance: float = COAS
     """The coast: the outline of the land, a buffer of `buffer` cells around every lot and road, holes filled, simplified.
 
     Rasterised on a grid of 1 cell, so the result is deterministic and needs no geometry library: `polygons` are lists of
-    [x, z] corners of the outer boundary of each piece of land (counter-clockwise on screen, z south). The houses of the root
-    zone stand under the plaza and do not count."""
+    [x, z] corners of the outer boundary of each piece of land (counter-clockwise on screen, z south). The houses of the ring road count like any."""
     places, roads, plaza = layout["places"], layout["roads"], layout["centre"]["radius"]
-    pts = [(p["position"]["x"], p["position"]["z"]) for p in places.values() if p["kind"] in ("lot", "reserved") and not p.get("underground")]
+    pts = [(p["position"]["x"], p["position"]["z"]) for p in places.values() if p["kind"] in ("lot", "reserved")]
     pts += list(road_samples(roads))
     pts.append((0.0, 0.0))
     reach = math.ceil(max(max(math.hypot(x, z) for x, z in pts), plaza) + buffer + 2)  # a city of day one has the plaza and nothing else

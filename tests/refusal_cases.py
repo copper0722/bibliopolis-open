@@ -103,7 +103,7 @@ def thirteen_avenues():
 
 
 # ------------------------------------------------------------------------------------ the world refuses ----
-def ring1_full(tmp):
+def branches_full(tmp):
     h = thirteen_avenues()
     return raised(lambda: h.open("r13", "Road 13", None, h.state.houses_at(None)))
 
@@ -175,7 +175,7 @@ def house_not_under_node(tmp):
     return raised(lambda: h.open("a", "A", None, [*houses(2, 10), hid(13)], DOMAIN_1))
 
 
-def not_an_avenue(tmp):
+def not_a_child(tmp):
     h = town(10)
     h.open("a", "A", None, houses(1, 10))
     h.open("a1", "A one", "a", houses(1, 10))
@@ -211,6 +211,14 @@ def already_below(tmp):
 def rule_unchanged(tmp):
     h = Hand()
     return raised(lambda: h.rule(40, 10, False))
+
+
+def branches_below_standing(tmp):
+    h = Hand({"max": 40, "min": 3, "auto": False})
+    h.add(9)
+    for k in range(3):
+        h.open(f"r{k}", f"Road {k}", None, h.state.houses_at(None)[:3])
+    return raised(lambda: h.rule(40, 3, False, 2))  # three avenues hold the numbers 0, 1 and 2: the rule needs 3 branches at least
 
 
 # ------------------------------------------------------------------------------------------------ an undo ----
@@ -362,15 +370,15 @@ def rule_not_an_object(tmp):
 
 
 def rule_number_bad(tmp):
-    return one_problem(ev.check_rule, {"max": 0, "min": 1, "auto": False}, "world.rule", "rule_number_bad")
+    return one_problem(ev.check_rule, {"max": 0, "min": 1, "auto": False, "branches": 13}, "world.rule", "rule_number_bad")
 
 
 def not_a_boolean(tmp):
-    return one_problem(ev.check_rule, {"max": 40, "min": 10, "auto": "yes"}, "world.rule", "not_a_boolean")
+    return one_problem(ev.check_rule, {"max": 40, "min": 10, "auto": "yes", "branches": 13}, "world.rule", "not_a_boolean")
 
 
 def rule_min_over_max(tmp):
-    return one_problem(ev.check_rule, {"max": 5, "min": 9, "auto": False}, "world.rule", "rule_min_over_max")
+    return one_problem(ev.check_rule, {"max": 5, "min": 9, "auto": False, "branches": 13}, "world.rule", "rule_min_over_max")
 
 
 def road_id_lane_like(tmp):
@@ -407,10 +415,6 @@ def members_too_few(tmp):
 
 def member_chosen_twice(tmp):
     return road_problem("member_chosen_twice", "merge_roads", {"road": "m", "name": "M", "parent": None, "members": ["a", "a"]})
-
-
-def parent_not_root(tmp):
-    return road_problem("parent_not_root", "merge_roads", {"road": "m", "name": "M", "parent": "r", "members": ["a", "b"]})
 
 
 def event_seq_bad(tmp):
@@ -502,7 +506,7 @@ def item_table_differs(tmp):
     path = tmp / "w.sqlite"
     Store.import_journal(path, small_journal())
     with sqlite3.connect(path) as db:
-        db.execute("INSERT INTO event VALUES (18, '2026-01-02', 'set_rule', '{\"max\":9,\"min\":3,\"auto\":false}')")
+        db.execute("INSERT INTO event VALUES (18, '2026-01-02', 'set_rule', '{\"max\":9,\"min\":3,\"auto\":false,\"branches\":13}')")
         db.execute("INSERT INTO item VALUES (18, 'ghost', '{\"id\":\"ghost\"}')")
     return raised(lambda: Store(path).journal())
 

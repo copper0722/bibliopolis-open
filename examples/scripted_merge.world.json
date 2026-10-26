@@ -1,7 +1,7 @@
 {
  "format": "bibliopolis.world",
  "version": 1,
- "rule": {"max":30,"min":5,"auto":false},
+ "rule": {"max":30,"min":5,"auto":false,"branches":13},
  "items": [
   {"id":"h0001","title":"Title 1","authors":["A. Author"],"year":2020,"doi":"10.0000/h.0001","type":"article","openalex":[{"domain":{"id":"ex:d1","name":"Domain 1"},"field":{"id":"ex:d1.f1","name":"Field 1.1"},"subfield":{"id":"ex:d1.f1.s1","name":"Subfield 1.1.1"},"topic":{"id":"ex:d1.f1.s1.t1","name":"Topic 1.1.1.1"}}]},
   {"id":"h0002","title":"Title 2","authors":["A. Author"],"year":2020,"doi":"10.0000/h.0002","type":"article","openalex":[{"domain":{"id":"ex:d1","name":"Domain 1"},"field":{"id":"ex:d1.f1","name":"Field 1.1"},"subfield":{"id":"ex:d1.f1.s1","name":"Subfield 1.1.1"},"topic":{"id":"ex:d1.f1.s1.t1","name":"Topic 1.1.1.1"}}]},

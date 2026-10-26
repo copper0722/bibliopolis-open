@@ -14,7 +14,7 @@ import math
 
 import checks
 import pytest
-from support import (ROOT, T, Town, art, by_tag, capacity, gates_of, laps_of, make_tree, on_ring, ring_root_problems, root_zone_problems, simulate_districts, slot_cell,
+from support import (ROOT, T, Town, art, by_tag, capacity, gates_of, laps_of, make_tree, on_ring, radius_for, ring_root_problems, simulate_districts, slot_cell,
                      tag_street, world_of)
 
 import bibliopolis
@@ -51,15 +51,6 @@ def frontier(line):
 
 def ceil3(v):
     return math.ceil(v * 1000 - 1e-7) / 1000
-
-
-def radius_for(gates, max_houses, w_min=None):
-    """R(N) stated apart from the engine, with the independent cells: the least 8.5 + k such that lap 1 holds `max_houses` between the gates AND the narrowest sector
-    holds an avenue at the ring's outer edge (`w_min` None: no sector, only the first)."""
-    k = 0
-    while not (capacity(8.5 + k, gates) >= max_houses and (w_min is None or (8.5 + k + 1.5) * math.radians(w_min) >= 3.0 - 1e-9)):
-        k += 1
-    return 8.5 + k
 
 
 def sound(town):
@@ -187,16 +178,17 @@ def test_a_larger_max_makes_the_plan_a_larger_radius_and_the_engine_takes_it():
     assert zw.new_world(big)["places"][ROOT]["ring"]["slots"] == capacity(big["params"]["ring"]["radius"], g)
 
 
-def test_a_world_and_its_plan_must_agree_about_the_ring():
+def test_a_plan_with_no_ring_is_refused_and_a_world_must_start_with_the_ring_of_its_plan():
     tree, items, plan, doc = world_of(SPEC_A)
     bare_plan = copy.deepcopy(plan)
     del bare_plan["params"]["ring"]
-    bare = zw.new_world(bare_plan)  # (the world of a plan with no ring)
+    with pytest.raises(ValueError, match="has no ring road"):
+        zw.PlanView(bare_plan)
+    with pytest.raises(ValueError, match="has no ring road"):
+        zw.new_world(bare_plan)
+    bare = {**doc, "places": {k: v for k, v in doc["places"].items() if k != ROOT}}  # (a world that lacks the ring of its plan)
     with pytest.raises(ValueError, match="starts with the ring road"):
         zw.assign(plan, tree, bare, [art(1, [])])
-    with pytest.raises(ValueError, match="has the ring road and its plan has none"):
-        zw.assign(bare_plan, tree, doc, [art(1, [])])
-    assert zw.PlanView(bare_plan).ring is None and not zw.World(zw.PlanView(bare_plan), TreeView(tree), bare).ring
 
 
 # -------------------------------------------------------------------------------------------------- cells ----
@@ -264,20 +256,7 @@ def test_the_notes_of_a_ring_city_say_ring_and_never_underground():
     text = json.dumps({k: shown[k] for k in ("kinds", "roads_kinds", "geometry")} | {"notes": shown["world"]["notes"]}, ensure_ascii=False)
     assert "underground" not in text and "根區" not in text and "root zone" not in text
     assert "street.ring" in shown["world"]["notes"] and "ring" in shown["roads_kinds"] and "ring" in shown["kinds"]["street"]
-    assert set(document.NOTES_DISTRICTS) - set(shown["world"]["notes"]) == {"street.underground", "lot.underground"}  # the notes of the districts, less the two of the root zone
-
-
-def test_a_plan_without_a_ring_still_gives_the_underground_root_zone():
-    tree, items, plan, doc = world_of(SPEC_A)
-    del plan["params"]["ring"]  # (a world built by hand has such a plan for now)
-    doc = zw.new_world(plan)
-    assert list(doc["places"]) == [lay.PLAZA_PLACE] and doc["roads"] == {}
-    doc = zw.apply_delta(doc, zw.assign(plan, tree, doc, items[:3])["delta"])
-    assert doc["places"][ROOT]["shape"] == "underground" and all(doc["places"][lay.article_place(a["id"])].get("underground") is True for a in items[:3])
-    assert root_zone_problems(doc["places"]) == []
-    shown = document.world_layout(doc, with_coast=False)
-    assert shown["composition"]["measure"]["underground_lots"] == 3 and "ring_lots" not in shown["composition"]["measure"]
-    assert shown["composition"]["streets"]["underground"] == 1 and "ring" not in shown["composition"]["streets"]
+    assert set(document.NOTES_DISTRICTS) <= set(shown["world"]["notes"]) and "street.ring" in document.NOTES_DISTRICTS  # the notes of the districts, the ring's among them
 
 
 # --------------------------------------------------------------------- houses 1..40 and the split at house 41 ----

@@ -53,21 +53,32 @@ def wedge_units(trunk: dict) -> tuple[int, int]:
     return round(lo * lay.UNIT), round(hi * lay.UNIT)
 
 
+def axis_of(lo: int, hi: int) -> float:
+    """The bearing of the middle of the wedge (lo, hi), in whole units of 1/100 degree: `r3(axis % 360)`."""
+    return lay.r3(((lo + hi) / (2 * lay.UNIT)) % 360)
+
+
 def gates_of(trunks: dict[str, dict], sides: bool = False) -> tuple[float, ...]:
     """G1 (`sides` False): the axes of the trunks of role `ring1`, each `r3(axis % 360)`, sorted, without repeats - every direction a ring-1 road can ever take,
     open or not. G2 (`sides` True): G1 plus the axes of the trunks of role `side`, in the same form. The axis of a trunk is the middle of its wedge."""
     roles = ("ring1", "side") if sides else ("ring1",)
-    found = set()
-    for rec in trunks.values():
-        if rec["role"] in roles:
-            lo, hi = wedge_units(rec)
-            found.add(lay.r3(((lo + hi) / (2 * lay.UNIT)) % 360))
-    return tuple(sorted(found))
+    return tuple(sorted({axis_of(*wedge_units(rec)) for rec in trunks.values() if rec["role"] in roles}))
 
 
 def sectors_of(trunks: dict[str, dict]) -> tuple[tuple[int, int], ...]:
     """The sectors the avenues leave the ring through: the wedges (lo, hi), in whole units of 1/100 degree, of the trunks of role `ring1`, sorted. N is their count."""
     return tuple(sorted(wedge_units(rec) for rec in trunks.values() if rec["role"] == "ring1"))
+
+
+def gate_of(axis: int) -> float:
+    """The gate bearing of a spoke axis given in whole units of 1/100 degree: `r3(axis % 360)` (the same number `axis_of` gives for a wedge centred on the axis)."""
+    return lay.r3((axis / lay.UNIT) % 360)
+
+
+def axis_gates(axes: tuple[int, ...] | list[int]) -> tuple[float, ...]:
+    """The gate bearings of the spoke axes `axes` (whole units of 1/100 degree): sorted, without repeats. A plan that names the axes of all its N sectors outright
+    (`params.ring.axes`: a world built by hand, whose trunks come with its roads) has these gates from day one, so that no avenue that opens later moves a house of the ring."""
+    return tuple(sorted({gate_of(a) for a in axes}))
 
 
 def sector_min(sectors: tuple[tuple[int, int], ...] | list[tuple[int, int]]) -> float | None:
@@ -119,10 +130,16 @@ def ring_sector_arc(radius: float, w_min: float) -> float:
 def ring_radius_for(gates: tuple[float, ...] | list[float], max_houses: int, w_min: float | None = None) -> float:
     """R(N): RING_MIN + k for the least whole k >= 0 such that lap 1 (gates G1) holds at least `max_houses` AND the narrowest of the N ring-1 sectors, `w_min`
     degrees wide, has at the ring's outer edge the arc one avenue needs: (R + BAND / 2) * radians(w_min) >= RING_AVENUE_ARC - EPS. `w_min` None: there is no
-    sector (N = 0), only the first condition applies. Pure."""
+    sector (N = 0), only the first condition applies. Pure.
+
+    The walk from RING_MIN upward starts where it can: a lap holds at most two lots to each of floor(2 * pi * R) cells, and the sector's arc grows with R, so no radius
+    below the least that satisfies either bound satisfies both. The answer is the one the walk from RING_MIN gives; a `max` of thousands is not a loop of thousands."""
     if w_min is not None and not (isinstance(w_min, (int, float)) and not isinstance(w_min, bool) and w_min > 0 and math.isfinite(w_min)):
         raise ValueError(f"the narrowest sector must be a number of degrees above 0, got {w_min!r}")
-    k = 0
+    cells = math.ceil(max_houses / 2)  # two lots to a cell: at least this many cells are needed, so 2 * pi * R + EPS >= cells
+    k = max(0, math.ceil((cells - EPS) / (2 * math.pi) - RING_MIN) - 1)
+    if w_min is not None:
+        k = max(k, math.ceil((RING_AVENUE_ARC - EPS) / math.radians(w_min) - lay.BAND / 2 - RING_MIN) - 1)
     while not ((w_min is None or ring_sector_arc(RING_MIN + k, w_min) >= RING_AVENUE_ARC - EPS) and ring_capacity(RING_MIN + k, gates) >= max_houses):
         k += 1
     return RING_MIN + k
@@ -155,6 +172,16 @@ def ring_road_record(k: int, radius: float) -> dict:
     return lay.road_record(lap_place(k), "ring", RING_CLASS_RING, None, 0.0, lay.arc_points(radius, 0.0, 360.0), 2 * math.pi * radius, radius=radius)
 
 
+def sectors_units(ring: dict) -> tuple[tuple[int, int], ...]:
+    """The sectors that a plan names outright in `params.ring.sectors` (wedges [lo, hi] in degrees, as the plan writes a wedge), in whole units of 1/100 degree, sorted."""
+    return tuple(sorted((round(lo * lay.UNIT), round(hi * lay.UNIT)) for lo, hi in ring["sectors"]))
+
+
+def axes_units(ring: dict) -> tuple[int, ...]:
+    """The spoke axes that a plan names outright in `params.ring.axes` (degrees), in whole units of 1/100 degree, in the order of the sectors (the number of the direction)."""
+    return tuple(round(a * lay.UNIT) for a in ring["axes"])
+
+
 def check_ring(ring: object, districts: dict, gates: tuple[float, ...], w_min: float | None = None) -> None:
     """ValueError unless `params.ring` is a ring the engine can build: a non-empty label, a lane radius of RING_MIN or more, a lap 1 (gates G1) that holds
     `districts.max` houses, and (`w_min`, the narrowest ring-1 sector in degrees; None: no sector) an arc of that sector at the ring's outer edge of at least
@@ -164,6 +191,16 @@ def check_ring(ring: object, districts: dict, gates: tuple[float, ...], w_min: f
     label, radius = ring.get("label"), ring.get("radius")
     if not isinstance(label, str) or not label.strip():
         raise ValueError(f"params.ring.label must be a non-empty string, got {label!r}")
+    sectors, axes = ring.get("sectors"), ring.get("axes")
+    if ("sectors" in ring) != ("axes" in ring):
+        raise ValueError("params.ring has sectors and axes together or neither: the sectors say where the avenues may stand, the axes which way their spokes run")
+    if "sectors" in ring:
+        if not (isinstance(sectors, list) and sectors and all(isinstance(w, list) and len(w) == 2 and all(
+                isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) for v in w) and w[0] < w[1] for w in sectors)):
+            raise ValueError(f"params.ring.sectors must be a list of wedges [lo, hi] with lo below hi, got {sectors!r}")
+        if not (isinstance(axes, list) and len(axes) == len(sectors) and all(
+                isinstance(a, (int, float)) and not isinstance(a, bool) and math.isfinite(a) and w[0] <= a <= w[1] for a, w in zip(axes, sectors))):
+            raise ValueError(f"params.ring.axes must be one bearing in degrees for each sector, inside it, got {axes!r}")
     if isinstance(radius, bool) or not isinstance(radius, (int, float)) or not math.isfinite(radius) or radius < RING_MIN:
         raise ValueError(f"params.ring.radius must be a number of at least RING_MIN = {RING_MIN}, got {radius!r}")
     if ring_capacity(radius, gates) < districts["max"]:

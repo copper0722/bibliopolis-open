@@ -56,18 +56,6 @@ def test_a_new_world_starts_with_the_rule_an_empty_chronicle_the_town_hall_and_t
     assert day_one["world"]["chronicle"] == [] and day_one["composition"]["measure"]["lots"] == 0 and day_one["coast"]["polygons"]  # the land is the plaza's and the ring's
 
 
-# ----------------------------------------------------------- the grid under the plaza (a world with no ring road) ----
-def test_the_cells_under_the_plaza_are_whole_cells_nearest_first_and_the_first_89_lie_inside_it():
-    cells = [zw.underground_cell(k) for k in range(300)]
-    assert cells[0] == (0.0, 0.0) and len(set(cells)) == 300  # the centre first, no cell twice
-    assert sorted(cells[1:5]) == [(-1.0, 0.0), (0.0, -1.0), (0.0, 1.0), (1.0, 0.0)]  # then the four next to it
-    dist = [math.hypot(x, z) for x, z in cells]
-    assert dist == sorted(dist)  # nearest first, all the way out
-    inside = [math.hypot(abs(x) + 0.5, abs(z) + 0.5) <= lay.PLAZA_RADIUS for x, z in cells]
-    assert all(inside[:89]) and not any(inside[89:])  # a lot is a cell of 1 x 1: the first 89 lie wholly inside the plaza, no later one does
-    assert [zw.underground_cell(k) for k in range(300)] == cells and zw._cells_within(7) == zw._cells_within(15)[:len(zw._cells_within(7))]
-
-
 # --------------------------------------------------------------------------- the ring road and the first split ----
 SPEC_A = {"med": T(0, a1=T(8), a2=T(7), b=T(9), c=T(9)), "pub": T(12)}  # 33 houses of med, then 12 of pub: house 41 is the 8th of pub
 
