@@ -27,7 +27,10 @@ split as they grow).
   `docs/format.md` and `schema/`.
 - `examples/` the seeded generator of the synthetic sample (`make_example.py`) and its output; a derived city is never committed.
 - `tests/`: `python -m pytest` from the repository root. Every test is offline and synthetic.
-- Everything except `inputs` and the mirror mode is an extraction of the private engine and is compared with it by a parity test that runs in the
-  private repository. The input checks and the mirror mode have no private counterpart: a change there says so in its commit.
+- The plan, the world of `grow` mode (roads, direct counts, root zone, chronicle, lots, ribs, lines) and the document it makes (places, roads, coast,
+  measures) are an extraction of the private engine. A parity test in the private repository compares them with it on random libraries and on the
+  sample (the whole document against a private plan without the journal sector). Not compared, because the private engine has nothing to compare
+  with: the input checks, the mirror mode (and `complete`), the command line and its summary, and the `at` dates of the chronicle. A change there
+  says so in its commit.
 - No third-party code or data is copied in. Two textbook algorithms (largest-remainder apportionment, Douglas-Peucker simplification) are
   implemented here, and the sample is generated from invented word lists.
