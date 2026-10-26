@@ -60,7 +60,7 @@ change its node. Left out, `topic` is null, and the event is kept with it, last 
 ### The rule
 
 `{max, min, auto}`: whole numbers 1 <= `min` <= `max`, and a boolean. `min` is the least a new road takes (see `open_road`). `max` is how many houses a road is meant to hold:
-the world never refuses a house for it, never marks a road over and never splits a road by itself; `crowded` (below) lists what holds more, and the town hall tells the player.
+the world never refuses a house for it, never marks a road over and never splits a road by itself (but under `auto`, below); `crowded` (below) lists what holds more, and the town hall tells the player.
 `auto` is the one rule that acts (see "The rule `auto`"). The rule of a world starts as the file says (40, 10, off by default) and `set_rule` changes it from its place in the log.
 
 ## What the fold does
