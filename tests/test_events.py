@@ -140,6 +140,31 @@ def test_a_road_id_may_start_with_auto_only_when_it_names_a_road_that_already_ex
     assert checked(ev.check_event, event("rename_road", {"road": "auto:7.2", "name": "N"}), "event")[1] == []
 
 
+# ---------------------------------------------------------------------------------------------- refusals ----
+def test_a_refusal_is_a_value_error_with_english_text_and_an_id_and_params_when_it_has_them():
+    plain = ev.Refusal("there is no road 'x'")
+    assert isinstance(plain, ValueError) and str(plain) == "there is no road 'x'" and plain.code is None and plain.params == {}
+    full = ev.Refusal("text", "ring1_full", limit=13, number=14)
+    assert (str(full), full.code, full.params) == ("text", "ring1_full", {"limit": 13, "number": 14})
+
+
+def test_a_refusal_passed_on_with_its_place_keeps_its_id_and_params_and_is_a_new_exception():
+    full = ev.Refusal("the first ring is full", "ring1_full", limit=13, number=14)
+    wrapped = full.within("event 7 (open_road)")
+    assert wrapped is not full and str(wrapped) == "event 7 (open_road): the first ring is full" and str(full) == "the first ring is full"
+    assert (wrapped.code, wrapped.params) == ("ring1_full", {"limit": 13, "number": 14})
+    assert ev.Refusal("x").within("event 1").code is None
+
+
+def test_the_ids_of_the_refusals_are_the_codes_with_the_names_of_their_params():
+    from bibliopolis.hand import ring1_wedge
+
+    assert ev.CODES == {"ring1_full": ("limit", "number")}
+    with pytest.raises(ev.Refusal) as why:
+        ring1_wedge([(-100, 1000)], 0)
+    assert why.value.code in ev.CODES and tuple(why.value.params) == ev.CODES[why.value.code]
+
+
 # ---------------------------------------------------------------------------------------------- what counts ----
 def log(*kinds_and_targets):
     """A log of undo and non-undo events: ('x') is an event of no importance, ('undo', n) an undo of event n."""

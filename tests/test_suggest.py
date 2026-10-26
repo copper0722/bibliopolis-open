@@ -404,7 +404,7 @@ def test_taking_every_suggestion_in_turn_builds_a_sound_town_of_roads_that_each_
         try:
             h.open(f"s{opened}", s["name"], None, s["houses"])
         except Refusal as why:
-            assert "no free direction" in str(why) and opened == 13  # the first ring is full: that is the one reason to stop
+            assert why.code == "ring1_full" and opened == 13  # the first ring is full: that is the one reason to stop
             break
         opened += 1
     assert opened >= 10

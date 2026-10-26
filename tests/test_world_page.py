@@ -54,7 +54,21 @@ def test_the_sector_table_is_the_table_of_the_program():
         assert round(float(bearing) * 100) == hand.bearing(k), k
         assert (round(float(lo) * 100), round(float(hi) * 100)) == given[k], k
     assert "| 13 | 347.60 | none: inside the sector of k = 0 |" in PAGE and f"{hand.bearing(13) / 100:.2f}" == "347.60"
-    assert "**the first ring holds 13 roads**" in PAGE and str(hand.GOLDEN) in PAGE and "% 36000" in PAGE and "// 10**12" in PAGE
+    assert "**a town has at most 13 avenues**" in PAGE and "**the 14th category goes below an avenue**" in PAGE and hand.AVENUES == 13
+    assert str(hand.GOLDEN) in PAGE and "% 36000" in PAGE and "// 10**12" in PAGE
+
+
+def test_the_table_of_refusal_ids_is_the_ids_and_the_message_of_the_program():
+    rows = re.findall(r"^\| `(\w+)` \| (.+?) \| (.+?) \| (.+?) \|$", PAGE.split("## Refusals")[1].split("## Suggestions")[0], flags=re.M)
+    assert [code for code, *_ in rows] == list(ev.CODES)
+    given = []
+    for k in range(13):
+        given.append(hand.ring1_wedge(given, k))
+    with pytest.raises(ev.Refusal) as why:
+        hand.ring1_wedge(given, 13)
+    for code, params, _when, message in rows:
+        assert tuple(re.findall(r"`(\w+)`", params)) == ev.CODES[code] == tuple(why.value.params), code
+        assert message == str(why.value) and why.value.code == code
 
 
 def test_the_table_of_events_names_the_kinds_and_the_payloads_of_the_program():

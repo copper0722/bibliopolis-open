@@ -77,8 +77,9 @@ of the sector, which is kept between -180 and 180 degrees. These are the thirtee
 | 5 | 327.54 | -52.46 .. -20.00 | 12 | 210.09 | -149.97 .. -137.45 |
 | 6 | 105.05 | 85.05 .. 117.51 | 13 | 347.60 | none: inside the sector of k = 0 |
 
-They cover the whole circle, so **the first ring holds 13 roads**. The 14th bearing lies inside a sector given already, and `open_road` from the root zone is refused with the reason
-(a road below a road can still open). A road that moves below another road keeps its sector given: the next ring-1 road takes the next direction, not the one it left.
+They cover the whole circle: **a town has at most 13 avenues** (大道, the roads of the first ring), so **the 14th category goes below an avenue**. The 14th bearing lies inside a sector
+given already, and `open_road` with `parent` null is refused with the id `ring1_full` (see "Refusals"); a road below an avenue still opens. A road that moves below another road keeps its
+sector given: the limit is on the directions given, and the next ring-1 road takes the next direction, not the one it left.
 
 **Stability.** A house keeps its lot unless an event moves it. `open_road` moves the houses chosen, `file` moves that house, `move_road` moves the houses of the road and of the roads
 below it; nothing else moves a house, and the houses that stay keep their lots whatever holes the others leave (a lot that a house leaves stays empty, and the next house on that road
@@ -110,12 +111,22 @@ An event that an undo takes back writes no entry (it does not count); the undo w
 **The rule `auto`.** After an arrival (`add_item`) that leaves the root zone above `max`, the rule opens a road for the largest group of houses of the root zone that share an OpenAlex topic
 at the most specific level that gives a group of at least `min` (see `suggest_road`), named after that topic, below the town hall: `auto:<seq>` (`auto:<seq>.2` for a second road of the
 same arrival), a road like any other afterwards. It uses the mechanics of `open_road`, so the houses that stay keep their lots. It repeats while the root zone is above `max` and a group is
-left. When no group reaches `min`, or the first ring has no direction left, nothing happens. An arrival still becomes a house in the root zone, and the rule does not file it onto a road that
+left. When no group reaches `min`, or all 13 directions of the first ring are used, nothing happens. An arrival still becomes a house in the root zone, and the rule does not file it onto a road that
 is there: the houses of a topic that a road took gather in the root zone again, and a second road of the same name can open. (On the 600-item sample of this repository, with invented topics,
 the first ring is full by the 180th arrival.) A `set_rule` that switches `auto` on opens nothing by itself.
 
 **Numbers.** Every document the package writes spells a number as `JSON.stringify` does: an integral value without a fraction (`40`, not `40.0`), any other value as its shortest text
 (`bibliopolis.canonical`). The in-memory documents keep their floats. A number that another language would spell differently (an exponent form, a value of 10**15 or more) is refused.
+
+## Refusals
+
+A world that does not take an event raises `Refusal` (a `ValueError`) and is as it was. Its message is English text. A refusal that a page has to show in another language has an **id**:
+`Refusal.code`, with the values the message is made of in `Refusal.params`. A page translates from the id and the params, not from the text. A reason that has no id yet has `code` `None`.
+`Refusal.within(where)` passes a refusal on with the place it came from (the event of a log that is replayed) and keeps its id and params.
+
+| id | params | when | message |
+|---|---|---|---|
+| `ring1_full` | `limit` (13), `number` (the number of the category: 14) | `open_road` with `parent` null, when all 13 directions are used | the first ring has at most 13 avenues and all 13 directions are used, so the 14th category goes below an avenue |
 
 ## Suggestions
 
@@ -165,7 +176,7 @@ suggest_road(journal.state, None)
 
 ## Limits of this version
 
-- The first ring holds 13 roads (above). The sectors are fixed by the rule, not by the weight of a road.
+- A town has at most 13 avenues (above): the 14th category goes below an avenue. The sectors are fixed by the rule, not by the weight of a road.
 - No trunk is promoted below ring 1 and no heavy path changes; a road below a road is a rib on the line of its ring-1 road.
 - A road never becomes a ring-1 road by moving (`parent` is a road).
 - Under `auto` an arrival is not filed onto a road that is there (above).

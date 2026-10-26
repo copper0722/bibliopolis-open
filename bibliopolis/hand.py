@@ -13,7 +13,8 @@ There is no library to plan from, so the plan grows with the world and never cha
   directions      the k-th ring-1 road (k = 0, 1, 2, ...) has the bearing k * 137.50776405003785 degrees, clockwise from north, in whole units of 1/100 degree. Its
                   sector is the free arc around that bearing, at most 20 degrees to either side, never over a sector already given; a sector once given never
                   changes, not when its road moves away. When the bearing lies inside a sector already given the town hall has no direction left for the road and
-                  the event is refused: with these rules the first ring holds 13 roads (see `ring1_wedge`).
+                  the event is refused (`Refusal` with the id `ring1_full`): with these rules a town has at most 13 avenues, the roads of the first ring (`AVENUES`),
+                  and the 14th category goes below an avenue.
   stability       a house stays on its lot unless an event moves it: opening a road moves the houses chosen, filing a house moves that house, moving a road moves
                   the houses of its subtree. The houses that stay keep their lots, whatever holes the others leave. (`undo` may re-place what came after the event
                   it takes back: the fold of the log without that event.)
@@ -47,25 +48,55 @@ def bearing(k: int) -> int:
     return ((k * GOLDEN + 5 * 10**11) // 10**12) % FULL
 
 
-def ring1_wedge(given: list[tuple[int, int]], k: int) -> tuple[int, int]:
-    """The sector (lo, hi), in units of 1/100 degree, of the k-th ring-1 road when the sectors `given` belong to the earlier ones: the free arc around the bearing
-    `bearing(k)`, at most `HALF_WEDGE` to either side of it, ending where the next sector begins on each side. The axis of the sector (the middle of lo and hi, the
-    direction of the spoke) is kept between -180 and 180 degrees. `Refusal` when the bearing lies inside a sector given already: the town hall has no free
-    direction left for this road. (The bearings and the sectors that come of them are fixed, so the first ring holds 13 roads: the 14th bearing, 347.60 degrees,
-    lies inside the first sector.)"""
+def _sector(given: list[tuple[int, int]], k: int) -> tuple[int, int] | str:
+    """The sector (lo, hi) of the k-th ring-1 road, or the reason there is none: "inside" (the bearing lies inside a sector given) or "border" (it is on the border of
+    two sectors, with no room between them)."""
     b = bearing(k)
     for lo, hi in given:
         if 0 < (b - lo) % FULL < hi - lo:
-            raise Refusal(f"the town hall has no free direction left for road number {k + 1} of its first ring: its bearing, {b / lay.UNIT:g} degrees, lies inside "
-                          f"the sector of an earlier road (open the road below another road instead)")
+            return "inside"
     right = min([(lo - b) % FULL for lo, hi in given], default=FULL)  # clockwise from the bearing to the next sector
     left = min([(b - hi) % FULL for lo, hi in given], default=FULL)  # anticlockwise, to the sector before it
     lo, hi = b - min(HALF_WEDGE, left), b + min(HALF_WEDGE, right)
     if hi <= lo:
-        raise Refusal(f"the bearing of road number {k + 1} of the first ring, {b / lay.UNIT:g} degrees, is on the border of two sectors: there is no room between them")
+        return "border"
     if lo + hi > FULL:  # the axis is past 180 degrees: the same sector, one turn back
         lo, hi = lo - FULL, hi - FULL
     return lo, hi
+
+
+def capacity() -> int:
+    """How many ring-1 roads the first ring holds: the sectors are asked for, one after the other, until there is none."""
+    given: list[tuple[int, int]] = []
+    while True:
+        found = _sector(given, len(given))
+        if isinstance(found, str):
+            return len(given)
+        given.append(found)
+
+
+AVENUES = capacity()  # 13: the sectors of the golden angle tile the circle, and the 14th bearing (347.60 degrees) lies inside the first sector
+
+
+def ordinal(n: int) -> str:
+    return f"{n}{'th' if n % 100 in (11, 12, 13) else {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')}"
+
+
+def ring1_wedge(given: list[tuple[int, int]], k: int) -> tuple[int, int]:
+    """The sector (lo, hi), in units of 1/100 degree, of the k-th ring-1 road when the sectors `given` belong to the earlier ones: the free arc around the bearing
+    `bearing(k)`, at most `HALF_WEDGE` to either side of it, ending where the next sector begins on each side. The axis of the sector (the middle of lo and hi, the
+    direction of the spoke) is kept between -180 and 180 degrees. `Refusal` with the id `ring1_full` (params `limit`, `number`) when the bearing has no room: it lies
+    inside a sector given already, or on the border of two. The bearings and the sectors that come of them are fixed, so a town has at most `AVENUES` = 13 avenues
+    (the roads of the first ring), and the 14th category goes below an avenue."""
+    found = _sector(given, k)
+    if not isinstance(found, str):
+        return found
+    if len(given) >= AVENUES:
+        text = f"the first ring has at most {AVENUES} avenues and all {AVENUES} directions are used, so the {ordinal(k + 1)} category goes below an avenue"
+    else:
+        where = "lies inside the sector of an earlier road" if found == "inside" else "is on the border of two sectors, with no room between them"
+        text = f"the first ring has no room for avenue number {k + 1}: its bearing, {bearing(k) / lay.UNIT:g} degrees, {where}"
+    raise Refusal(text, "ring1_full", limit=AVENUES, number=k + 1)
 
 
 # ---------------------------------------------------------------------------------------------------- the tree ----
@@ -426,5 +457,5 @@ def fold(events: list[dict], rule: dict) -> State:
             else:
                 state.skip(e)
         except Refusal as why:
-            raise Refusal(f"event {e['seq']} ({e['kind']}): {why}") from None
+            raise why.within(f"event {e['seq']} ({e['kind']})") from None
     return state

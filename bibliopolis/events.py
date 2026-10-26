@@ -39,8 +39,23 @@ PAYLOAD_KEYS = {"add_item": ("item",), "open_road": ("road", "name", "parent", "
                 "move_road": ("road", "parent"), "undo": ("seq",), "set_rule": RULE_KEYS}
 
 
+CODES = {"ring1_full": ("limit", "number")}  # the ids of the refusals that have one, with the names of their params (docs/world.md, "Refusals")
+
+
 class Refusal(ValueError):
-    """The world does not take this event: the message says why. The world is as it was."""
+    """The world does not take this event: the message (English text) says why. The world is as it was.
+
+    `code` is a stable id of the reason, for a page that translates the message from the id and the `params` (None for a reason that has no id yet; the ids are `CODES`).
+    A refusal that is passed on with the place it came from (`within`) keeps its id and params."""
+
+    def __init__(self, message: str, code: str | None = None, **params):
+        super().__init__(message)
+        self.code = code
+        self.params = params
+
+    def within(self, where: str) -> "Refusal":
+        """The same refusal with `where` in front of its message (the event it came from), as a new exception: the id and the params stay."""
+        return Refusal(f"{where}: {self}", self.code, **self.params)
 
 
 # ------------------------------------------------------------------------------------------------------ items ----

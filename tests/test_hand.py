@@ -69,7 +69,7 @@ def test_the_bearing_of_the_k_th_road_is_k_golden_angles_in_units_of_a_hundredth
     assert bearing(1000) == (1000 * 13750776405003785 + 5 * 10**11) // 10**12 % lay.FULL  # whole-number arithmetic whatever k is
 
 
-def test_the_first_ring_holds_thirteen_roads_with_these_sectors_and_the_fourteenth_has_no_direction_left():
+def test_a_town_has_at_most_thirteen_avenues_with_these_sectors_and_the_fourteenth_category_goes_below_an_avenue():
     given = []
     for k, want in enumerate(FIRST_RING):
         sector = ring1_wedge(given, k)
@@ -77,9 +77,11 @@ def test_the_first_ring_holds_thirteen_roads_with_these_sectors_and_the_fourteen
         given.append(sector)
     spans = [hi - lo for lo, hi in given]
     assert spans[:5] == [4000] * 5 and max(spans) == 4000 and min(spans) == 1252 and sum(spans) == lay.FULL  # the sectors tile the circle: nothing is left
+    assert hand.AVENUES == hand.capacity() == 13 == len(FIRST_RING)  # (the number is read off the sectors, not written down)
     with pytest.raises(Refusal) as why:
         ring1_wedge(given, 13)
-    assert "no free direction left for road number 14" in str(why.value) and "347.6 degrees" in str(why.value)
+    assert str(why.value) == "the first ring has at most 13 avenues and all 13 directions are used, so the 14th category goes below an avenue"
+    assert why.value.code == "ring1_full" and why.value.params == {"limit": 13, "number": 14}  # the id and the numbers a page translates the message from
 
 
 def test_a_sector_has_its_bearing_inside_it_at_most_twenty_degrees_either_side_and_never_overlaps_one_given():
@@ -97,10 +99,11 @@ def test_a_sector_stops_where_the_next_one_begins_on_each_side_and_a_bearing_on_
     assert ring1_wedge([(1000, 2000)], 0) == (-2000, 1000)  # bearing 0, the sector given begins at 10 degrees
     assert ring1_wedge([(-1500, -200)], 0) == (-200, 2000)  # ... the one given ends at -2 degrees
     assert ring1_wedge([(0, 1000)], 0) == (-2000, 0)  # the bearing is on the edge of a sector: room on the left only
-    with pytest.raises(Refusal, match="inside the sector"):
+    with pytest.raises(Refusal, match="its bearing, 0 degrees, lies inside the sector of an earlier road") as inside:
         ring1_wedge([(-100, 1000)], 0)
-    with pytest.raises(Refusal, match="no room"):
+    with pytest.raises(Refusal, match="is on the border of two sectors, with no room between them") as border:
         ring1_wedge([(-1000, 0), (0, 1000)], 0)  # the bearing is on the border of two sectors
+    assert [(e.value.code, e.value.params) for e in (inside, border)] == [("ring1_full", {"limit": 13, "number": 1})] * 2
 
 
 def test_a_sector_past_the_south_is_turned_back_one_circle_and_is_still_the_same_sector_of_the_circle():
@@ -275,8 +278,9 @@ def test_the_fourteenth_road_of_the_first_ring_is_refused_and_a_road_below_a_roa
     state = sound(h)
     assert [(s["from"], s["to"]) for s in state.city()["composition"]["ring1"]] == [(lo / 100, hi / 100) for lo, hi in FIRST_RING]
     h.add(10)
-    err = refuses(h, "no free direction left for road number 14", "open_road", {"road": "r13", "name": "Road 13", "parent": None, "houses": h.state.houses_at(None)[:10]})
-    assert "below another road" in str(err)
+    err = refuses(h, "at most 13 avenues and all 13 directions are used, so the 14th category goes below an avenue", "open_road",
+                  {"road": "r13", "name": "Road 13", "parent": None, "houses": h.state.houses_at(None)[:10]})
+    assert (err.code, err.params) == ("ring1_full", {"limit": 13, "number": 14})
     h.open("r13", "Road 13", "r0", h.state.houses_at("r0"))
     assert sound(h).nodes["r13"]["parent"] == "r0"
 
@@ -634,4 +638,4 @@ def test_the_modes_of_build_are_still_grow_and_mirror_and_hand_is_not_one_of_the
 
 def test_the_module_names_the_limits_it_has():
     text = " ".join(hand.__doc__.split())
-    assert "holds 13 roads" in text and "No trunk is promoted" in text
+    assert "at most 13 avenues" in text and "14th category goes below an avenue" in text and "No trunk is promoted" in text

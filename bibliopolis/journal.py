@@ -56,7 +56,7 @@ class Journal:
             try:
                 journal.append(e["kind"], e["payload"], e["at"])
             except Refusal as why:
-                raise Refusal(f"event {e['seq']} ({e['kind']}): {why}") from None
+                raise why.within(f"event {e['seq']} ({e['kind']})") from None
         return journal
 
     def items(self) -> list[dict]:
