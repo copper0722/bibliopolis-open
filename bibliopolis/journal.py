@@ -1,8 +1,10 @@
-"""The journal of a hand-built world: its log of events and the world that the log folds to, kept together.
+"""The journal of a hand-built world: its log of events and the world that the log folds to, kept together; and the world file it is written to and read from.
 
     journal = Journal()                                                      # the rule 40 / 10, `auto` off
     journal.append("add_item", {"item": {...}}, "2026-10-26T09:30:00Z")      # -> the event, with its `seq`; `Refusal` when the world does not take it
     journal.state.city()                                                     # the layout v4 document of the world now
+    text = dumps_world(world_document(journal))                              # the world file: JSON, one item and one event to a line, the canonical number form
+    journal = read_world(json.loads(text))                                   # ... and back: every event is appended again, under the rules of `append`
 
 `append` is the one way an event enters a world. It checks the shape of the event (bibliopolis.events), asks the world to take it (bibliopolis.hand) and only then
 keeps it, so a log made by `append` folds again to the same world. An `undo` is held to two more rules, so that the player undoes from the end backwards:
@@ -14,9 +16,18 @@ keeps it, so a log made by `append` folds again to the same world. An `undo` is 
 
 from __future__ import annotations
 
-from .events import DEFAULT_RULE, Refusal, check_event, check_rule, references, standing
+from .canonical import dumps
+from .events import DEFAULT_RULE, Refusal, check_event, check_item, check_rule, references, standing
 from .hand import State, fold
-from .inputs import _Problems
+from .inputs import InputError, _Problems, load_json
+
+FORMAT = "bibliopolis.world"
+VERSION = 1
+FILE_KEYS = ("format", "version", "rule", "items", "events")
+
+
+class WorldFileError(InputError):
+    """A world file (or a store) is not what docs/world.md describes. The message lists the problems, one per line, each with its place."""
 
 
 def _refuse(problems: _Problems) -> None:
@@ -89,3 +100,69 @@ class Journal:
             return fold([*self.events, event], self.rule)
         except Refusal as why:
             raise Refusal(f"event {target} cannot be undone: {why}") from None
+
+
+# ------------------------------------------------------------------------------------------------ the world file ----
+def world_document(journal: Journal) -> dict:
+    """The world file of a journal as a document: `{format, version, rule, items, events}`. `rule` is the rule the world started with; `items` is the item of every add_item
+    event in log order (the metadata, for a reader that does not fold; it is written from the events and checked against them when a file is read); `events` is the log."""
+    return {"format": FORMAT, "version": VERSION, "rule": dict(journal.rule), "items": journal.items(), "events": list(journal.events)}
+
+
+def dumps_world(doc: dict) -> str:
+    """The text of a world file: the header, then one item and one event to a line, in the canonical number form (bibliopolis.canonical). The same journal gives the
+    same bytes, and a file read and written again is the same bytes (a file that came from elsewhere is made canonical)."""
+
+    def block(rows: list) -> str:
+        return "[]" if not rows else "[\n" + ",\n".join("  " + dumps(row) for row in rows) + "\n ]"
+
+    return ("{\n" + f' "format": {dumps(doc["format"])},\n "version": {dumps(doc["version"])},\n "rule": {dumps(doc["rule"])},\n'
+            + f' "items": {block(doc["items"])},\n "events": {block(doc["events"])}\n' + "}\n")
+
+
+def read_world(doc) -> Journal:
+    """The journal of a world file read as JSON. Every problem of shape is reported at once with its place (`WorldFileError`); then the events are appended in turn, so
+    each is held to the rules of `append`, and the first that the world does not take is named; last, `items` must be what the add_item events carry."""
+    problems = _Problems()
+    if not isinstance(doc, dict):
+        raise WorldFileError(f"world: not a world file: it must be a JSON object, got {type(doc).__name__}")
+    missing = [k for k in FILE_KEYS if k not in doc]
+    extra = [k for k in doc if k not in FILE_KEYS]
+    if missing or extra:
+        raise WorldFileError("world: not a world file" + (f": missing {', '.join(missing)}" if missing else "") + (f": unknown {', '.join(sorted(map(str, extra)))}" if extra else "")
+                             + f" (it has {', '.join(FILE_KEYS)})")
+    if doc["format"] != FORMAT:
+        raise WorldFileError(f"world.format: must be {FORMAT!r}, got {doc['format']!r:.60}")
+    if doc["version"] != VERSION or isinstance(doc["version"], bool):
+        raise WorldFileError(f"world.version: this program reads version {VERSION}, got {doc['version']!r:.40}")
+    rule = check_rule(doc["rule"], "world.rule", problems)
+    items, events = [], []
+    for name, rows, check in (("items", doc["items"], check_item), ("events", doc["events"], check_event)):
+        if not isinstance(rows, list):
+            problems.add(f"world.{name}", f"must be a list, got {type(rows).__name__}")
+            continue
+        for i, row in enumerate(rows):
+            checked = check(row, f"world.{name}[{i}]", problems)
+            if checked is not None:
+                (items if name == "items" else events).append(checked)
+    if problems.found:
+        raise WorldFileError("\n".join([*problems.found, *([f"... and {problems.more} more"] if problems.more else [])]))
+    for i, e in enumerate(events):
+        if e["seq"] != i + 1:
+            raise WorldFileError(f"world.events[{i}].seq: must be {i + 1}: the events are numbered 1, 2, 3, ... in order, got {e['seq']}")
+    journal = Journal(rule)
+    for i, e in enumerate(events):
+        try:
+            journal.append(e["kind"], e["payload"], e["at"])
+        except Refusal as why:
+            raise WorldFileError(f"world.events[{i}] ({e['kind']}): {why}") from None
+    derived = journal.items()
+    if items != derived:
+        place = next((i for i, (a, b) in enumerate(zip(items, derived)) if a != b), min(len(items), len(derived)))
+        raise WorldFileError(f"world.items[{place}]: the items are those of the add_item events, in order ({len(derived)} of them), and the file says otherwise ({len(items)})")
+    return journal
+
+
+def load_world_file(path) -> Journal:
+    """The journal of the world file at `path` (`read_world` of its JSON; `InputError` when the file is not JSON)."""
+    return read_world(load_json(path))
