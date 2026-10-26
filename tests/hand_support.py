@@ -15,9 +15,9 @@ from bibliopolis import inputs
 from bibliopolis import layout as lay
 from bibliopolis import world as zw
 from bibliopolis.events import Refusal, standing
-from bibliopolis.hand import State, fold
+from bibliopolis.hand import SECTORS, State, bearing, fold
 from bibliopolis.journal import Journal
-from bibliopolis.suggest import landing, suggest_road
+from bibliopolis.suggest import landing, suggest_merge, suggest_road
 
 START = datetime(2026, 1, 1, tzinfo=timezone.utc)
 ROOT = zw.ROOT_PLACE
@@ -144,6 +144,13 @@ class Hand:
     def move(self, road: str, parent: str) -> dict:
         return self.event("move_road", {"road": road, "parent": parent})
 
+    def merge(self, road: str, name: str, members: list[str], topic: dict | None = None) -> dict:
+        return self.event("merge_roads", {"road": road, "name": name, "parent": None, "members": members, "topic": topic})
+
+    def take_merge(self, suggestion: dict, road: str) -> dict:
+        """Merge the avenues of a suggestion (`suggest_merge`) as it stands, under the id `road`."""
+        return self.merge(road, suggestion["name"], suggestion["members"], suggestion["topic"])
+
     def undo(self, seq: int | None = None) -> dict:
         return self.event("undo", {"seq": len(self.journal.events) if seq is None else seq})
 
@@ -207,22 +214,64 @@ def scripted_nodes():
     return h
 
 
+def node(level: str, d: int, f: int = 1, s: int = 1, t: int = 1) -> dict:
+    """The OpenAlex node of `topic(d, f, s, t)` at `level`, as a road carries it (`open_road` and `merge_roads`)."""
+    return {"id": topic(d, f, s, t)[level]["id"], "level": level, "name": topic(d, f, s, t)[level]["name"]}
+
+
+def scripted_merge():
+    """A log in which the first ring fills and is merged: twelve avenues for fields of OpenAlex domains and one category of the player's (the ring is full), a merge by
+    suggestion (the three fields of one domain, under the domain), the avenues of the next categories in the directions it freed, a merge by hand (two fields, under their
+    domain), more avenues in the freed directions, a rename of a merged avenue, a house filed onto a merged field, an avenue moved below another (it keeps its direction),
+    and an undo from the middle."""
+    h = Hand({"max": 30, "min": 5, "auto": False})
+    fields = [(1, 1), (1, 2), (1, 3), (2, 1), (2, 2), (3, 1), (4, 1), (5, 1), (6, 1), (7, 1), (8, 1), (9, 1)]
+    for k, (d, f) in enumerate(fields):
+        h.add(6 + k % 3, topic(d, f, 1, 1))
+        h.open(f"f{k}", f"Field {d}.{f}", None, h.state.houses_at(None), node("field", d, f))
+    h.add(8)
+    h.open("mine", "My collection", None, h.state.houses_at(None))  # the 13th avenue: a category with no node
+    h.take_merge(suggest_merge(h.state), "d1")  # the fields of domain 1 under the domain: the new avenue holds the direction of the largest, the other two are free
+    h.add(6, topic(10, 1, 1, 1))
+    h.open("n1", "Field 10.1", None, h.state.houses_at(None), node("field", 10, 1))  # the 14th category: the lowest free direction
+    h.merge("d2", "Domain 2", ["f3", "f4"], node("domain", 2))  # by hand
+    for i, d in enumerate((11, 12), start=2):
+        h.add(6, topic(d, 1, 1, 1))
+        h.open(f"n{i}", f"Field {d}.1", None, h.state.houses_at(None), node("field", d, 1))
+    h.rename("d1", "Domain one")
+    h.add(2, topic(1, 2, 1, 1))
+    h.file(hid(h.count), "f1")  # onto a field that is a road of ring 2 now
+    h.move("n3", "n2")  # an avenue below another: it keeps its direction
+    h.add(3)
+    h.undo(len(h.journal.events) - 1)  # from the middle: nothing names the house it added
+    return h
+
+
 # ------------------------------------------------------------------------------------------ a random player ----
-def play(seed: int, steps: int = 120, *, auto: bool = False, rule: dict | None = None, suggested: bool = False, arrivals: float = 0.46) -> Journal:
+def play(seed: int, steps: int = 120, *, auto: bool = False, rule: dict | None = None, suggested: bool = False, arrivals: float = 0.46, merging: bool = False) -> Journal:
     """A random player: items arrive, roads open below the root zone and below roads, houses are filed, roads renamed and moved, the rule changes, events are undone.
     Every act goes through `Journal.append`; the ones the world refuses are the player's mistakes and are left out of the log. With `suggested`, a road is often opened
     as a suggestion has it (`suggest_road` at a random place: it carries its OpenAlex node), and otherwise as before: a random choice of houses, a category with no node.
-    `arrivals` is the part of the steps that bring an item (0.46 by default); the other acts keep their shares of the rest."""
+    `arrivals` is the part of the steps that bring an item (0.46 by default); the other acts keep their shares of the rest. With `merging`, now and then two to four
+    avenues are merged (by `suggest_merge` or at random)."""
     rng = random.Random(seed)
     top = rng.choice([8, 12, 20, 40])
     hand = Hand(rule or {"max": top, "min": min(top, rng.choice([3, 4, 6, 10])), "auto": auto})
-    road_no = 0
+    road_no = merge_no = 0
     for step in range(steps):
         state, r = hand.state, rng.random()
         if arrivals != 0.46:
             r = r * 0.46 / arrivals if r < arrivals else 0.46 + (r - arrivals) * 0.54 / (1 - arrivals)
         try:
-            if r < 0.46 or len(state.items) < 6:
+            avenues = [k for k, n in state.nodes.items() if n["parent"] is None]
+            if merging and len(avenues) >= 2 and rng.random() < 0.08:
+                merge_no += 1
+                suggestion = suggest_merge(state) if suggested and rng.random() < 0.6 else None
+                if suggestion is not None:
+                    hand.take_merge(suggestion, f"m{merge_no}")
+                else:
+                    hand.merge(f"m{merge_no}", f"Merged {merge_no}", rng.sample(avenues, rng.randint(2, min(4, len(avenues)))))
+            elif r < 0.46 or len(state.items) < 6:
                 hand.add_items([random_item(rng, hand.count + 1)])
             elif r < 0.62:  # open a road: from a place that holds enough, with a random choice of its houses
                 places = [None, *state.nodes]
@@ -330,20 +379,26 @@ def hand_problems(state: State, *, coast: bool = False) -> list:
     for pid, rec in places.items():  # no street record of a road that is not in the tree
         if rec["kind"] == "street" and pid != ROOT and "lane_of" not in rec and rec.get("tag") not in state.nodes:
             bad.append((pid, "a street record of no road"))
-    # the sectors of the ring-1 roads: the ones that stand, in the order they were given, never over one another
+    # the sectors of the ring-1 roads: the ones that stand, in the order they were given; each is the sector of the direction its avenue holds
     ring1 = [r for r in state.plan["ring1"] if state.nodes[r["name"]]["parent"] is None]
     want = [{"place": r["place"], "label": r["label"], "weight": r["weight"], "from": r["wedge"][0], "to": r["wedge"][1], "span": round(r["wedge"][1] - r["wedge"][0], 3)}
             for r in ring1]
     if doc["composition"]["ring1"] != want or city["composition"]["ring1"] != want:
         bad.append(("ring1", "composition.ring1 is not the sectors of the ring-1 roads"))
-    given = [(round(r["wedge"][0] * 100), round(r["wedge"][1] * 100)) for r in state.plan["ring1"]]
-    for i, (lo, hi) in enumerate(given):
-        for lo2, hi2 in given[:i]:
-            if 0 < (lo - lo2) % 36000 < hi2 - lo2 or 0 < (lo2 - lo) % 36000 < hi - lo or (lo - lo2) % 36000 == 0:
-                bad.append(("wedges", f"sectors {i} and an earlier one overlap"))
-        if hi - lo > 4000:
-            bad.append(("wedges", f"sector {i} is wider than 40 degrees"))
+    avenues = [k for k, n in state.nodes.items() if n["parent"] is None]
+    holders = list(state.held.values())
+    if len(holders) != len(set(holders)) or not set(state.held) <= set(range(len(SECTORS))):
+        bad.append(("held", "a road holds two directions, or there is a direction that is not in the table"))
+    if sorted(h for h in holders if state.nodes[h]["parent"] is None) != sorted(avenues):
+        bad.append(("held", "the roads of the first ring are not the roads that hold a direction"))
+    for k, holder in state.held.items():
+        lo, hi = SECTORS[k]
+        if not lo <= bearing(k) <= hi and not lo <= bearing(k) - 36000 <= hi:
+            bad.append(("held", f"the bearing of direction {k} is not in its sector"))
     for r in ring1:
+        k = state.direction_of(r["name"])
+        if k is None or [round(r["wedge"][0] * 100), round(r["wedge"][1] * 100)] != list(SECTORS[k]):
+            bad.append((r["place"], "the sector of a ring-1 road is not the sector of the direction it holds"))
         rec = places.get(r["place"])
         if rec is not None and rec["wedge"] != r["wedge"]:
             bad.append((r["place"], "the wedge of the street is not its sector"))
@@ -391,6 +446,9 @@ def moved_by(event: dict, before: State) -> set[str]:
         return {p["house"]}
     if event["kind"] == "move_road":
         below = set(before.subtree(p["road"]))
+        return {h for h in before.items if before.road_of[h] in below}
+    if event["kind"] == "merge_roads":
+        below = {road for m in p["members"] for road in before.subtree(m)}
         return {h for h in before.items if before.road_of[h] in below}
     return set()
 
@@ -461,4 +519,40 @@ def landing_violations(events: list[dict], rule: dict) -> list[str]:
             road = state.nodes[road]["parent"]
         if road != want:
             bad.append(f"event {e['seq']}: the house {item['id']} stands on {state.road_of[item['id']]!r}, which does not come of {want!r}, the road it lands on")
+    return bad
+
+
+def direction_violations(events: list[dict], rule: dict) -> list[str]:
+    """Replay the log one event at a time and check which avenue holds which direction, from the event and the world before it (not from what the engine says): a new
+    avenue (an `open_road` below the town hall, an avenue that the rule `auto` opens, in the order it opens them) takes the lowest direction that no avenue holds; a merge
+    gives the new avenue the direction of the member with the most houses on it and below it (of two as large the lower direction) and frees the directions of the other
+    members; no other event changes who holds a direction (a road that moves away keeps its direction). An undo is excepted: the world is folded again."""
+    bad = []
+    state, seen = State(rule), []
+    for e in events:
+        seen.append(e)
+        if e["kind"] == "undo":
+            state = fold(seen, rule)
+            continue
+        held, before_nodes = dict(state.held), list(state.nodes)
+        free = [k for k in range(len(SECTORS)) if k not in held]
+        want, p = dict(held), e["payload"]
+        if e["kind"] == "open_road" and p["parent"] is None:
+            want[free[0]] = p["road"]
+        elif e["kind"] == "merge_roads":
+            direction = {m: next(k for k, road in held.items() if road == m) for m in p["members"]}
+            size = {m: sum(1 for h in state.items if state.road_of[h] in set(state.subtree(m))) for m in p["members"]}
+            took = min(p["members"], key=lambda m: (-size[m], direction[m]))
+            for m in p["members"]:
+                del want[direction[m]]
+            want[direction[took]] = p["road"]
+        try:
+            state.apply(e)
+        except Refusal as why:
+            return [*bad, f"event {e['seq']} ({e['kind']}) was refused: {why}"]
+        if e["kind"] == "add_item":
+            roots = [k for k in state.nodes if k not in before_nodes and state.nodes[k]["parent"] is None]
+            want.update(zip(free, roots))
+        if state.held != want:
+            bad.append(f"event {e['seq']} ({e['kind']}): the directions are {dict(sorted(state.held.items()))}, they should be {dict(sorted(want.items()))}")
     return bad

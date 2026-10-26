@@ -19,11 +19,12 @@ from bibliopolis.suggest import suggest_file, suggest_road
 ROOT = Path(__file__).resolve().parents[1]
 MODULES = ("events", "journal", "hand", "suggest", "store")
 ERRORS = ("Refusal", "WorldFileError")
+BUILDERS = ("ring1_full",)  # functions of the modules that build a `Refusal` (with a literal id and its params) for a raise statement
 
 
 # --------------------------------------------------------------------------------- the list and its scenarios ----
 def test_the_list_of_ids_is_one_list_of_names_each_with_the_names_of_its_params():
-    assert len(ev.CODES) == 65 and all(code.isidentifier() and code == code.lower() for code in ev.CODES)
+    assert len(ev.CODES) == 69 and all(code.isidentifier() and code == code.lower() for code in ev.CODES)
     for code, params in ev.CODES.items():
         assert isinstance(params, tuple) and len(set(params)) == len(params) and all(isinstance(p, str) and p.isidentifier() for p in params), code
 
@@ -54,7 +55,7 @@ def test_each_id_is_made_as_a_refusal_a_file_error_or_a_problem_of_shape_and_the
         made = case(folder)
         kinds["problem" if isinstance(made, dict) else type(made).__name__].add(code)
     assert kinds["Refusal"] | kinds["WorldFileError"] | kinds["problem"] == set(ev.CODES)
-    assert (len(kinds["Refusal"]), len(kinds["WorldFileError"]), len(kinds["problem"])) == (25, 11, 29)
+    assert (len(kinds["Refusal"]), len(kinds["WorldFileError"]), len(kinds["problem"])) == (26, 11, 32)
 
 
 def test_the_problems_of_an_invalid_refusal_have_each_an_id_of_the_list_and_a_place():
@@ -175,7 +176,7 @@ def test_every_refusal_and_every_problem_in_the_source_has_an_id_of_the_list_and
 
 def test_the_check_of_the_source_sees_a_refusal_with_no_id_a_wrong_id_and_wrong_params():
     good = ("raise Refusal('x', 'no_road', road=1)\nproblems.add(w, 'x', 'text_empty')\nraise WorldFileError('x', why.code, **why.params)\n"
-            "problems.add(w, 'x', 'keys_missing', keys=[])\nraise Refusal('x', 'ring1_full', limit=1, number=2)")
+            "problems.add(w, 'x', 'keys_missing', keys=[])\nraise Refusal('x', 'ring1_full', limit=1, number=2, remedy='merge_roads')")
     assert id_problems(good) == []
     cases = {"no id": "raise Refusal('x')", "no id in an add": "problems.add(w, 'x')", "an id that is not listed": "raise Refusal('x', 'nonsense')",
              "a variable id": "raise Refusal('x', code, road=1)", "a param too few": "raise Refusal('x', 'no_road')", "a param too many": "raise Refusal('x', 'no_road', road=1, more=2)",
@@ -191,4 +192,7 @@ def test_no_other_class_of_the_package_is_raised_for_a_refusal_of_a_world():
         tree = ast.parse((ROOT / "bibliopolis" / f"{module}.py").read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.Raise) and isinstance(node.exc, ast.Call) and isinstance(node.exc.func, ast.Name):
-                assert node.exc.func.id in ERRORS, f"{module}.py:{node.lineno} raises {node.exc.func.id}"
+                assert node.exc.func.id in (*ERRORS, *BUILDERS), f"{module}.py:{node.lineno} raises {node.exc.func.id}"
+        for node in ast.walk(tree):  # a builder makes its refusal itself, from an id of the list: the scan above has checked that call
+            if isinstance(node, ast.FunctionDef) and node.name in BUILDERS:
+                assert any(isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "Refusal" for n in ast.walk(node)), node.name

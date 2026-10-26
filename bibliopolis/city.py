@@ -72,7 +72,7 @@ _DAY = re.compile(r"\d{4}-\d\d-\d\d")
 def chronicle_lines(doc: dict, limit: int | None = None) -> list[str]:
     """The chronicle of a city document as sentences, oldest first, one per entry (the first `limit` of them if given): the house whose arrival caused it, the
     day it was added, and what happened. Every number comes from the entry or from the rule of the document. (In a world built by hand an entry says the event
-    that wrote it, and there are entries for a house filed, a road renamed or moved, an undo and a change of rule.)"""
+    that wrote it, and there are entries for a house filed, a road renamed or moved, avenues merged, an undo and a change of rule.)"""
     places = doc["places"]
     rule = doc["world"]["districts"]
 
@@ -103,6 +103,9 @@ def chronicle_lines(doc: dict, limit: int | None = None) -> list[str]:
             lines.append(f"{when}: {e['was']} is renamed {e['label']}.")
         elif "moved" in e:
             lines.append(f"{when}: {name(e['moved'])} moves from below {name(e['was_below'], False)} to below {name(e['below'], False)}, with {len(e['houses'])} houses.")
+        elif "merged" in e:
+            lines.append(f"{when}: {len(e['members'])} avenues ({', '.join(name(m, False) for m in e['members'])}) are merged below the new avenue {e['label']}, "
+                         f"which takes the direction of {name(e['took'], False)}; {len(e['houses'])} houses are put again.")
         elif "undone" in e:
             lines.append(f"{when}: event {e['undone']} ({e['of']}) is undone.")
         else:

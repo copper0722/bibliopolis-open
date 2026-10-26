@@ -68,7 +68,7 @@ NOTES_DISTRICTS = {
 NOTES_HAND = {
     "world.mode": "hand: the world is the fold of a log of events that the player appended (docs/world.md); a road is a category the player opened, and nothing "
                   "splits or is marked over by itself",
-    "world.chronicle": "every road opened, house filed, road renamed or moved, undo and change of rule, in the order of the log (`event_id` is the number of the event, "
+    "world.chronicle": "every road opened, house filed, road renamed or moved, avenues merged, undo and change of rule, in the order of the log (`event_id` is the number of the event, "
                        "`seq` the arrivals so far, `at` the `at` of the event)",
 }
 HAND_INPUT = "a log of events (docs/world.md), folded in order into a world of roads and houses"

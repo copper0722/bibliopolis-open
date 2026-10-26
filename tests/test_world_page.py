@@ -90,6 +90,7 @@ def entries_of_a_world():
     h.rename("a", "Alpha")
     h.open("a1", "A one", "a", [hid(i) for i in range(1, 11)])
     h.move("a1", "b")
+    h.merge("m", "M", ["a", "b"])
     h.rule(30, 5)
     h.add(1)
     h.undo()
@@ -98,9 +99,9 @@ def entries_of_a_world():
 
 def test_the_table_of_chronicle_entries_has_the_keys_the_engine_writes_in_that_order():
     rows = re.findall(r"^\| (?:a |an )(.+?) \| (.+?) \|$", PAGE.split("The chronicle.")[1].split("An event that an undo")[0], flags=re.M)
-    assert len(rows) == 6
+    assert len(rows) == 7
     entries = list(entries_of_a_world().values())
-    kinds = {"road opened": "from", "house filed": "filed", "road renamed": "renamed", "road moved": "moved", "undo": "undone", "change of rule": "rule"}
+    kinds = {"road opened": "from", "house filed": "filed", "road renamed": "renamed", "road moved": "moved", "merge of avenues": "merged", "undo": "undone", "change of rule": "rule"}
     for what, cell in rows:
         shown = re.findall(r"`(\w+)`", cell)
         marker = next(v for k, v in kinds.items() if what.startswith(k))

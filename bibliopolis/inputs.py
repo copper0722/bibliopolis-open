@@ -377,7 +377,7 @@ def _check_coast(problems: _Problems, name: str, coast) -> None:
             problems.add(f"{name}.coast.polygons[{i}]", "must be a list of at least three [x, z] corners")
 
 
-HAND_ENTRIES = ("filed", "renamed", "moved", "undone", "rule")  # the keys that tell the entries of a world built by hand from a split and an over
+HAND_ENTRIES = ("filed", "renamed", "moved", "merged", "undone", "rule")  # the keys that tell the entries of a world built by hand from a split and an over
 
 
 def _check_world(problems: _Problems, name: str, world: dict) -> None:
@@ -418,6 +418,12 @@ def _check_world(problems: _Problems, name: str, world: dict) -> None:
             _typed(problems, here, e, "moved", _is_text, "a place id (a string)")
             _typed(problems, here, e, "below", _is_text, "the place it stands below now (a string)")
             _typed(problems, here, e, "was_below", _is_text, "the place it stood below (a string)")
+            _typed(problems, here, e, "houses", lambda v: isinstance(v, list), "the list of the houses that were put again")
+        elif "merged" in e:  # avenues merged under a new avenue
+            _typed(problems, here, e, "merged", _is_text, "a place id (a string)")
+            _typed(problems, here, e, "label", _is_text, "the name of the new avenue (a string)")
+            _typed(problems, here, e, "members", lambda v: isinstance(v, list) and all(_is_text(x) for x in v), "the list of the places that were merged (strings)")
+            _typed(problems, here, e, "took", _is_text, "the place whose direction the new avenue took (a string)")
             _typed(problems, here, e, "houses", lambda v: isinstance(v, list), "the list of the houses that were put again")
         elif "undone" in e:  # an event taken back
             _typed(problems, here, e, "undone", lambda v: _whole(v) and v >= 1, "the number of the event (a whole number, 1 or more)")

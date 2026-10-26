@@ -8,7 +8,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import pytest
-from hand_support import hid, play, stamp
+from hand_support import hid, play, scripted_merge, stamp
 
 from bibliopolis import cli, store
 from bibliopolis import layout as lay
@@ -142,6 +142,20 @@ def test_fold_writes_the_city_as_build_does_and_the_picture_and_the_chronicle_re
     assert ET.fromstring(svg.read_text(encoding="utf-8")).tag.endswith("svg")
     code, _, out = run_main(capsys, "chronicle", "--city", str(city_file))
     assert code == 0 and out.splitlines() == chronicle_lines(read_city(json.loads(city_file.read_text(encoding="utf-8")))) and len(out.splitlines()) >= 10
+
+
+def test_a_world_with_merged_avenues_goes_through_import_fold_the_picture_and_the_chronicle(tmp_path, capsys):
+    source, journal = world_file(tmp_path, scripted_merge().journal)
+    run_main(capsys, "world", "import", str(source), "--world", str(tmp_path / "w.sqlite"))
+    city_file = tmp_path / "city.json"
+    assert run_main(capsys, "world", "fold", "--out", str(city_file), "--world", str(tmp_path / "w.sqlite"))[0] == 0
+    assert city_file.read_text(encoding="utf-8") == lay.render(journal.state.city())
+    svg = tmp_path / "city.svg"
+    assert run_main(capsys, "picture", "--city", str(city_file), "--out", str(svg))[0] == 0 and ET.fromstring(svg.read_text(encoding="utf-8")).tag.endswith("svg")
+    code, _, out = run_main(capsys, "chronicle", "--city", str(city_file))
+    merged = [line for line in out.splitlines() if "are merged below the new avenue" in line]
+    assert code == 0 and len(merged) == 2
+    assert merged[0].endswith("3 avenues (Field 1.1, Field 1.2, Field 1.3) are merged below the new avenue Domain 1, which takes the direction of Field 1.3; 21 houses are put again.")
 
 
 def test_fold_of_an_empty_world_is_the_town_hall_alone(tmp_path, capsys):

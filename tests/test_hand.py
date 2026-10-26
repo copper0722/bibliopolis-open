@@ -77,11 +77,12 @@ def test_a_town_has_at_most_thirteen_avenues_with_these_sectors_and_the_fourteen
         given.append(sector)
     spans = [hi - lo for lo, hi in given]
     assert spans[:5] == [4000] * 5 and max(spans) == 4000 and min(spans) == 1252 and sum(spans) == lay.FULL  # the sectors tile the circle: nothing is left
-    assert hand.AVENUES == hand.capacity() == 13 == len(FIRST_RING)  # (the number is read off the sectors, not written down)
+    assert hand.AVENUES == hand.capacity() == 13 == len(FIRST_RING) and hand.SECTORS == FIRST_RING  # (the number is read off the sectors, not written down)
     with pytest.raises(Refusal) as why:
         ring1_wedge(given, 13)
-    assert str(why.value) == "the first ring has at most 13 avenues and all 13 directions are used, so the 14th category goes below an avenue"
-    assert why.value.code == "ring1_full" and why.value.params == {"limit": 13, "number": 14}  # the id and the numbers a page translates the message from
+    assert str(why.value) == ("the first ring has at most 13 avenues and all 13 directions are used, so the 14th category goes below an avenue, "
+                              "or similar avenues are merged under a new one (merge_roads) to free their directions")
+    assert why.value.code == "ring1_full" and why.value.params == {"limit": 13, "number": 14, "remedy": "merge_roads"}  # the id and the values a page translates from
 
 
 def test_a_sector_has_its_bearing_inside_it_at_most_twenty_degrees_either_side_and_never_overlaps_one_given():
@@ -103,7 +104,7 @@ def test_a_sector_stops_where_the_next_one_begins_on_each_side_and_a_bearing_on_
         ring1_wedge([(-100, 1000)], 0)
     with pytest.raises(Refusal, match="is on the border of two sectors, with no room between them") as border:
         ring1_wedge([(-1000, 0), (0, 1000)], 0)  # the bearing is on the border of two sectors
-    assert [(e.value.code, e.value.params) for e in (inside, border)] == [("ring1_full", {"limit": 13, "number": 1})] * 2
+    assert [(e.value.code, e.value.params) for e in (inside, border)] == [("ring1_full", {"limit": 13, "number": 1, "remedy": "merge_roads"})] * 2
 
 
 def test_a_sector_past_the_south_is_turned_back_one_circle_and_is_still_the_same_sector_of_the_circle():
@@ -280,7 +281,7 @@ def test_the_fourteenth_road_of_the_first_ring_is_refused_and_a_road_below_a_roa
     h.add(10)
     err = refuses(h, "at most 13 avenues and all 13 directions are used, so the 14th category goes below an avenue", "open_road",
                   {"road": "r13", "name": "Road 13", "parent": None, "houses": h.state.houses_at(None)[:10]})
-    assert (err.code, err.params) == ("ring1_full", {"limit": 13, "number": 14})
+    assert (err.code, err.params) == ("ring1_full", {"limit": 13, "number": 14, "remedy": "merge_roads"})
     h.open("r13", "Road 13", "r0", h.state.houses_at("r0"))
     assert sound(h).nodes["r13"]["parent"] == "r0"
 

@@ -90,7 +90,9 @@ def test_a_rule_is_two_whole_numbers_and_a_boolean():
 NODE = {"id": "ex:d1", "level": "domain", "name": "Domain 1"}
 GOOD = [("add_item", {"item": item(1)}), ("open_road", {"road": "r1", "name": "Road one", "parent": None, "houses": [hid(1), hid(2)], "topic": None}),
         ("open_road", {"road": "r2", "name": "Road two", "parent": "r1", "houses": [hid(3)], "topic": NODE}), ("file", {"house": hid(1), "road": "r1"}),
-        ("rename_road", {"road": "r1", "name": "New"}), ("move_road", {"road": "r2", "parent": "r1"}), ("undo", {"seq": 1}),
+        ("rename_road", {"road": "r1", "name": "New"}), ("move_road", {"road": "r2", "parent": "r1"}),
+        ("merge_roads", {"road": "m1", "name": "Merged", "parent": None, "members": ["r1", "r3"], "topic": None}),
+        ("merge_roads", {"road": "m2", "name": "Domain 1", "parent": None, "members": ["r1", "r3", "r4"], "topic": NODE}), ("undo", {"seq": 1}),
         ("set_rule", {"max": 40, "min": 10, "auto": False})]
 
 
@@ -105,7 +107,7 @@ def test_the_node_of_a_road_may_be_left_out_and_is_then_kept_as_null_at_the_end_
     left_out = {"road": "r1", "name": "Road one", "parent": None, "houses": [hid(1)]}
     out, found = checked(ev.check_event, event("open_road", left_out), "event")
     assert found == [] and out["payload"] == {**left_out, "topic": None} and list(out["payload"]) == ["road", "name", "parent", "houses", "topic"]
-    assert ev.OPTIONAL_KEYS == {"open_road": ("topic",)}
+    assert ev.OPTIONAL_KEYS == {"open_road": ("topic",), "merge_roads": ("topic",)}
 
 
 NODE_FAULTS = [({"id": "ex:d1", "level": "domain"}, "missing name"), ({**NODE, "extra": 1}, "unknown extra"), ({**NODE, "level": "planet"}, "must be one of domain, field, subfield, topic"),
@@ -125,8 +127,14 @@ def test_the_four_levels_of_a_node_are_the_four_levels_of_a_topic_of_an_item():
         assert found == [] and out["payload"]["topic"]["level"] == level
 
 
-def test_the_kinds_are_the_seven_of_the_page():
-    assert ev.KINDS == ("add_item", "open_road", "file", "rename_road", "move_road", "undo", "set_rule") and set(ev.PAYLOAD_KEYS) == set(ev.KINDS)
+def test_the_kinds_are_the_eight_of_the_page():
+    assert ev.KINDS == ("add_item", "open_road", "file", "rename_road", "move_road", "merge_roads", "undo", "set_rule") and set(ev.PAYLOAD_KEYS) == set(ev.KINDS)
+
+
+def test_the_node_of_a_merge_may_be_left_out_too_and_is_kept_as_null_last():
+    left_out = {"road": "m", "name": "M", "parent": None, "members": ["a", "b"]}
+    out, found = checked(ev.check_event, event("merge_roads", left_out), "event")
+    assert found == [] and out["payload"] == {**left_out, "topic": None} and list(out["payload"]) == ["road", "name", "parent", "members", "topic"]
 
 
 @pytest.mark.parametrize("make, fragment", [
@@ -148,6 +156,17 @@ def test_the_kinds_are_the_seven_of_the_page():
     (lambda: event("open_road", {"road": "auto:7", "name": "N", "parent": None, "houses": ["a"]}), "starts with 'auto:'"),
     (lambda: event("open_road", {"road": "r", "name": "N", "parent": 5, "houses": ["a"]}), "must be a string"),
     (lambda: event("move_road", {"road": "r", "parent": None}), "must be a string"),
+    (lambda: event("merge_roads", {"road": "m", "name": "M", "parent": None, "members": ["a"]}), "a merge takes at least 2"),
+    (lambda: event("merge_roads", {"road": "m", "name": "M", "parent": None, "members": []}), "a merge takes at least 2"),
+    (lambda: event("merge_roads", {"road": "m", "name": "M", "parent": None, "members": ["a", "a"]}), "chosen twice"),
+    (lambda: event("merge_roads", {"road": "m", "name": "M", "parent": None, "members": "ab"}), "must be a list of at least 2 road ids"),
+    (lambda: event("merge_roads", {"road": "m", "name": "M", "parent": None, "members": ["a", 5]}), "must be a string"),
+    (lambda: event("merge_roads", {"road": "m", "name": "M", "parent": "r", "members": ["a", "b"]}), "must be null, the town hall"),
+    (lambda: event("merge_roads", {"road": "auto:3", "name": "M", "parent": None, "members": ["a", "b"]}), "starts with 'auto:'"),
+    (lambda: event("merge_roads", {"road": "lane:x:2", "name": "M", "parent": None, "members": ["a", "b"]}), "continuation rib"),
+    (lambda: event("merge_roads", {"road": "m", "name": "", "parent": None, "members": ["a", "b"]}), "must not be empty"),
+    (lambda: event("merge_roads", {"road": "m", "name": "M", "parent": None, "members": ["a", "b"], "topic": {"id": "x", "level": "planet", "name": "X"}}), "must be one of domain"),
+    (lambda: event("merge_roads", {"road": "m", "name": "M", "members": ["a", "b"]}), "missing parent"),
     (lambda: event("rename_road", {"road": "r", "name": ""}), "must not be empty"),
     (lambda: event("undo", {"seq": 0}), "number of an event"),
     (lambda: event("undo", {"seq": "3"}), "number of an event"),
@@ -229,6 +248,7 @@ def test_references_are_the_roads_and_the_houses_a_payload_names_other_than_the_
     assert ev.references(event("file", {"house": "a", "road": "r"})) == ({"r"}, {"a"})
     assert ev.references(event("rename_road", {"road": "r", "name": "N"})) == ({"r"}, set())
     assert ev.references(event("move_road", {"road": "r", "parent": "p"})) == ({"r", "p"}, set())
+    assert ev.references(event("merge_roads", {"road": "m", "name": "M", "parent": None, "members": ["a", "b"]})) == ({"a", "b"}, set())  # (the roads it merges; the road it creates is not named)
     for kind, payload in (("add_item", {"item": item(1)}), ("undo", {"seq": 1}), ("set_rule", {"max": 40, "min": 10, "auto": False})):
         assert ev.references(event(kind, payload)) == (set(), set())
 

@@ -14,6 +14,10 @@ A world built by hand is an append-only log of events, and its city and its chro
   file         {house, road}                  a house moves, from the root zone or another road, onto a road
   rename_road  {road, name}
   move_road    {road, parent}                 a road, with the roads and houses below it, stands again below another road
+  merge_roads  {road, name, parent, members, topic}
+                                              a full first ring is the moment to group upward: a new avenue (a road of the first ring; `parent` is null, the town hall)
+                                              takes the direction of the largest of the `members`, avenues of the first ring, and they stand below it as roads of the
+                                              second ring, with the roads and houses below them; the directions of the other members are free again. `topic` as for open_road
   undo         {seq}                          the named event no longer counts; an undo of an undo restores it
   set_rule     {max, min, auto}               the rule from here on; `auto` applies the district rule after each arrival (bibliopolis.hand)
 
@@ -27,7 +31,7 @@ from __future__ import annotations
 from .inputs import _CONTROL, _LANE_LIKE, MAX_PROBLEMS, _Problems, _shown, _whole, parse_added_at
 from .plan import MAX_HOUSES, MIN_HOUSES
 
-KINDS = ("add_item", "open_road", "file", "rename_road", "move_road", "undo", "set_rule")
+KINDS = ("add_item", "open_road", "file", "rename_road", "move_road", "merge_roads", "undo", "set_rule")
 ORDER = ("domain", "field", "subfield", "topic")  # the four levels of an OpenAlex topic, the widest first (the order the keys are written in)
 LEVELS = ORDER[::-1]  # ... and the most specific first (the order a filing suggestion scores them in)
 MAX_TOPICS = 3  # the primary topic of an item and up to two more
@@ -39,15 +43,16 @@ ITEM_KEYS = ("id", "title", "authors", "year", "doi", "type", "openalex")
 ITEM_REQUIRED = ("id", "title", "authors", "year", "type")
 YEAR_LIMIT = 10**6
 PAYLOAD_KEYS = {"add_item": ("item",), "open_road": ("road", "name", "parent", "houses", "topic"), "file": ("house", "road"), "rename_road": ("road", "name"),
-                "move_road": ("road", "parent"), "undo": ("seq",), "set_rule": RULE_KEYS}
-OPTIONAL_KEYS = {"open_road": ("topic",)}  # left out, they are null (the event is kept with every key, in the order of PAYLOAD_KEYS)
+                "move_road": ("road", "parent"), "merge_roads": ("road", "name", "parent", "members", "topic"), "undo": ("seq",), "set_rule": RULE_KEYS}
+OPTIONAL_KEYS = {"open_road": ("topic",), "merge_roads": ("topic",)}  # left out, they are null (the event is kept with every key, in the order of PAYLOAD_KEYS)
+MERGE_LEAST = 2  # the fewest avenues a merge takes
 NODE_KEYS = ("id", "level", "name")  # the OpenAlex node a road carries: the id of the node, its level (one of ORDER) and its name
 
 # The ids of every refusal, problem of shape and error of a world file, with the names of their params: the one list (docs/world.md, "Refusals" says when each comes).
 # A page translates from the id and the params. A place is a road id, or None for the root zone; a `got` is the name of a type or a short text of the value.
 CODES = {
     # ---- the world refuses an event (Refusal)
-    "ring1_full": ("limit", "number"),
+    "ring1_full": ("limit", "number", "remedy"),
     "house_exists": ("house",),
     "not_a_house": ("house",),
     "road_exists": ("road",),
@@ -59,6 +64,7 @@ CODES = {
     "house_elsewhere": ("house", "road", "on"),
     "node_taken": ("level", "topic", "road"),
     "house_not_under_node": ("house", "level", "topic"),
+    "not_an_avenue": ("road",),
     "already_there": ("house", "road"),
     "same_name": ("road", "name"),
     "move_into_itself": ("road", "parent"),
@@ -101,6 +107,9 @@ CODES = {
     "house_chosen_twice": ("house",),
     "node_not_an_object": ("got",),
     "node_level_bad": ("got", "levels"),
+    "members_too_few": ("count", "least"),
+    "member_chosen_twice": ("road",),
+    "parent_not_root": ("got",),
     "event_seq_bad": ("got",),
     "date_bad": ("at",),
     "kind_unknown": ("kind", "kinds"),
@@ -330,6 +339,7 @@ def _payload(kind: str, payload, where: str, problems: Problems) -> dict | None:
         return {"item": item} if item is not None else None
     if kind == "set_rule":
         return check_rule(payload, where, problems)
+    node = None
     if kind == "undo":
         if not _whole(payload["seq"]) or payload["seq"] < 1:
             problems.add(f"{where}.seq", f"must be the number of an event (1 or more), got {_shown(payload['seq'])}", "undo_seq_bad", got=_shown(payload["seq"]))
@@ -346,6 +356,23 @@ def _payload(kind: str, payload, where: str, problems: Problems) -> dict | None:
                 if text(problems, f"{where}.houses[{j}]", h, plain=True) and h in houses[:j]:
                     problems.add(f"{where}.houses[{j}]", f"{h!r} is chosen twice", "house_chosen_twice", house=h)
         _, node = check_node(payload.get("topic"), f"{where}.topic", problems)
+    elif kind == "merge_roads":
+        _road_id(problems, f"{where}.road", payload["road"], new=True)
+        text(problems, f"{where}.name", payload["name"], plain=True)
+        if payload["parent"] is not None:
+            problems.add(f"{where}.parent", f"must be null, the town hall: avenues are merged under a new avenue of the first ring, got {_shown(payload['parent'])}",
+                         "parent_not_root", got=_shown(payload["parent"]))
+        members = payload["members"]
+        if not isinstance(members, list):
+            problems.add(f"{where}.members", f"must be a list of at least {MERGE_LEAST} road ids, got {type(members).__name__}", "not_a_list", got=type(members).__name__)
+        else:
+            if len(members) < MERGE_LEAST:
+                problems.add(f"{where}.members", f"holds {len(members)} {'road' if len(members) == 1 else 'roads'}; a merge takes at least {MERGE_LEAST}", "members_too_few",
+                             count=len(members), least=MERGE_LEAST)
+            for j, m in enumerate(members):
+                if _road_id(problems, f"{where}.members[{j}]", m) and m in members[:j]:
+                    problems.add(f"{where}.members[{j}]", f"{m!r} is chosen twice", "member_chosen_twice", road=m)
+        _, node = check_node(payload.get("topic"), f"{where}.topic", problems)
     elif kind == "file":
         text(problems, f"{where}.house", payload["house"], plain=True)
         _road_id(problems, f"{where}.road", payload["road"])
@@ -358,7 +385,7 @@ def _payload(kind: str, payload, where: str, problems: Problems) -> dict | None:
     if _count(problems) != start:
         return None
     out = {k: payload.get(k) for k in keys}
-    if kind == "open_road":
+    if kind in ("open_road", "merge_roads"):
         out["topic"] = node
     return out
 
@@ -413,4 +440,6 @@ def references(event: dict) -> tuple[set[str], set[str]]:
         return {p["road"]}, set()
     if kind == "move_road":
         return {p["road"], p["parent"]}, set()
+    if kind == "merge_roads":
+        return set(p["members"]), set()
     return set(), set()

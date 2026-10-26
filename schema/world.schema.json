@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Bibliopolis world file",
-  "description": "A world built by hand, as docs/world.md describes it: the rule it started with, the items that became houses, and the append-only log of events that the city is the fold of. This schema says the shape of the file. What it cannot say the program checks when it reads the file: an id used once among the events that count, events numbered 1, 2, 3, ... in order, min no more than max, an `items` list equal to the items of the add_item events, a topic not named twice by one item, whitespace-only text, and every refusal of the world (a house that is not there, a road that exists, a node that another road stands for, the 13 directions of the first ring, an undo that a later event depends on). A file that satisfies the schema may still be refused; a file that does not is always refused.",
+  "description": "A world built by hand, as docs/world.md describes it: the rule it started with, the items that became houses, and the append-only log of events that the city is the fold of. This schema says the shape of the file. What it cannot say the program checks when it reads the file: an id used once among the events that count, events numbered 1, 2, 3, ... in order, min no more than max, an `items` list equal to the items of the add_item events, a topic not named twice by one item, whitespace-only text, and every refusal of the world (a house that is not there, a road that exists, a node that another road stands for, the 13 directions of the first ring, a member of a merge that is not an avenue, an undo that a later event depends on). A file that satisfies the schema may still be refused; a file that does not is always refused.",
   "type": "object",
   "required": ["format", "version", "rule", "items", "events"],
   "additionalProperties": false,
@@ -87,6 +87,7 @@
         {"$ref": "#/$defs/file"},
         {"$ref": "#/$defs/rename_road"},
         {"$ref": "#/$defs/move_road"},
+        {"$ref": "#/$defs/merge_roads"},
         {"$ref": "#/$defs/undo"},
         {"$ref": "#/$defs/set_rule"}
       ]
@@ -175,6 +176,28 @@
           "required": ["road", "parent"],
           "additionalProperties": false,
           "properties": {"road": {"$ref": "#/$defs/text"}, "parent": {"$ref": "#/$defs/text", "description": "A road: a move never makes a ring-1 road."}}
+        }
+      }
+    },
+    "merge_roads": {
+      "type": "object",
+      "required": ["seq", "at", "kind", "payload"],
+      "additionalProperties": false,
+      "properties": {
+        "seq": {"$ref": "#/$defs/count"},
+        "at": {"$ref": "#/$defs/moment"},
+        "kind": {"const": "merge_roads"},
+        "payload": {
+          "type": "object",
+          "required": ["road", "name", "parent", "members"],
+          "additionalProperties": false,
+          "properties": {
+            "road": {"$ref": "#/$defs/text", "not": {"pattern": "^(lane:.*:[0-9]+$|auto:)"}, "description": "The id of the new avenue: not of the form lane:<id>:<n>, not starting with auto:."},
+            "name": {"$ref": "#/$defs/text"},
+            "parent": {"type": "null", "description": "The town hall: the new road is an avenue of the first ring."},
+            "members": {"type": "array", "minItems": 2, "uniqueItems": true, "items": {"$ref": "#/$defs/text"}, "description": "The avenues of the first ring that stand below the new avenue: it takes the direction of the largest, the others are free."},
+            "topic": {"$ref": "#/$defs/road_node", "description": "Optional; null when left out."}
+          }
         }
       }
     },

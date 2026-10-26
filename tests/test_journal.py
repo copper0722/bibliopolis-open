@@ -99,11 +99,12 @@ def thirteen_avenues_and_a_fourteenth():
 def test_the_id_of_a_refusal_survives_the_replay_and_the_fold_of_a_log_that_the_world_would_not_take():
     journal, log = thirteen_avenues_and_a_fourteenth()
     assert log[-1]["seq"] == 154  # 13 roads of 10 houses and an open_road each, and ten houses more
-    message = "event 154 (open_road): the first ring has at most 13 avenues and all 13 directions are used, so the 14th category goes below an avenue"
+    message = ("event 154 (open_road): the first ring has at most 13 avenues and all 13 directions are used, so the 14th category goes below an avenue, "
+               "or similar avenues are merged under a new one (merge_roads) to free their directions")
     for refuse in (lambda: Journal.replay(journal.rule, log), lambda: hand.fold(log, journal.rule)):
         with pytest.raises(Refusal) as why:
             refuse()
-        assert str(why.value) == message and (why.value.code, why.value.params) == ("ring1_full", {"limit": 13, "number": 14})
+        assert str(why.value) == message and (why.value.code, why.value.params) == ("ring1_full", {"limit": 13, "number": 14, "remedy": "merge_roads"})
     with pytest.raises(Refusal) as why:
         journal.append(log[-1]["kind"], log[-1]["payload"], log[-1]["at"])
     assert str(why.value) == message.split(": ", 1)[1] and why.value.code == "ring1_full"

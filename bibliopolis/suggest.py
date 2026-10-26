@@ -2,6 +2,7 @@
 
     suggest_road(world, at)       the houses to put on a new road opened at a road or the root zone, and the OpenAlex node to name it after
     suggest_file(world, house)    the road a house belongs on, with a confidence
+    suggest_merge(world)          the avenues of the first ring to merge under a new avenue, which frees their directions
     landing(world, item)          the road an arriving item stands on under the rule `auto`
     crowded(world)                the places that hold more houses than `max`
 
@@ -17,7 +18,7 @@ from __future__ import annotations
 
 from collections import Counter
 
-from .events import LEVELS, ORDER, Refusal
+from .events import LEVELS, MERGE_LEAST, ORDER, Refusal
 
 
 def roads_by_node(world) -> dict[tuple[str, str], str]:
@@ -171,6 +172,71 @@ def suggest_file(world, house: str) -> dict | None:
     count = candidates[best][at]
     whole = sum(s[at] for s in candidates.values())
     return {"house": house, "road": best, "name": world.nodes[best]["name"], "level": LEVELS[at], "shared": count, "confidence": round(count / whole, 2)}
+
+
+def _profile(world, houses: list[str]) -> dict[str, Counter]:
+    """For each level, how many of the houses carry each node (a house once for a node, however many of its topics lie under it)."""
+    counts: dict[str, Counter] = {level: Counter() for level in LEVELS}
+    for house in houses:
+        for level in LEVELS:
+            counts[level].update({t[level]["id"] for t in world.items[house]["openalex"]})
+    return counts
+
+
+def _likeness(a: dict[str, Counter], b: dict[str, Counter]) -> tuple[int, ...]:
+    """How alike two avenues are: for each level, the most specific first, the houses they have in common under the same nodes (the smaller count of each node, summed)."""
+    return tuple(sum(min(a[level][node], b[level][node]) for node in a[level].keys() & b[level].keys()) for level in LEVELS)
+
+
+def suggest_merge(world) -> dict | None:
+    """The avenues to merge under a new avenue: `{members, topic, name, by, takes, frees}`, or None. The avenues are the roads of the first ring.
+
+    First, avenues that stand for sibling nodes of OpenAlex (nodes with the same parent node, a level up): the group with the most avenues (then the most houses, then the
+    lower parent id) whose parent node no road stands for, and every house of whose avenues, and of the roads below them, is under it. `topic` is that parent node
+    (ready to be the `topic` of `merge_roads`), `name` its name, `by` is "parent_node". Failing that, the two avenues whose houses are most alike (`_likeness`: the
+    topics they have in common, the most specific level first; of two as alike the pair of lower road ids), when they have anything in common: `topic` is None, `name` the two
+    names joined by " / ", `by` "similar_houses". `members` are in the order the avenues were opened, `takes` is the member whose direction the new avenue takes (the one
+    with the most houses) and `frees` how many directions the merge frees. Nothing is changed; the world takes the merge as it takes any event."""
+    avenues = [road for road, node in world.nodes.items() if node["parent"] is None]
+    if len(avenues) < MERGE_LEAST:
+        return None
+    houses = {road: world.houses_below(road) for road in avenues}
+    taken = roads_by_node(world)
+    siblings: dict[tuple[str, str], list[str]] = {}
+    names: dict[tuple[str, str], str] = {}
+    for road in avenues:
+        node = world.nodes[road]["topic"]
+        if node is None or node["level"] == ORDER[0]:
+            continue
+        up = ORDER[ORDER.index(node["level"]) - 1]
+        parents: Counter = Counter()
+        first: dict[str, str] = {}
+        for item in world.items.values():
+            for t in item["openalex"]:
+                if t[node["level"]]["id"] == node["id"]:
+                    parents[t[up]["id"]] += 1
+                    first.setdefault(t[up]["id"], t[up]["name"])
+        if parents:
+            parent = min(parents, key=lambda i: (-parents[i], i))
+            siblings.setdefault((up, parent), []).append(road)
+            names[(up, parent)] = first[parent]
+    groups = [(key, roads) for key, roads in siblings.items() if len(roads) >= MERGE_LEAST and key not in taken
+              and all(descends(world.items[h]["openalex"], key[0], key[1]) for road in roads for h in houses[road])]
+    if groups:
+        (level, parent), roads = min(groups, key=lambda g: (-len(g[1]), -sum(len(houses[r]) for r in g[1]), g[0][1], ORDER.index(g[0][0])))
+        return {"members": roads, "topic": {"id": parent, "level": level, "name": names[(level, parent)]}, "name": names[(level, parent)], "by": "parent_node",
+                "takes": world.largest_avenue(roads), "frees": len(roads) - 1}
+    profiles = {road: _profile(world, houses[road]) for road in avenues}
+    best, pair = None, None
+    for i, a in enumerate(avenues):
+        for b in avenues[i + 1:]:
+            like = _likeness(profiles[a], profiles[b])
+            key = (tuple(-n for n in like), *sorted((a, b)))
+            if any(like) and (best is None or key < best):
+                best, pair = key, [a, b]
+    if pair is None:
+        return None
+    return {"members": pair, "topic": None, "name": " / ".join(world.nodes[r]["name"] for r in pair), "by": "similar_houses", "takes": world.largest_avenue(pair), "frees": 1}
 
 
 def crowded(world) -> list[dict]:

@@ -8,7 +8,7 @@ import sqlite3
 from pathlib import Path
 
 import pytest
-from hand_support import Hand, hid, item, play, scripted, scripted_nodes, stamp, topic
+from hand_support import Hand, hid, item, play, scripted, scripted_merge, scripted_nodes, stamp, topic
 
 from bibliopolis import layout as lay
 from bibliopolis import store
@@ -94,9 +94,11 @@ def test_a_file_with_a_byte_order_mark_or_that_is_not_json_is_read_or_refused_by
 
 
 PIN_WORLD = "d4ac8dbde73d982905bf7f4505bbed1dc8e9c3807472e662fba73c2d53e23da4"  # the sha256 of the world file of the scripted log (hand_support.scripted)
-PIN_CITY = "6ae1fc769cc15fb10763efc23f79d4c1775c3e871c3aec3356d4a4687ed4d89a"  # ... and of the text of the city that it folds to; change them on purpose, with the engine
+PIN_CITY = "88cfc24296ea041751266799bbf5ed41651f024f7fa3eed6c395a445d82d8327"  # ... and of the text of the city that it folds to; change them on purpose, with the engine
 PIN_NODES_WORLD = "fee2dd7f74da8af729f2193e61122ecd74cead594bfad049dafce5a9f8361252"  # the same for the log with OpenAlex topics (hand_support.scripted_nodes): roads for nodes, the rule auto
-PIN_NODES_CITY = "74b4fc8487d6168972d73a32c60892aab7680c241e7780672cff973587ce9bd3"
+PIN_NODES_CITY = "8b26e4bd049f5370bf6e2242bc227aa5fc10d668f2230c9fb085daf3ca3db4a6"
+PIN_MERGE_WORLD = "c4ad642ca17345f93a796bba1b6849ace501bd3213cc5293ba23d12026be7612"  # ... and for the log in which the first ring fills and is merged (hand_support.scripted_merge)
+PIN_MERGE_CITY = "23fa22a1e5475f6c15c5cbf14872c1bbdbb487f9d8ab07b65ff9918788802535"
 
 
 def test_the_scripted_world_and_its_city_are_pinned_by_their_sha256():
@@ -107,6 +109,9 @@ def test_the_scripted_world_and_its_city_are_pinned_by_their_sha256():
     nodes = scripted_nodes().journal
     assert hashlib.sha256(text_of(nodes).encode("utf-8")).hexdigest() == PIN_NODES_WORLD
     assert hashlib.sha256(lay.render(nodes.state.city()).encode("utf-8")).hexdigest() == PIN_NODES_CITY
+    merged = scripted_merge().journal
+    assert hashlib.sha256(text_of(merged).encode("utf-8")).hexdigest() == PIN_MERGE_WORLD
+    assert hashlib.sha256(lay.render(merged.state.city()).encode("utf-8")).hexdigest() == PIN_MERGE_CITY
 
 
 def test_titles_and_names_in_any_script_are_written_as_they_are_and_read_back(tmp_path):

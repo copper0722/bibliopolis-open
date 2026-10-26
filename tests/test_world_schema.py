@@ -9,7 +9,7 @@ import random
 from pathlib import Path
 
 import pytest
-from hand_support import Hand, hid, play, scripted, scripted_nodes, topic
+from hand_support import Hand, hid, play, scripted, scripted_merge, scripted_nodes, topic
 from refusal_cases import small_journal
 from schema_support import faults, valid
 
@@ -39,8 +39,8 @@ def taken_world():
 @functools.lru_cache(maxsize=None)
 def worlds():
     """Worlds that between them use every kind of event, the node of a road, the rule auto, undo, topics, and nothing at all. (Built once; a file is made from each as needed.)"""
-    return {"empty": Journal(), "small": small_journal(), "scripted": scripted().journal, "nodes": scripted_nodes().journal, "taken": taken_world(),
-            "random": play(3, steps=80, auto=True, suggested=True, arrivals=0.8)}
+    return {"empty": Journal(), "small": small_journal(), "scripted": scripted().journal, "nodes": scripted_nodes().journal, "merge": scripted_merge().journal,
+            "taken": taken_world(), "random": play(3, steps=80, auto=True, suggested=True, arrivals=0.8, merging=True)}
 
 
 def accepted(doc) -> bool:
@@ -157,6 +157,11 @@ WRONG = [
      "matches 0 of oneOf"),
     ("an open_road with a node of two keys", "nodes", lambda d: next(e for e in d["events"] if e["kind"] == "open_road" and e["payload"]["topic"])["payload"]["topic"].pop("name"),
      "matches 0 of oneOf"),
+    ("a merge with one member", "merge", lambda d: next(e for e in d["events"] if e["kind"] == "merge_roads")["payload"].update(members=["f0"]), "matches 0 of oneOf"),
+    ("a merge with a member twice", "merge", lambda d: next(e for e in d["events"] if e["kind"] == "merge_roads")["payload"].update(members=["f0", "f0"]), "matches 0 of oneOf"),
+    ("a merge below a road", "merge", lambda d: next(e for e in d["events"] if e["kind"] == "merge_roads")["payload"].update(parent="mine"), "matches 0 of oneOf"),
+    ("a merge with a road of the rule", "merge", lambda d: next(e for e in d["events"] if e["kind"] == "merge_roads")["payload"].update(road="auto:9"), "matches 0 of oneOf"),
+    ("a merge with no members", "merge", lambda d: next(e for e in d["events"] if e["kind"] == "merge_roads")["payload"].pop("members"), "matches 0 of oneOf"),
     ("a move_road to the town hall", "scripted", lambda d: next(e for e in d["events"] if e["kind"] == "move_road")["payload"].update(parent=None), "matches 0 of oneOf"),
     ("an undo of event 0", "scripted", lambda d: next(e for e in d["events"] if e["kind"] == "undo")["payload"].update(seq=0), "matches 0 of oneOf"),
     ("a set_rule with a rule too many", "scripted", lambda d: next(e for e in d["events"] if e["kind"] == "set_rule")["payload"].update(x=1), "matches 0 of oneOf"),
@@ -185,6 +190,10 @@ CANNOT = [
     ("an undo of an event that is not earlier", "small", lambda d: d["events"].append({"seq": len(d["events"]) + 1, "at": "2026-01-01", "kind": "undo",
                                                                                        "payload": {"seq": 99}}), "names an earlier event"),
     ("a date that is not a date", "small", lambda d: d["events"][0].update(at="yesterday"), "is not an ISO 8601 date"),
+    ("a merge of a road that is below another road", "merge", lambda d: d["events"].append({"seq": len(d["events"]) + 1, "at": "2026-01-01", "kind": "merge_roads", "payload": {
+        "road": "again", "name": "Again", "parent": None, "members": ["f0", "f5"]}}), "is not an avenue"),
+    ("a merge of a road that is not there", "merge", lambda d: d["events"].append({"seq": len(d["events"]) + 1, "at": "2026-01-01", "kind": "merge_roads", "payload": {
+        "road": "again", "name": "Again", "parent": None, "members": ["f5", "ghost"]}}), "there is no road 'ghost'"),
     ("a node that another road stands for", "taken", lambda d: d["events"].append({"seq": len(d["events"]) + 1, "at": "2026-01-01", "kind": "open_road", "payload": {
         "road": "again", "name": "Again", "parent": None, "houses": [hid(i) for i in range(13, 23)], "topic": {"id": "ex:d1", "level": "domain", "name": "Domain 1"}}}), "stands for"),
 ]
@@ -238,7 +247,7 @@ def benign(doc, rng):
     how = rng.choice(["doi", "openalex", "topic", "at", "title", "year", "max"])
     adds = [e for e in doc["events"] if e["kind"] == "add_item"]
     if how == "topic":
-        roads = [e for e in doc["events"] if e["kind"] == "open_road"]
+        roads = [e for e in doc["events"] if e["kind"] in ("open_road", "merge_roads")]
         if roads:
             rng.choice(roads)["payload"].pop("topic", None)
     elif how == "at":
@@ -262,7 +271,7 @@ def benign(doc, rng):
 def corpus():
     rng = random.Random(20261026)
     docs = []
-    for name in ("small", "nodes", "random"):
+    for name in ("small", "nodes", "merge", "random"):
         base = file_of(worlds()[name])
         docs += [mutate(base, rng) for _ in range(110)] + [benign(base, rng) for _ in range(30)]
     return docs

@@ -1,7 +1,7 @@
 # A world built by hand
 
 `build` makes a city from a library. A world built by hand is made one act at a time: an item arrives and becomes a house under the town hall, the player opens a road
-and moves houses onto it, files a house, renames a road, moves a road, takes an act back. The world is an **append-only log of events**; the city and its chronicle
+and moves houses onto it, files a house, renames a road, moves a road, merges avenues, takes an act back. The world is an **append-only log of events**; the city and its chronicle
 are the **fold** of the log (same log, same bytes). The log is kept in a SQLite file or in a world file (JSON), and the same content moves between them.
 
 ```
@@ -26,6 +26,7 @@ the event, writes it into the chronicle, and never reads the clock; `at` does no
 | `file` | `{house, road}` | a house moves, from the root zone or another road, onto a road |
 | `rename_road` | `{road, name}` | |
 | `move_road` | `{road, parent}` | a road, with the roads and the houses below it, stands again below another road |
+| `merge_roads` | `{road, name, parent, members, topic}` | a full first ring is the moment to group upward: two or more avenues of the first ring (`members`) stand below a new avenue `road` (`parent` is null, the town hall), which takes the direction of the largest of them; the directions of the others are free (see "Merging avenues"). `topic` is as for `open_road` |
 | `undo` | `{seq}` | the named event no longer counts; an undo of an undo gives it back |
 | `set_rule` | `{max, min, auto}` | the rule from here on |
 
@@ -72,10 +73,10 @@ root zone is no road: nothing of it is on the surface.
 Below a road it is laid out as the engine lays out a topic that the plan does not hold: a rib on the line of its ring-1 road (a road of ring 3 is a rib on the same line). No
 trunk is promoted and no heavy path changes. A road with more houses than a rib holds opens continuation ribs, as in a grown city.
 
-**Directions.** There is no library to plan from, so the sector of a ring-1 road is decided when it opens, from the golden angle. The k-th ring-1 road (k = 0 for the first)
-has the bearing k * 137.50776405003785 degrees, clockwise from north, in whole units of 1/100 degree and in exact integer arithmetic:
+**Directions.** There is no library to plan from, so the direction of a ring-1 road (an avenue) is decided when it opens, from the golden angle. The directions are numbered 0, 1, 2, ...;
+direction k has the bearing k * 137.50776405003785 degrees, clockwise from north, in whole units of 1/100 degree and in exact integer arithmetic:
 `bearing(k) = (k * 13750776405003785 + 500000000000) // 10**12 % 36000`. Its sector is **the free arc around that bearing, at most 20 degrees to either side**: it stops where
-the next sector begins on each side, and it never overlaps a sector given already. A sector once given never changes, not when its road moves away. The spoke runs along the middle
+the next sector begins on each side, and it never overlaps the sector of an earlier direction. A sector never changes. The spoke runs along the middle
 of the sector, which is kept between -180 and 180 degrees. These are the thirteen sectors that there are:
 
 | k | bearing | sector | k | bearing | sector |
@@ -88,9 +89,10 @@ of the sector, which is kept between -180 and 180 degrees. These are the thirtee
 | 5 | 327.54 | -52.46 .. -20.00 | 12 | 210.09 | -149.97 .. -137.45 |
 | 6 | 105.05 | 85.05 .. 117.51 | 13 | 347.60 | none: inside the sector of k = 0 |
 
-They cover the whole circle: **a town has at most 13 avenues** (大道, the roads of the first ring), so **the 14th category goes below an avenue**. The 14th bearing lies inside a sector
-given already, and `open_road` with `parent` null is refused with the id `ring1_full` (see "Refusals"); a road below an avenue still opens. A road that moves below another road keeps its
-sector given: the limit is on the directions given, and the next ring-1 road takes the next direction, not the one it left.
+They cover the whole circle: **a town has at most 13 avenues** (大道, the roads of the first ring), so **the 14th category goes below an avenue**, or similar avenues are merged under a new
+one, which frees directions (see "Merging avenues"). An avenue holds one direction. **A new avenue takes the lowest number that no avenue holds.** With all 13 held, `open_road` with `parent`
+null is refused with the id `ring1_full`, whose params name the remedy, `merge_roads` (see "Refusals"); a road below an avenue still opens. A road that moves below another road keeps the
+direction it held, so that the sectors stay as they were: only a merge frees a direction.
 
 **Stability.** A house keeps its lot unless an event moves it. `open_road` moves the houses chosen, `file` moves that house, `move_road` moves the houses of the road and of the roads
 below it; nothing else moves a house, and the houses that stay keep their lots whatever holes the others leave (a lot that a house leaves stays empty, and the next house on that road
@@ -103,9 +105,10 @@ below a road (it is then laid out like any road of ring 2). A road below a road 
 
 **Undo.** `undo` names an earlier event that counts. It is refused when a later event that counts depends on the named one: it names a road that the event opened, or a house that the
 event placed or moved. So the player undoes from the end backwards. It is also refused when the log without that event does not fold (every later event that counts is taken again; for
-example giving back a filing whose house a later event took from the root zone). Appending is all or nothing.
+example giving back a filing whose house a later event took from the root zone, or a merge whose freed direction a later avenue took when the ring would then be full). Appending is all or nothing.
+A merge depends on the roads it merges (the events that opened them cannot be undone before it); a later event that names the new avenue depends on it.
 
-**The chronicle.** One entry for each road opened, house filed, road renamed or moved, undo and change of rule, in log order. Every entry has `n` (1, 2, ...), `event_id` (the `seq` of the
+**The chronicle.** One entry for each road opened, house filed, road renamed or moved, merge of avenues, undo and change of rule, in log order. Every entry has `n` (1, 2, ...), `event_id` (the `seq` of the
 event), `seq` (the houses that have arrived), `trigger` (the kind of the event) and, last, `at` (the `at` of the event); then:
 
 | entry | keys |
@@ -114,10 +117,26 @@ event), `seq` (the houses that have arrived), `trigger` (the kind of the event) 
 | a house filed | `filed`, `left`, `joined` (the house id and two place ids) |
 | a road renamed | `renamed`, `was`, `label` |
 | a road moved | `moved`, `below`, `was_below`, `houses` (the houses put again) |
+| a merge of avenues | `merged`, `label`, `members`, `took`, `houses` (the place and the name of the new avenue, the places that were merged, the place whose direction it took, the houses put again) |
 | an undo | `undone`, `of` (the number and the kind of the event) |
 | a change of rule | `rule` |
 
 An event that an undo takes back writes no entry (it does not count); the undo writes one. `python3 -m bibliopolis chronicle` reads them as sentences.
+
+**Merging avenues.** A full first ring is a signal to group upward, not a dead end. `merge_roads {road, name, parent, members, topic}` takes two or more avenues of the first ring (`members`;
+a road below another road is no avenue) and opens the new avenue `road` under the town hall (`parent` is null) above them:
+
+- The new avenue takes **the direction of its largest member**: its sector and its bearing. The largest member is the one with the most houses on it and below it; of two as large, the one
+  that holds the lower direction.
+- The members stand below the new avenue as roads of ring 2, with the roads and the houses below them, as after a move of a road: **only the houses of their subtrees are put again**, on the
+  line of the new avenue, a road at a time in the order the roads were opened and their houses in the order they arrived; every other house keeps its lot. The old lines of the members (their
+  spokes and ribs, which would lie under the new line or under the road of the next avenue that takes the direction) are taken away.
+- The directions of the other members are **free**. The next avenue takes the lowest free number. A direction that a merge frees has a lower number than any that was never used, so freed
+  directions are taken first, in the golden-angle order among the free ones, and each comes back with the sector and the bearing that its number always has.
+- `topic` is as for `open_road`: the OpenAlex node the new avenue stands for; it is refused when another road stands for it, or when a house of the members, or of the roads below them, is not under it.
+- Refused: a road id that is there, a member that is not there, a member that is not an avenue (`not_an_avenue`). Two or more members, no member twice, `parent` null: the shape of the event.
+
+`suggest_merge` (below) proposes the members. The merge writes one entry of the chronicle.
 
 **The rule `auto`.** The rule follows the OpenAlex tree one level at a time, as a grown city follows its topic tree (nothing here is a model):
 
@@ -161,7 +180,7 @@ that is read passes the refusal of an event on as a `WorldFileError` with the sa
 
 | id | params | when | message |
 |---|---|---|---|
-| `ring1_full` | `limit`, `number` | `open_road` with `parent` null, when all 13 directions are used (`limit` is 13, `number` the number of the category) | the first ring has at most 13 avenues and all 13 directions are used, so the 14th category goes below an avenue |
+| `ring1_full` | `limit`, `number`, `remedy` | `open_road` with `parent` null, when all 13 directions are held (`limit` is 13, `number` the number of the category, `remedy` what frees directions: `merge_roads`) | the first ring has at most 13 avenues and all 13 directions are used, so the 14th category goes below an avenue, or similar avenues are merged under a new one (merge_roads) to free their directions |
 | `house_exists` | `house` | `add_item` of an item whose id is a house already | 'h0001' is a house already |
 | `not_a_house` | `house` | a house id that is not a house: in `open_road`, `file` and `suggest_file` | 'nobody' is not a house |
 | `road_exists` | `road` | `open_road` with the id of a road that is there | there is a road 'a' already |
@@ -173,6 +192,7 @@ that is read passes the refusal of an event on as a `WorldFileError` with the sa
 | `house_elsewhere` | `house`, `road`, `on` | `open_road` names a house that does not stand directly on the place it opens from (`road`; `on` is where the house stands; null is the root zone) | the house 'h0001' does not stand directly on the root zone; it stands on the road 'a' |
 | `node_taken` | `level`, `topic`, `road` | `open_road` with a `topic` that another road stands for already (`road` is that road): two roads never stand for one node | the road 'a' stands for the domain 'ex:d1' already; two roads never stand for one node |
 | `house_not_under_node` | `house`, `level`, `topic` | `open_road` with a `topic` and a chosen house none of whose topics has that node at that level | the house 'h0013' is not under the domain 'ex:d1', which the road stands for |
+| `not_an_avenue` | `road` | `merge_roads` with a member that is below another road: only avenues of the first ring are merged | the road 'a1' is not an avenue: it is below 'a', and only avenues of the first ring are merged |
 | `already_there` | `house`, `road` | `file` onto the road the house stands on | the house 'h0001' stands on the road 'a' already |
 | `same_name` | `road`, `name` | `rename_road` to the name the road has | the road 'a' is called 'Alpha' already |
 | `move_into_itself` | `road`, `parent` | `move_road` below itself, or below a road of its own | the road 'a1' cannot move below 'a1', which is itself or one of its own roads |
@@ -204,7 +224,7 @@ that is read passes the refusal of an event on as a `WorldFileError` with the sa
 | `keys_missing` | `keys` | an object lacks keys that it needs | event: missing at, kind, payload |
 | `keys_unknown` | `keys`, `allowed` | an object has keys that it may not have | event.payload.item: unknown colour (allowed: id, title, authors, year, doi, type, openalex) |
 | `not_an_object` | `got` | a part that must be an object is not (`got` is the name of its type) | event: must be an object, got list |
-| `not_a_list` | `got` | a part of a world file that must be a list is not | world.items: must be a list, got dict |
+| `not_a_list` | `got` | a part that must be a list is not: `items` and `events` of a world file, `members` of a `merge_roads` | world.items: must be a list, got dict |
 | `not_text` | `got` | a part that must be text is not | event.payload.item.id: must be a string, got int |
 | `text_empty` | none | text that must not be empty is (or holds white space only) | event.payload.item.id: must not be empty |
 | `text_not_utf8` | none | text with a lone surrogate, which cannot be written as UTF-8 | event.payload.item.title: contains a character that cannot be written as UTF-8 (a lone surrogate) |
@@ -227,9 +247,12 @@ that is read passes the refusal of an event on as a `WorldFileError` with the sa
 | `house_chosen_twice` | `house` | a house chosen twice in `houses` of an `open_road` | event.payload.houses[1]: 'a' is chosen twice |
 | `node_not_an_object` | `got` | `topic` of an `open_road` is not null and not an object | event.payload.topic: must be null or an object {id, level, name}, got str |
 | `node_level_bad` | `got`, `levels` | `level` of a `topic` is not one of `levels` (domain, field, subfield, topic) | event.payload.topic.level: must be one of domain, field, subfield, topic, got 'planet' |
+| `members_too_few` | `count`, `least` | `members` of a `merge_roads` holds fewer than `least` roads | event.payload.members: holds 1 road; a merge takes at least 2 |
+| `member_chosen_twice` | `road` | a road chosen twice in `members` of a `merge_roads` | event.payload.members[1]: 'a' is chosen twice |
+| `parent_not_root` | `got` | `parent` of a `merge_roads` is not null: avenues are merged under a new avenue of the first ring | event.payload.parent: must be null, the town hall: avenues are merged under a new avenue of the first ring, got 'r' |
 | `event_seq_bad` | `got` | `seq` of an event is not a whole number, 1 or more | event.seq: must be a whole number, 1 or more, got 0 |
 | `date_bad` | `at` | `at` of an event is not an ISO 8601 date or date and time | event.at: 'yesterday' is not an ISO 8601 date or date and time |
-| `kind_unknown` | `kind`, `kinds` | `kind` of an event is not one of `kinds` | event.kind: 'sweep' is not a kind of event (add_item, open_road, file, rename_road, move_road, undo, set_rule) |
+| `kind_unknown` | `kind`, `kinds` | `kind` of an event is not one of `kinds` | event.kind: 'sweep' is not a kind of event (add_item, open_road, file, rename_road, move_road, merge_roads, undo, set_rule) |
 
 ### A world file or a store is not a world
 
@@ -269,6 +292,12 @@ No model and no network: the same world gives the same answer. A house is in the
   as a part of the same count over every road that could take the house (1.0 when no other road shares a topic at that level). A house on a road gets a suggestion only for a road that scores better than
   its own; `None` when there is nothing to suggest.
 - `landing(world, item)`: the road an arriving item stands on under the rule `auto` (the deepest road whose node it is under), or `None`.
+- `suggest_merge(world)`: the avenues of the first ring to merge under a new avenue. First, avenues that stand for **sibling nodes** of OpenAlex (nodes with the same parent node, one level up): the
+  group with the most avenues (then the most houses, then the lower parent id) whose parent node no road stands for and every house of whose avenues, and of the roads below them, is under it.
+  `topic` is that parent node, ready to be the `topic` of `merge_roads`, and `by` is `parent_node`. Failing that, the two avenues whose houses are most alike: for each level, the most specific
+  first, the houses they have in common under the same nodes (the smaller count of each node, summed); of two as alike, the pair of the lower road ids; only when they have something in common.
+  Then `topic` is `None`, `name` the two names joined by ` / `, and `by` is `similar_houses`. Returns `{members, topic, name, by, takes, frees}`: `members` in the order the avenues were opened,
+  `takes` the member whose direction the new avenue takes, `frees` how many directions the merge frees; or `None`.
 - `crowded(world)`: `[{at, name, houses}]` for the places that hold more than `max` houses directly, the root zone (`at` and `name` null) first.
 
 ## The files
@@ -299,7 +328,7 @@ overwritten: `world new` and `world import` refuse a file that is there.
 
 ```python
 from bibliopolis.journal import Journal, dumps_world, read_world, world_document
-from bibliopolis.suggest import suggest_road, suggest_file, crowded
+from bibliopolis.suggest import suggest_road, suggest_file, suggest_merge, crowded
 
 journal = Journal()                                              # or Journal({"max": 30, "min": 8, "auto": True})
 journal.append("add_item", {"item": item}, "2026-10-26T09:30:00Z")   # the event, or Refusal and no change
@@ -313,7 +342,8 @@ suggest_road(journal.state, None)
 
 - A town has at most 13 avenues (above): the 14th category goes below an avenue. The sectors are fixed by the rule, not by the weight of a road.
 - No trunk is promoted below ring 1 and no heavy path changes; a road below a road is a rib on the line of its ring-1 road.
-- A road never becomes a ring-1 road by moving (`parent` is a road).
+- A road never becomes a ring-1 road by moving (`parent` is a road), and a road that moves away keeps its direction: only a merge frees a direction.
+- `merge_roads` merges avenues of the first ring under a new avenue of the first ring; it does not merge roads below a road.
 - A road for a topic is not split, whatever it holds: the OpenAlex tree has no level below a topic (`crowded` lists it).
 - The roads of a hand-built city are never marked over and nothing splits by itself, except under `auto`; `crowded` is computed on demand.
 - A `set_rule` that lowers `max` or `min` changes nothing in the world; it changes what `crowded` lists and what `open_road` takes.
@@ -328,6 +358,7 @@ suggest_road(journal.state, None)
 | the journal | `tests/test_journal.py` |
 | suggestions, `crowded`, the rule `auto`, the sample | `tests/test_suggest.py` |
 | the ids and params of every refusal, and a scenario for each | `tests/test_refusals.py`, `tests/refusal_cases.py` |
+| merging avenues, `suggest_merge`, the directions held and freed | `tests/test_merge.py` |
 | the world file, the SQLite file, the home folder | `tests/test_world_file.py` |
 | the schema of the world file (`schema/world.schema.json`) | `tests/test_world_schema.py` |
 | the command `world` | `tests/test_world_cli.py` |

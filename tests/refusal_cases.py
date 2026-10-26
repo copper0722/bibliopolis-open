@@ -163,6 +163,13 @@ def house_not_under_node(tmp):
     return raised(lambda: h.open("a", "A", None, [*houses(2, 10), hid(13)], DOMAIN_1))
 
 
+def not_an_avenue(tmp):
+    h = town(10)
+    h.open("a", "A", None, houses(1, 10))
+    h.open("a1", "A one", "a", houses(1, 10))
+    return raised(lambda: h.merge("m", "M", ["a", "a1"]))
+
+
 def already_there(tmp):
     h = town(12)
     h.open("a", "A", None, houses(1, 10))
@@ -349,6 +356,18 @@ def node_not_an_object(tmp):
 
 def node_level_bad(tmp):
     return road_problem("node_level_bad", "open_road", {"road": "r", "name": "N", "parent": None, "houses": ["a"], "topic": {**DOMAIN_1, "level": "planet"}})
+
+
+def members_too_few(tmp):
+    return road_problem("members_too_few", "merge_roads", {"road": "m", "name": "M", "parent": None, "members": ["a"]})
+
+
+def member_chosen_twice(tmp):
+    return road_problem("member_chosen_twice", "merge_roads", {"road": "m", "name": "M", "parent": None, "members": ["a", "a"]})
+
+
+def parent_not_root(tmp):
+    return road_problem("parent_not_root", "merge_roads", {"road": "m", "name": "M", "parent": "r", "members": ["a", "b"]})
 
 
 def event_seq_bad(tmp):
