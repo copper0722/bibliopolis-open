@@ -238,15 +238,27 @@ ROAD_CLASSES = ("大道", "路", "巷", "弄")
 PLACE_KINDS = ("plaza", "street", "lot", "reserved")
 PLAZA = "place:plaza"
 REACH = 1e7  # cells: far beyond any city, and small enough that the arithmetic of a picture stays finite
+COUNT = 10**12  # houses, arrivals, levels: far beyond any library
 
 
 def _number(value, limit: float = REACH) -> bool:
-    """A finite number (not a bool) of magnitude at most `limit`."""
-    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and abs(value) <= limit
+    """A number (not a bool) of magnitude at most `limit`. The range comes first: `math.isfinite` raises OverflowError on an integer too large for a float
+    (a JSON file can hold one), while the comparison is exact for any integer and false for NaN and infinity."""
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and abs(value) <= limit and math.isfinite(value)
 
 
 def _whole(value) -> bool:
-    return isinstance(value, int) and not isinstance(value, bool)
+    """A whole number (not a bool) of magnitude at most COUNT."""
+    return isinstance(value, int) and not isinstance(value, bool) and abs(value) <= COUNT
+
+
+def _shown(value) -> str:
+    """`value` as it goes into a message: its repr cut at 40 characters, and for an integer of more than 64 bits only its size (an integer can have thousands
+    of digits, and `repr` refuses more than 4300 of them)."""
+    if isinstance(value, int) and abs(value).bit_length() > 64:
+        return f"an integer of about {int(abs(value).bit_length() * 0.30103) + 1} digits"
+    text = repr(value)
+    return text if len(text) <= 40 else text[:37] + "..."
 
 
 def _pair(value) -> bool:
@@ -259,7 +271,7 @@ def _typed(problems: _Problems, where: str, record: dict, key: str, test, wanted
         if required:
             problems.add(where, f"{key} is missing ({wanted})")
     elif not test(record[key]):
-        problems.add(f"{where}.{key}", f"must be {wanted}, got {record[key]!r:.40}")
+        problems.add(f"{where}.{key}", f"must be {wanted}, got {_shown(record[key])}")
 
 
 def _is_text(value) -> bool:
@@ -278,7 +290,7 @@ def _check_street(problems: _Problems, where: str, p: dict) -> None:
     rib = p.get("rib")
     if rib is not None:
         if not isinstance(rib, dict):
-            problems.add(f"{where}.rib", f"must be an object, got {rib!r:.40}")
+            problems.add(f"{where}.rib", f"must be an object, got {_shown(rib)}")
         elif rib.get("band") is not None:  # a cell of a band is the polar cell of its lane: `s`, the radius of the lane, divides
             _typed(problems, f"{where}.rib", rib, "band", _whole, "a whole number or null")
             _typed(problems, f"{where}.rib", rib, "s", lambda v: _number(v) and v > 0, "a number above 0 (the radius of the lane)")

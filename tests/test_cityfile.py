@@ -162,6 +162,72 @@ def test_a_city_that_is_not_what_build_writes_is_refused_and_the_message_names_t
     assert names in str(refused.value), str(refused.value)
 
 
+BIG = 10**400  # an integer of 401 digits: too large for a float, and for every field
+
+NUMBERS = [  # (the number, how to put a value there, what the message names)
+    ("a measure", lambda d, v: d["composition"]["measure"].update(walk_mean=v), "measure.walk_mean: must be a number"),
+    ("the radius of the plaza", lambda d, v: d["places"]["place:plaza"].update(radius=v), "places['place:plaza'].radius: must be a number, 0 or more"),
+    ("a coordinate of a house", lambda d, v: d["places"][first_lot(d)]["position"].update(x=v), ".position: must be {x, z}: two numbers"),
+    ("a facing", lambda d, v: d["places"][first_lot(d)].update(facing=v), ".facing: must be a bearing in degrees"),
+    ("a point of a road", lambda d, v: next(iter(d["roads"].values())).update(points=[[0, 0], [v, 1]]), ".points: must be a list of at least two"),
+    ("a bearing of a sector", lambda d, v: d["composition"]["ring1"][0].update({"from": v}), "ring1[0].from: must be a bearing in degrees"),
+    ("the weight of a street", lambda d, v: d["places"][a_street(d)].update(weight=v), ".weight: must be a number"),
+    ("the radius of a lane", lambda d, v: d["places"][a_street(d, "rib")]["rib"].update(band=0, s=v), ".rib.s: must be a number above 0"),
+    ("a corner of the coast", lambda d, v: d["coast"]["polygons"][0].__setitem__(0, [v, 0]), "coast.polygons[0]: must be a list of at least three"),
+    ("the number of buildings", lambda d, v: d["composition"].update(buildings=v), "composition.buildings: must be a number"),
+    ("the total of streets", lambda d, v: d["composition"]["streets"].update(total=v), "composition.streets.total: must be a number"),
+]
+WHOLES = [  # (the whole number, how to put a value there, what the message names)
+    ("a level", lambda d, v: d["places"][a_street(d)].update(level=v), ".level: must be a whole number"),
+    ("a band", lambda d, v: d["places"][a_street(d, "rib")]["rib"].update(band=v), ".rib.band: must be a whole number or null"),
+    ("an arrival", lambda d, v: d["world"]["chronicle"][0].update(seq=v), "chronicle[0].seq: must be a whole number, 1 or more"),
+    ("a count of a split", lambda d, v: d["world"]["chronicle"][0].update(count_before=v), "chronicle[0].count_before: must be a whole number"),
+    ("the count of an over", lambda d, v: d["world"]["chronicle"][-1].update(count=v), ".count: must be a whole number"),
+    ("the rule", lambda d, v: d["world"]["districts"].update(max=v), "world.districts: must be an object with whole numbers max and min"),
+]
+SIZED = [pytest.param(put, names, id=what) for what, put, names in NUMBERS + WHOLES]
+
+
+@pytest.mark.parametrize("put, names", SIZED)
+@pytest.mark.parametrize("value", [BIG, -BIG, 10**5000], ids=["10**400", "-10**400", "10**5000"])
+def test_an_integer_too_large_for_a_float_is_an_input_error_with_its_place_and_not_an_overflow(real_city, put, names, value):
+    doc = copy.deepcopy(real_city)
+    put(doc, value)
+    with pytest.raises(inputs.InputError) as refused:  # (an OverflowError from `math.isfinite` would not be one)
+        inputs.read_city(doc)
+    assert names in str(refused.value)
+
+
+@pytest.mark.parametrize("put, names", SIZED)
+@pytest.mark.parametrize("value", [BIG, -BIG, float("inf"), -float("inf"), float("nan")], ids=["10**400", "-10**400", "inf", "-inf", "nan"])
+def test_the_same_after_a_round_trip_through_json_text(real_city, put, names, value):
+    doc = copy.deepcopy(real_city)
+    put(doc, value)
+    text = json.dumps(doc)  # an integer is written out in full; infinity and NaN as the words that `json` reads back
+    assert str(value) in text or isinstance(value, float)
+    with pytest.raises(inputs.InputError) as refused:
+        inputs.read_city(json.loads(text))
+    assert names in str(refused.value)
+
+
+def test_a_number_written_as_1e400_is_infinity_in_a_json_file_and_is_refused(real_city):
+    doc = copy.deepcopy(real_city)
+    doc["composition"]["measure"]["walk_mean"] = "@@"
+    text = json.dumps(doc).replace('"@@"', "1e400")
+    assert json.loads(text)["composition"]["measure"]["walk_mean"] == float("inf")
+    with pytest.raises(inputs.InputError, match="measure.walk_mean: must be a number, got inf"):
+        inputs.read_city(json.loads(text))
+
+
+def test_a_number_is_judged_by_its_range_first_so_that_no_integer_can_overflow_and_a_message_never_prints_thousands_of_digits():
+    for huge in (BIG, -BIG, 10**5000):
+        assert inputs._number(huge) is False and inputs._whole(huge) is False  # no OverflowError, no ValueError for the 4300 digits of `repr`
+        assert inputs._shown(huge).startswith("an integer of about ") and len(inputs._shown(huge)) < 40
+    assert [inputs._number(v) for v in (0, 1e7, -1e7, 1e7 + 1, float("nan"), float("inf"), True, "1")] == [True, True, True, False, False, False, False, False]
+    assert [inputs._whole(v) for v in (0, 10**12, -(10**12), 10**12 + 1, True, 2.0)] == [True, True, True, False, False, False]
+    assert inputs._shown("x" * 100) == repr("x" * 100)[:37] + "..." and inputs._shown(41) == "41"
+
+
 def test_the_problems_of_a_city_are_reported_together_and_a_street_outside_the_sectors_once(real_city):
     doc = copy.deepcopy(real_city)
     template = next(iter(doc["roads"].values()))
@@ -188,7 +254,7 @@ def test_the_links_are_followed_only_when_the_shapes_are_right(real_city):
 
 
 # ------------------------------------------------------------------------------------ nothing gets through ----
-WRONG = (None, "x", -1, 0, 2.5, [], {}, [1, 2], float("inf"), True)  # what to put where the right thing was (or take the key away)
+WRONG = (None, "x", -1, 0, 2.5, [], {}, [1, 2], float("inf"), True, 10**400)  # what to put where the right thing was (or take the key away)
 LINKS = ("parent", "place", "road", "from", "over", "lane_of", "trunk", "carrier", "lane")  # keys that name another place or road
 
 
