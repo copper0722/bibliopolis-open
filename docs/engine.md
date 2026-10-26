@@ -96,9 +96,10 @@ The topic tree is the street plan.
   when it became so. Over is a hint that a collection is crowded.
 - An item with no topic, and an item whose address is the centre, stand in the root zone.
 - Houses are placed exactly as in `grow`: arrival order, the lowest empty lot, continuation ribs.
-- The roads that no house stands on or below get their street record when the world is completed (`bibliopolis.world.complete`, which `build_city` calls after the
-  last arrival). `assign` alone never makes them, so that a world does not depend on how its arrivals were cut into calls: a record made early would open the
-  trunks of the plan before their first house, nearer the plaza.
+- A mirror road that no house stands on or below (a topic an item is filed under while the house stands elsewhere) has no street record until the world is
+  completed (`bibliopolis.world.complete`): it appears in the document only then. `build_city`, and so the command line, completes the world after the last
+  arrival; code that calls `assign` by itself gets the world without those roads. `complete` is a step of its own, so that a world does not depend on how its
+  arrivals were cut into calls: a record made early would open the trunks of the plan before their first house, nearer the plaza.
 
 ## The pictures
 
@@ -145,7 +146,7 @@ them again and compares them with the committed files byte for byte.
 | the pictures of the README are what the script makes, byte for byte | `tests/test_images.py` |
 | the sample and what it shows; what the format page says about the sample | `tests/test_example.py`, `tests/test_format_page.py` |
 | empty library, one root, many roots, a long chain | `tests/test_edges.py` |
-| the README does not drift from the program | `tests/test_readme.py` |
+| the README does not drift from the program: its commands run, the lines and pictures it shows are real | `tests/test_readme.py` |
 | standard library only, Python 3.11 syntax (also the f-strings that only 3.12 can read) | `tests/test_package.py` |
 
 `tests/checks.py` holds the geometry checks (no overlap, every lot beside the lane of its own street, a road tree that starts at the plaza rim, no road
