@@ -5,6 +5,7 @@ build/
 .out/
 .vite/
 coverage/
+*.egg-info/
 *.log
 __pycache__/
 *.pyc
@@ -16,6 +17,10 @@ var/
 .env.*
 *.local
 .DS_Store
+
+# a derived city is rebuilt from its library, never committed
+/city.json
+/city-*.json
 
 # binary payload never enters Git
 *.png

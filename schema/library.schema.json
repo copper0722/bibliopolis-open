@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Bibliopolis library",
+  "description": "The items of a collection: every item becomes one house. What a schema cannot say (an id used once, a topic that exists in the tree) the program checks; see docs/format.md.",
+  "type": "object",
+  "required": ["items"],
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/item"}
+    }
+  },
+  "$defs": {
+    "item": {
+      "type": "object",
+      "required": ["id", "title", "authors", "year", "added_at", "type", "tags", "topics"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1, "description": "Unique in the library; the id of the house."},
+        "title": {"type": "string"},
+        "authors": {"type": "array", "items": {"type": "string"}},
+        "year": {"type": ["integer", "null"], "description": "The year of publication, or null."},
+        "doi": {"type": ["string", "null"], "minLength": 1, "description": "Optional; the program does not read it."},
+        "added_at": {"type": "string", "minLength": 1, "description": "ISO 8601: a date, or a date and time with or without an offset (a time without one is read as UTC). Items arrive in this order, ties by id."},
+        "type": {"type": "string", "minLength": 1, "description": "The kind of document, e.g. article, review, editorial, letter, news, erratum, retraction notice."},
+        "tags": {"type": "array", "items": {"type": "string"}, "description": "Free tags: the residents of the house."},
+        "topics": {"type": "array", "items": {"type": "string"}, "description": "Ids of nodes of the topic tree. The address of the house is the deepest of them (ties: the lower id). Empty: the house stands under the town hall."}
+      }
+    }
+  }
+}

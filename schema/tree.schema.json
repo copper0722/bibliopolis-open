@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Bibliopolis topic tree",
+  "description": "The topics of a collection as a forest: every node names its parent. What a schema cannot say (an id used once, a parent that exists, no cycle, at most 64 levels) the program checks; see docs/format.md.",
+  "type": "object",
+  "required": ["nodes"],
+  "properties": {
+    "nodes": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/node"}
+    }
+  },
+  "$defs": {
+    "node": {
+      "type": "object",
+      "required": ["id", "label", "parent"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1, "description": "Unique in the tree; no control characters."},
+        "label": {"type": "string", "minLength": 1, "description": "The name shown for the road."},
+        "parent": {"type": ["string", "null"], "description": "The id of the parent node, or null for a root."}
+      }
+    }
+  }
+}
