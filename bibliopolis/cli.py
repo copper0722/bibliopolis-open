@@ -62,10 +62,10 @@ def build_parser() -> argparse.ArgumentParser:
     i = ws.add_parser("import", help="read a world file into a new SQLite world (an existing world is never overwritten)")
     i.add_argument("file", metavar="FILE", help="the world file (JSON)")
     i.add_argument("--world", metavar="PATH", help=where)
-    e = ws.add_parser("export", help="write the world as a world file (JSON): the same bytes that `import` would read")
+    e = ws.add_parser("export", help="write the world as a world file (JSON): the same bytes that `import` would read (never over a SQLite file, so never over the world itself)")
     e.add_argument("file", metavar="FILE", help="where to write the world file")
     e.add_argument("--world", metavar="PATH", help=where)
-    f = ws.add_parser("fold", help="fold the log of the world into its city and write it as `build` does (the layout v4 document)")
+    f = ws.add_parser("fold", help="fold the log of the world into its city and write it as `build` does (the layout v4 document; never over a SQLite file)")
     f.add_argument("--out", required=True, metavar="city.json", help="where to write the city")
     f.add_argument("--world", metavar="PATH", help=where)
     return ap
@@ -139,10 +139,12 @@ def world_command(args: argparse.Namespace) -> int:
         store.Store.import_journal(path, journal)
         print(f"read {args.file} into {path}: {len(journal.events)} events, {len(journal.state.items)} houses", file=sys.stderr)
     elif args.world_command == "export":
+        store.check_output(args.file, path)
         journal = store.Store(path).journal()
         write_text_atomically(Path(args.file), dumps_world(world_document(journal)))
         print(f"wrote {args.file}: {len(journal.events)} events, {len(journal.items())} items", file=sys.stderr)
     else:
+        store.check_output(args.out, path)
         journal = store.Store(path).journal()
         doc = journal.state.city()
         write_text_atomically(Path(args.out), render(doc))

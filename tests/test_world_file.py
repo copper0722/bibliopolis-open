@@ -337,6 +337,15 @@ def test_a_failed_import_leaves_no_file_behind(tmp_path, monkeypatch):
     assert not path.exists()
 
 
+def test_a_file_is_not_written_over_the_world_it_comes_from_even_where_no_file_is_there_yet(tmp_path):
+    with pytest.raises(Refusal) as why:
+        store.check_output(tmp_path / "none.sqlite", tmp_path / "none.sqlite")
+    assert why.value.code == "output_is_the_world" and why.value.params == {"path": str(tmp_path / "none.sqlite"), "world": str(tmp_path / "none.sqlite")}
+    store.check_output(tmp_path / "a.json", tmp_path / "none.sqlite")  # two names, nothing there: nothing to protect
+    (tmp_path / "taken").mkdir()
+    store.check_output(tmp_path / "taken", tmp_path / "none.sqlite")  # (a folder is no database; the write itself fails later, and says so)
+
+
 # --------------------------------------------------------------------------------------------- the home ----
 def test_the_home_folder_is_the_one_the_environment_names_and_is_made_on_first_use(tmp_path, monkeypatch):
     target = tmp_path / "a" / "b" / "Worlds"

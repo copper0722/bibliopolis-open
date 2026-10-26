@@ -2,9 +2,11 @@
 
 import json
 import os
+import sqlite3
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
+from contextlib import closing
 from pathlib import Path
 
 import pytest
@@ -124,6 +126,94 @@ def test_export_and_fold_of_a_world_that_is_not_there_say_so(tmp_path, capsys):
     text.write_text("not a database", encoding="utf-8")
     code, err, _ = run_main(capsys, "world", "fold", "--out", str(tmp_path / "c.json"), "--world", str(text))
     assert code == 2 and "not a world of this program" in err and not (tmp_path / "c.json").exists()
+
+
+# ------------------------------------------------------------------------------------------ never over a world ----
+WRITERS = {"export": lambda out, world: ("world", "export", str(out), "--world", str(world)),
+           "fold": lambda out, world: ("world", "fold", "--out", str(out), "--world", str(world))}
+
+
+def a_world(tmp_path, name="w.sqlite"):
+    path = tmp_path / name
+    Store.import_journal(path, play(3, steps=60))
+    return path
+
+
+def everything_in(folder):
+    """name -> bytes of every file of the folder (a temporary file left behind shows), and the names that are links."""
+    files = {p.name: p.read_bytes() for p in sorted(folder.iterdir()) if p.is_file()}
+    return files, sorted(p.name for p in folder.iterdir() if p.is_symlink())
+
+
+@pytest.mark.parametrize("command", list(WRITERS))
+def test_a_command_never_writes_over_the_world_it_reads(command, tmp_path, capsys):
+    world = a_world(tmp_path)
+    before = everything_in(tmp_path)
+    code, err, _ = run_main(capsys, *WRITERS[command](world, world))
+    assert code == 2 and "is the world that is being read" in err, err
+    assert everything_in(tmp_path) == before  # the world is as it was, and no temporary file is left
+    assert Store(world).journal().events
+
+
+def other_names_of(tmp_path, world):
+    """Other names for the file `world`, by how they come about; a link a system does not allow is left out."""
+    names = {"another spelling": world.parent / "." / world.name, "a path from where the command runs": Path(os.path.relpath(world))}
+    for what, make in (("a link to the folder", lambda: (tmp_path / "folder-link").symlink_to(tmp_path, target_is_directory=True)),
+                       ("a link to the file", lambda: (tmp_path / "file-link.sqlite").symlink_to(world)),
+                       ("a hard link", lambda: os.link(world, tmp_path / "hard.sqlite"))):
+        try:
+            make()
+        except OSError:
+            continue
+        names[what] = {"a link to the folder": tmp_path / "folder-link" / world.name, "a link to the file": tmp_path / "file-link.sqlite", "a hard link": tmp_path / "hard.sqlite"}[what]
+    assert len(names) >= 2
+    return names
+
+
+@pytest.mark.parametrize("command", list(WRITERS))
+def test_a_command_never_writes_over_the_world_under_another_name_either(command, tmp_path, capsys):
+    world = a_world(tmp_path)
+    names = other_names_of(tmp_path, world)
+    before = everything_in(tmp_path)
+    for what, name in names.items():
+        code, err, _ = run_main(capsys, *WRITERS[command](name, world))
+        assert code == 2 and "is the world that is being read" in err, (what, err)
+        assert everything_in(tmp_path) == before, what  # no name was replaced by text, and no temporary file is left
+        code, err, _ = run_main(capsys, *WRITERS[command](world, name))  # ... and the same when the world is the one with the other name
+        assert code == 2 and "is the world that is being read" in err, (what, err)
+        assert everything_in(tmp_path) == before, what
+
+
+def a_sqlite_file_that_is_no_world(path):
+    with closing(sqlite3.connect(path)) as db, db:
+        db.execute("CREATE TABLE notes (text TEXT)")
+    return path
+
+
+@pytest.mark.parametrize("command", list(WRITERS))
+def test_a_command_never_writes_over_another_sqlite_file(command, tmp_path, capsys):
+    world = a_world(tmp_path)
+    others = [a_world(tmp_path, "other.sqlite"), a_sqlite_file_that_is_no_world(tmp_path / "notes.sqlite")]
+    before = everything_in(tmp_path)
+    for other in others:
+        code, err, _ = run_main(capsys, *WRITERS[command](other, world))
+        assert code == 2 and f"{other} is a SQLite database already" in err, err
+        assert everything_in(tmp_path) == before
+
+
+@pytest.mark.parametrize("command", list(WRITERS))
+def test_a_command_writes_over_text_and_into_a_new_file_as_it_always_did(command, tmp_path, capsys):
+    """The controls of the two refusals above: a file of text, even one that begins like a database file, is replaced, and a file that is not there is made."""
+    world = a_world(tmp_path)
+    before = everything_in(tmp_path)
+    old_city = tmp_path / "old.json"
+    old_city.write_text("an old file", encoding="utf-8")
+    lookalike = tmp_path / "lookalike.json"
+    lookalike.write_text("SQLite format 3 is how such a file begins, but this is text", encoding="utf-8")
+    for name in (old_city, lookalike, tmp_path / "new" / "fresh.json"):
+        code, err, _ = run_main(capsys, *WRITERS[command](name, world))
+        assert code == 0 and name.read_text(encoding="utf-8").startswith(("{", "{\n")), (name, err)
+    assert everything_in(tmp_path)[0]["w.sqlite"] == before[0]["w.sqlite"]
 
 
 # ---------------------------------------------------------------------------------------------------- fold ----

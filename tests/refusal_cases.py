@@ -15,7 +15,7 @@ from hand_support import Hand, hid, item, stamp, topic
 from bibliopolis import events as ev
 from bibliopolis.events import Problems, Refusal
 from bibliopolis.journal import Journal, WorldFileError, dumps_world, read_world, world_document
-from bibliopolis.store import Store
+from bibliopolis.store import Store, check_output
 from bibliopolis.suggest import suggest_file, suggest_road
 
 
@@ -247,6 +247,18 @@ def not_next_event(tmp):
     for i in range(1, 4):
         Store(path).append(j.append("add_item", {"item": item(i)}, stamp(i)))
     return raised(lambda: Store(path).append({**j.events[0], "seq": 6}))
+
+
+def output_is_the_world(tmp):
+    path = tmp / "w.sqlite"
+    Store.create(path)
+    return raised(lambda: check_output(path, path))
+
+
+def output_is_a_database(tmp):
+    Store.create(tmp / "w.sqlite")
+    Store.create(tmp / "other.sqlite")
+    return raised(lambda: check_output(tmp / "other.sqlite", tmp / "w.sqlite"))
 
 
 def invalid(tmp):

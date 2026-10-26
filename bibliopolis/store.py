@@ -5,6 +5,7 @@
     Store(path).journal()           the journal of the world in the file (every event appended again, under the rules of `append`)
     Store(path).append(event)       one more event, one transaction
     Store(path).export_text()       the world file text of the world in the file
+    check_output(path, world)       before a file is written at `path`: `Refusal` when that would replace the world at `world`, or any SQLite file
 
 The SQLite file holds the same content as a world file in three tables: `world` (one row: format, version and the rule the world started with), `event` (one row for
 each event: seq, at, kind, and the payload as the canonical JSON text) and `item` (the metadata of each add_item event, by the seq of the event, as the canonical JSON
@@ -26,6 +27,7 @@ from .journal import FORMAT, VERSION, Journal, WorldFileError, dumps_world, worl
 
 HOME_ENV = "BIBLIOPOLIS_HOME"
 WORLD_NAME = "world.sqlite"  # the world of the home folder: one file, one city
+SQLITE_MAGIC = b"SQLite format 3\x00"  # how every SQLite database file begins
 
 SCHEMA = (
     "CREATE TABLE world (id INTEGER PRIMARY KEY CHECK (id = 1), format TEXT NOT NULL, version INTEGER NOT NULL, rule TEXT NOT NULL)",
@@ -45,6 +47,30 @@ def home() -> tuple[Path, bool]:
     created = not folder.exists()
     folder.mkdir(parents=True, exist_ok=True)
     return folder, created
+
+
+def _same_file(a: Path, b: Path) -> bool:
+    """Whether two names are one file: the same path once every link is followed (the file need not be there), or the same file on the disk (a hard link, a spelling that the
+    system takes for the same, such as another case on a system that ignores it)."""
+    if os.path.realpath(a) == os.path.realpath(b):
+        return True
+    try:
+        return os.path.samefile(a, b)
+    except OSError:  # one of them is not there
+        return False
+
+
+def check_output(path: str | Path, world: str | Path) -> None:
+    """Call this before a file is written at `path` by a command that reads the world in the file `world` (`world export`, `world fold`). `Refusal` (`output_is_the_world`) when `path` is
+    that file under any name, since the world would be replaced by the text written from it; and `Refusal` (`output_is_a_database`) when `path` is a SQLite database already, a world or
+    not (a database is never written over). Nothing is touched."""
+    out, source = Path(path), Path(world)
+    if _same_file(out, source):
+        raise Refusal(f"{out} is the world that is being read ({source}); a world is not written over (choose another file)", "output_is_the_world", path=str(out), world=str(source))
+    if out.is_file():
+        with open(out, "rb") as f:
+            if f.read(len(SQLITE_MAGIC)) == SQLITE_MAGIC:
+                raise Refusal(f"{out} is a SQLite database already; a world is not written over (choose another file, or move that one away)", "output_is_a_database", path=str(out))
 
 
 def _connect(path: Path) -> sqlite3.Connection:

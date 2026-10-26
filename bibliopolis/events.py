@@ -79,6 +79,8 @@ CODES = {
     "event_out_of_place": ("seq", "place"),
     "world_exists": ("path",),
     "not_next_event": ("path", "held", "next", "seq"),
+    "output_is_the_world": ("path", "world"),
+    "output_is_a_database": ("path",),
     # ---- the shape of an event, a rule or a world file is wrong: `invalid` holds the problems, each `{where, code, params}` with one of the codes that follow
     "invalid": ("problems", "more"),
     "keys_missing": ("keys",),

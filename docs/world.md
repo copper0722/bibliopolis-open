@@ -219,6 +219,8 @@ that is read passes the refusal of an event on as a `WorldFileError` with the sa
 | `event_out_of_place` | `seq`, `place` | replaying a log whose events are not numbered 1, 2, 3, ... in order | event 7 comes in place 6: the events are numbered 1, 2, 3, ... in order |
 | `world_exists` | `path` | making a world, or importing one, where a file is already (a world is never overwritten) | <folder>/w.sqlite is there already; a world is not overwritten (choose another file with --world, or move that one away) |
 | `not_next_event` | `path`, `held`, `next`, `seq` | appending to a store an event that is not the next number | <folder>/w.sqlite holds 3 events; the next is number 4, not 6 |
+| `output_is_the_world` | `path`, `world` | `world export` or `world fold` asked to write a file that is the world being read, under any name for it (another spelling, a link, a hard link): the world would be replaced by text | <folder>/w.sqlite is the world that is being read (<folder>/w.sqlite); a world is not written over (choose another file) |
+| `output_is_a_database` | `path` | `world export` or `world fold` asked to write a file that is a SQLite database already (a world or not; found by the first 16 bytes) | <folder>/other.sqlite is a SQLite database already; a world is not written over (choose another file, or move that one away) |
 
 ### The shape of an event, a rule or a world file is wrong
 
@@ -326,7 +328,8 @@ program for the rest. `tests/test_world_schema.py` holds the schema to the progr
 exporting it again gives the same bytes, and so does exporting a store and importing the file.
 
 **The home folder** is `$BIBLIOPOLIS_HOME`, else `~/Bibliopolis`; it is made on first use and printed. The world of a command without `--world` is `world.sqlite` in it. A world is never
-overwritten: `world new` and `world import` refuse a file that is there.
+overwritten: `world new` and `world import` refuse a file that is there, and `world export` and `world fold` refuse to write a file that is the world they read (under any name for it) or any SQLite
+database (`output_is_the_world`, `output_is_a_database`).
 
 ## In Python
 
