@@ -2,7 +2,7 @@
 <rect width="100%" height="100%" fill="#ffffff"/>
 <text x="16" y="31" font-size="16" fill="#202028">After 40 houses · 蓋到第 40 棟</text>
 <text x="16" y="50" font-size="14" fill="#4a4a55">No road yet: all 40 are on the ring road.</text>
-<text x="16" y="69" font-size="14" fill="#4a4a55">還沒有路：40 棟全在圓環上。</text>
+<text x="16" y="69" font-size="14" fill="#4a4a55">還沒有路：40 棟全在環形大道上。</text>
 <svg x="14" y="79" width="430" height="355.1" viewBox="-53.62 -41 117.46 97">
 <rect x="-53.62" y="-41" width="117.46" height="97" fill="#e9f1f5"/>
 <path d="M-12,-4L-6,-11L5,-13L12,-8L15,0L13,3L14,5L12,9L6,13L-4,13L-12,5Z" fill="#f4efe2" stroke="#b9ad8c" stroke-width="0.6" stroke-linejoin="round"/>

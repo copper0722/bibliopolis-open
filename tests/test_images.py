@@ -86,7 +86,7 @@ def test_a_picture_is_valid_xml_small_and_made_of_shapes_and_text_only(name):
 
 def test_the_growth_picture_shows_the_town_hall_alone_then_the_first_road_then_the_splits(script):
     said = [t for t, *_ in texts("growth.svg")]
-    for line in ("After 40 houses · 蓋到第 40 棟", "No road yet: all 40 are on the ring road.", "還沒有路：40 棟全在圓環上。",
+    for line in ("After 40 houses · 蓋到第 40 棟", "No road yet: all 40 are on the ring road.", "還沒有路：40 棟全在環形大道上。",
                  "After 41 houses · 蓋到第 41 棟", "The first road opens: Computing takes 15 (orange).",
                  "After 150 houses · 蓋到第 150 棟", "After 600 houses · 蓋到第 600 棟"):
         assert line in said, line
@@ -114,7 +114,7 @@ def test_the_modes_picture_puts_the_same_items_in_both_modes_on_one_frame(script
 def test_the_concept_picture_names_a_house_a_road_a_branch_road_the_town_hall_and_the_ring_road_in_two_languages(script):
     said = [t for t, *_ in texts("concept.svg")]
     for pair in (("an article = a house", "一篇文獻＝一棟房子"), ("a topic = a road", "主題＝路"), ("a sub-topic = a branch road", "子主題＝岔路"),
-                 ("the town hall = the root", "市政廳＝根"), ("the ring road", "圓環：還沒有主題的文獻")):
+                 ("the town hall = the root", "市政廳＝根"), ("the ring road", "環形大道：還沒有主題的文獻")):
         assert all(line in said for line in pair), pair
     assert "市政廳" in said and "Knowledge" in said and "Networks" in said  # the plaza, the name of the ring road, the branch road named
     city = bibliopolis.build_city(script.concept_library(), script.CONCEPT_TREE, mode="mirror")

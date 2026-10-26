@@ -2,15 +2,16 @@
 
 Turn a literature collection into a city-state.
 
-![A tiny city with its parts named: a house, a road, a branch road, the town hall and the root zone under it](docs/images/concept.svg)
+![A tiny city with its parts named: a house, a road, a branch road, the town hall and the ring road round it](docs/images/concept.svg)
 
 *A tiny invented city with its parts named. An article is a house. A topic is a road, and a sub-topic is a branch road. The town hall is the root of the topic
-tree. Articles that have no topic yet live in the root zone, under the town hall.*
+tree. Articles that have no topic yet live on the ring road round the town hall.*
 
 Every article is a house. Topics are roads that radiate from the town hall at the centre, and the tags of an article are the
 residents of its house. The city grows as the collection grows.
 
-**Status: early.** The city engine and its command line work, in both modes. There is no viewer yet, no Zotero import and no
+**Status: early.** The city engine and its command line work, in both modes. A city can also be built by hand, one act at a time
+(a world with its own commands: [docs/world.md](docs/world.md)). There is no viewer yet, no Zotero import and no
 ready-made topic tree: you bring a library file and a topic tree (formats: [docs/format.md](docs/format.md)). This repository is the
 open extraction of a private, self-use project.
 
@@ -69,14 +70,14 @@ Only the tests need an extra package, pytest (see Tests below). `build`, `pictur
 
 ## How a city grows
 
-A city starts as a town hall and nothing else. Each new article becomes a house at once, and it is built under the town hall, in the root zone. Nothing
-stands above ground until the root zone holds more than 40 houses. Then the largest group of at least 10 houses that share a sub-topic moves out and opens
-the first road. After that, any road that holds more than 40 houses opens a branch road for its own largest group in the same way.
+A city starts as a town hall with one road round it, the ring road, called Knowledge. Each new article becomes a house at once, and it is built on the ring road. There
+is no other road until the ring road holds more than 40 houses. Then the largest group of at least 10 houses that share a sub-topic moves out and opens
+the first road, which leaves the ring road. After that, any road that holds more than 40 houses opens a branch road for its own largest group in the same way.
 
 ![The example city in grow mode after 40, 41, 150 and 600 houses](docs/images/growth.svg)
 
-*The example library (600 invented items) in `grow` mode, after 40, 41, 150 and 600 houses, on one frame. After 40 houses nothing stands above ground: all 40
-are under the town hall. House 41 opens the first road, and the orange houses are the ones that moved. Later splits add roads and branch roads.*
+*The example library (600 invented items) in `grow` mode, after 40, 41, 150 and 600 houses, on one frame. After 40 houses there is no road but the ring road: all 40
+are on the ring road. House 41 opens the first road, and the orange houses are the ones that moved. Later splits add roads and branch roads.*
 
 The town hall keeps a chronicle of every split. The command prints it, one sentence per entry (the first four here):
 
@@ -104,10 +105,10 @@ python3 -m bibliopolis picture --city city-41.json --out city-41.svg
 
 - **Your library as a city (`mirror`).** Your topic tree (for Zotero, the collection tree) is the street plan: every topic an item is
   filed under is a road from the start, and so is every topic above one. An item stands once, at its deepest topic. Items arrive in the
-  order you added them, so the growth of the city can be replayed. Items in no topic live underground, below the town hall. A road that
+  order you added them, so the growth of the city can be replayed. Items in no topic live on the ring road round the town hall. A road that
   holds more than 40 houses is marked as crowded.
 - **A city from zero (`grow`, data-driven).** Houses arrive one at a time and the roads grow from the data:
-  - The first houses live underground, below the town hall.
+  - The first houses live on the ring road round the town hall.
   - A road holds 10 to 40 houses directly.
   - When a road holds more than 40, the largest group of at least 10 of its houses that share a sub-topic moves out and opens a new
     road.
@@ -180,13 +181,13 @@ the result.
 
 把收藏的文獻蓋成一座城邦。
 
-![一座小城邦，標出房子、路、岔路、市政廳與市政廳地下的根區](docs/images/concept.svg)
+![一座小城邦，標出房子、路、岔路、市政廳與環繞市政廳的環形大道](docs/images/concept.svg)
 
-*一座虛構的小城邦，標出各個部分。一篇文獻是一棟房子，一個主題是一條路，子主題是岔路，市政廳是主題樹的根。還沒有主題的文獻，住在市政廳地下的根區。*
+*一座虛構的小城邦，標出各個部分。一篇文獻是一棟房子，一個主題是一條路，子主題是岔路，市政廳是主題樹的根。還沒有主題的文獻，住在環繞市政廳的環形大道上。*
 
 一篇文獻是一棟房子。主題是從市政廳往外放射的路，文獻的標籤是房子裡的居民。收藏越多，城邦越大。
 
-**狀態：起步中。** 城邦引擎與命令列已經可以用，兩種模式都有。目前還沒有檢視器，還不能直接匯入 Zotero，也沒有現成的主題樹：
+**狀態：起步中。** 城邦引擎與命令列已經可以用，兩種模式都有。城邦也可以一步一步手工建造（另有一組自己的指令：[docs/world.md](docs/world.md)，英文）。目前還沒有檢視器，還不能直接匯入 Zotero，也沒有現成的主題樹：
 你要自備文獻庫檔案與主題樹（格式見 [docs/format.md](docs/format.md)）。這個 repo 是一個私人自用專案的開源版。
 
 ## 安裝與設定
@@ -239,12 +240,12 @@ wrote city.svg: 41418 bytes
 
 ## 城邦怎麼長大
 
-一座城邦一開始只有市政廳。每一篇新文獻立刻蓋成一棟房子，蓋在市政廳地下的根區。根區住滿 40 棟之前，地面上什麼都沒有。超過 40 棟時，
-同一個子主題、至少 10 棟的最大一組房子搬出去，開出第一條路。之後任何一條路超過 40 棟，就用同樣的方法，為它自己最大的一組房子開一條岔路。
+一座城邦一開始只有市政廳，和環繞它的一條路：環形大道，名叫 Knowledge。每一篇新文獻立刻蓋成一棟房子，蓋在環形大道上。環形大道住滿 40 棟之前，沒有別的路。超過 40 棟時，
+同一個子主題、至少 10 棟的最大一組房子搬出去，開出第一條路，離開環形大道。之後任何一條路超過 40 棟，就用同樣的方法，為它自己最大的一組房子開一條岔路。
 
 ![範例城邦在 grow 模式下，蓋到第 40、41、150、600 棟時的樣子](docs/images/growth.svg)
 
-*範例文獻庫（600 筆虛構文獻）在 `grow` 模式下，蓋到第 40、41、150、600 棟時的樣子，四張圖用同一個畫面。蓋到第 40 棟時地面上什麼都沒有，40 棟全住在市政廳地下。
+*範例文獻庫（600 筆虛構文獻）在 `grow` 模式下，蓋到第 40、41、150、600 棟時的樣子，四張圖用同一個畫面。蓋到第 40 棟時只有環形大道這一條路，40 棟全住在上面。
 第 41 棟讓第一條路開出來，橘色是搬出去的房子。之後的分路陸續長出更多路與岔路。*
 
 市政廳會記下每一次分路，寫成市政紀事。下面的指令把它印出來，一筆一句（這裡只列前四筆）：
@@ -271,10 +272,10 @@ python3 -m bibliopolis picture --city city-41.json --out city-41.svg
 ## 兩種模式
 
 - **把你的文獻庫變成城邦（`mirror`）。** 你的主題樹（用 Zotero 的話，就是 collection 樹）就是路網：文獻歸在哪些主題，那些主題一開始就是路，
-  它們上面的主題也是。一篇文獻只蓋一棟房子，蓋在它最深的那個主題。文獻依加入的先後抵達，所以城市的成長可以回放。沒有主題的文獻，住在市政廳正下方的地底。
+  它們上面的主題也是。一篇文獻只蓋一棟房子，蓋在它最深的那個主題。文獻依加入的先後抵達，所以城市的成長可以回放。沒有主題的文獻，住在環繞市政廳的環形大道上。
   一條路住超過 40 棟，會被標成擁擠。
 - **從零開始建城邦（`grow`，依資料長出來）。** 房子一棟一棟進來，路依資料自己長出來：
-  - 最早的房子住在市政廳正下方的地底。
+  - 最早的房子住在環繞市政廳的環形大道上。
   - 一條路直接住 10 到 40 棟。
   - 一條路超過 40 棟時，把同一個子主題、至少 10 棟的最大一組房子搬出去，開一條新路。
   - 每一次分路都記在市政廳的市政紀事裡，可以查，也可以修補。

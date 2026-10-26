@@ -55,7 +55,7 @@ def growth_caption(n: int, city: dict) -> list[str]:
     split = latest_split(city)
     head = f"After {n} houses · 蓋到第 {n} 棟"
     if split is None:
-        return [head, f"No road yet: all {s['ring']} are on the ring road.", f"還沒有路：{s['ring']} 棟全在圓環上。"]
+        return [head, f"No road yet: all {s['ring']} are on the ring road.", f"還沒有路：{s['ring']} 棟全在環形大道上。"]
     moved = len(split["houses"])
     if s["splits"] == 1:  # (the ring road is a road too: the first road that opens from it is the first split)
         return [head, f"The first road opens: {split['label']} takes {moved} (orange).", f"第一條路開出來：{split['label']} 搬走 {moved} 棟（橘色）。"]
@@ -142,7 +142,7 @@ def concept() -> str:
     notes = [  # (the place it names, in cells; the side of the picture; the words: English, Chinese, ...)
         (along(roads["road:place:lane:networks:2"]["points"], 0.9), "left", ["a sub-topic = a branch road", "子主題＝岔路"]),
         ((-radius * 0.72, -radius * 0.72), "left", ["the town hall = the root", "市政廳＝根"]),
-        ((0.0, ring_radius), "left", ["the ring road", "articles with no topic yet", "圓環：還沒有主題的文獻"]),
+        ((0.0, ring_radius), "left", ["the ring road", "articles with no topic yet", "環形大道：還沒有主題的文獻"]),
         (along(roads["road:place:tag:history"]["points"], 0.45), "right", ["a topic = a road", "主題＝路"]),
         ((east["position"]["x"], east["position"]["z"]), "right", ["an article = a house", "一篇文獻＝一棟房子"]),
     ]

@@ -44,7 +44,7 @@
 <circle cx="550" cy="426.96" r="4.5" fill="#ffffff" stroke="#202028" stroke-width="1.6"/>
 <text x="284" y="406.96" font-size="16" text-anchor="end" fill="#202028" font-weight="600">the ring road</text>
 <text x="284" y="427.96" font-size="15" text-anchor="end" fill="#4a4a55">articles with no topic yet</text>
-<text x="284" y="448.96" font-size="15" text-anchor="end" fill="#4a4a55">圓環：還沒有主題的文獻</text>
+<text x="284" y="448.96" font-size="15" text-anchor="end" fill="#4a4a55">環形大道：還沒有主題的文獻</text>
 <path d="M808,224.87L792,224.87L615.07,229.87" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
 <path d="M808,224.87L792,224.87L615.07,229.87" fill="none" stroke="#202028" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
 <circle cx="615.07" cy="229.87" r="4.5" fill="#ffffff" stroke="#202028" stroke-width="1.6"/>
