@@ -11,7 +11,7 @@ import pytest
 from support import T, art, make_tree, stamp
 
 import bibliopolis
-from bibliopolis import cli
+from bibliopolis import cli, picture
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = {"med": T(0, a=T(25), b=T(16)), "pub": T(14), "x": T(3)}
@@ -146,3 +146,85 @@ def test_the_city_file_has_the_permissions_of_any_file_the_user_makes(files, tmp
     plain.write_text("x", encoding="utf-8")
     assert run_main(capsys, "build", "--library", str(lib), "--tree", str(t), "--out", str(out))[0] == 0
     assert stat.S_IMODE(out.stat().st_mode) == stat.S_IMODE(plain.stat().st_mode)  # (a temporary file would be 0600)
+
+
+# ------------------------------------------------------------------------------------- picture and chronicle ----
+@pytest.fixture
+def city_file(files, tmp_path, capsys):
+    t, lib, *_ = files
+    out = tmp_path / "built" / "city.json"
+    assert run_main(capsys, "build", "--library", str(lib), "--tree", str(t), "--out", str(out))[0] == 0
+    return out
+
+
+def test_picture_draws_the_city_and_says_how_big_the_file_is(city_file, tmp_path, capsys):
+    out = tmp_path / "pictures" / "city.svg"  # (the directory is made)
+    code, err = run_main(capsys, "picture", "--city", str(city_file), "--out", str(out))
+    doc = json.loads(city_file.read_text(encoding="utf-8"))
+    text = out.read_text(encoding="utf-8")
+    assert code == 0 and text == picture.render(doc) and picture.TITLE in text
+    assert err.strip() == f"wrote {out}: {len(text.encode('utf-8'))} bytes"
+    assert [p.name for p in out.parent.iterdir()] == ["city.svg"]  # no temporary file is left
+
+
+def test_picture_takes_a_title_and_a_size(city_file, tmp_path, capsys):
+    out = tmp_path / "titled.svg"
+    assert run_main(capsys, "picture", "--city", str(city_file), "--out", str(out), "--title", "A <small> town", "--size", "600")[0] == 0
+    doc = json.loads(city_file.read_text(encoding="utf-8"))
+    text = out.read_text(encoding="utf-8")
+    assert text == picture.render(doc, "A <small> town", size=600) and "A &lt;small&gt; town" in text
+    assert text != picture.render(doc, "A <small> town")
+
+
+def test_picture_refuses_what_is_not_a_city_a_size_that_is_no_picture_and_a_missing_file(files, city_file, tmp_path, capsys):
+    t, lib, *_ = files
+    out = tmp_path / "x.svg"
+    for wrong in (lib, t):  # the usual mistake: a library or a tree instead of the city
+        code, err = run_main(capsys, "picture", "--city", str(wrong), "--out", str(out))
+        assert code == 2 and "not a city document" in err and "layout v4" in err and err.startswith("bibliopolis: ") and "Traceback" not in err
+    broken = json.loads(city_file.read_text(encoding="utf-8"))
+    del broken["roads"]
+    path = tmp_path / "broken.json"
+    path.write_text(json.dumps(broken), encoding="utf-8")
+    code, err = run_main(capsys, "picture", "--city", str(path), "--out", str(out))
+    assert code == 2 and "city.roads: must be an object" in err
+    code, err = run_main(capsys, "picture", "--city", str(city_file), "--out", str(out), "--size", "50")
+    assert code == 2 and "--size must be at least 100" in err
+    code, err = run_main(capsys, "picture", "--city", str(tmp_path / "missing.json"), "--out", str(out))
+    assert code == 1 and "missing.json" in err
+    assert not out.exists()
+
+
+def test_chronicle_prints_one_sentence_per_entry_on_standard_output(city_file, capsys):
+    doc = json.loads(city_file.read_text(encoding="utf-8"))
+    assert cli.main(["chronicle", "--city", str(city_file)]) == 0
+    shown = capsys.readouterr()
+    assert shown.err == "" and shown.out.splitlines() == bibliopolis.city.chronicle_lines(doc)
+    assert len(shown.out.splitlines()) == len(doc["world"]["chronicle"]) >= 2
+    assert cli.main(["chronicle", "--city", str(city_file), "--limit", "1"]) == 0
+    assert capsys.readouterr().out.splitlines() == bibliopolis.city.chronicle_lines(doc, 1)
+
+
+def test_chronicle_says_so_when_it_is_empty_and_refuses_what_it_cannot_read(files, city_file, tmp_path, capsys):
+    t, lib, *_ = files
+    mirror = tmp_path / "mirror.json"
+    assert run_main(capsys, "build", "--library", str(lib), "--tree", str(t), "--mode", "mirror", "--out", str(mirror))[0] == 0
+    assert cli.main(["chronicle", "--city", str(mirror)]) == 0
+    shown = capsys.readouterr()
+    assert shown.out == "" and "the chronicle is empty" in shown.err
+    code, err = run_main(capsys, "chronicle", "--city", str(lib))
+    assert code == 2 and "not a city document" in err
+    code, err = run_main(capsys, "chronicle", "--city", str(city_file), "--limit", "0")
+    assert code == 2 and "--limit must be at least 1" in err
+    assert run_main(capsys, "chronicle", "--city", str(tmp_path / "missing.json"))[0] == 1
+
+
+@pytest.mark.parametrize("command", ["picture", "chronicle"])
+def test_picture_and_chronicle_give_the_same_bytes_whatever_the_hash_seed(city_file, tmp_path, command):
+    outs = []
+    for seed in ("0", "1", "4242"):
+        args = ["--city", str(city_file), "--out", str(tmp_path / f"{seed}.svg")] if command == "picture" else ["--city", str(city_file)]
+        done = run_module(command, *args, hashseed=seed)
+        assert done.returncode == 0, done.stderr
+        outs.append((tmp_path / f"{seed}.svg").read_bytes() if command == "picture" else done.stdout.encode("utf-8"))
+    assert outs[0] == outs[1] == outs[2] and outs[0].endswith(b"\n") and b"\r" not in outs[0]

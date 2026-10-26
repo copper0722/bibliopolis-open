@@ -127,3 +127,64 @@ def test_the_command_line_replays_with_first(tmp_path, capsys):
     assert capsys.readouterr().err.strip() == f"wrote {out}: 41 houses on 1 roads, 26 under the town hall, 1 splits, 0 over (mode grow)"
     assert cli.main(["build", "--library", str(tmp_path / "l.json"), "--tree", str(tmp_path / "t.json"), "--first", "-3", "--out", str(tmp_path / "x.json")]) == 2
     assert "first must be a whole number" in capsys.readouterr().err and not (tmp_path / "x.json").exists()
+
+
+# ------------------------------------------------------------------------------------------ the chronicle ----
+def chronicle_doc(*entries, places=None):
+    return {"places": places or {}, "world": {"districts": {"max": 40, "min": 10}, "chronicle": list(entries)}}
+
+
+def test_the_chronicle_of_the_sample_reads_as_sentences_one_per_entry():
+    tree, library = sample()
+    doc = bibliopolis.build_city(library, tree)
+    lines = bibliopolis.city.chronicle_lines(doc)
+    assert len(lines) == len(doc["world"]["chronicle"]) == 23
+    assert lines[:4] == [
+        "house 41, 2019-06-26: The root zone held 41 houses. Computing opens as a road with 15 of them; 26 stay.",
+        "house 62, 2019-10-15: The root zone held 41 houses. Physical sciences opens as a road with 12 of them; 29 stay.",
+        "house 85, 2020-01-26: The root zone held 41 houses. Life sciences opens as a road with 17 of them; 24 stay.",
+        "house 130, 2020-08-12: Computing held 41 houses. Systems opens as a road with 20 of them; 21 stay.",
+    ]
+    assert lines[18] == "house 575, 2026-06-02: Networks holds 41 houses, more than 40, and no group of 10 or more can open a road. It is marked over."
+    assert bibliopolis.city.chronicle_lines(doc, 2) == lines[:2] and bibliopolis.city.chronicle_lines(doc, 0) == []
+
+
+def test_every_number_of_a_sentence_comes_from_its_entry_or_the_rule_of_the_document():
+    tree, library = sample()
+    doc = bibliopolis.build_city(library, tree, max_houses=30, min_houses=6)
+    for line, entry in zip(bibliopolis.city.chronicle_lines(doc), doc["world"]["chronicle"]):
+        if "from" in entry:
+            assert f"held {entry['count_before']} houses" in line and f"with {len(entry['houses'])} of them" in line and f"{entry['count_after']} stay" in line
+        else:
+            assert f"holds {entry['count']} houses, more than 30, and no group of 6 or more" in line
+    assert any("more than 30" in line for line in bibliopolis.city.chronicle_lines(doc))
+
+
+def test_the_day_is_the_date_part_of_at_whatever_the_library_wrote_and_is_left_out_when_there_is_none():
+    base = {"n": 1, "seq": 7, "from": "place:root", "to": "place:tag:a", "label": "Alpha", "houses": ["h1"], "count_before": 41, "count_after": 40}
+    places = {"place:root": {"underground": True, "address": ["根區"]}}
+    cases = [("2026-06-02", ", 2026-06-02"), ("2026-06-02T09:30:00+08:00", ", 2026-06-02"), ("2026-06-02 09:30:00", ", 2026-06-02"), ("last week", ", last week"),
+             ("", ""), (None, "")]
+    for at, shown in cases:
+        entry = {**base, **({"at": at} if at is not None else {})}
+        assert bibliopolis.city.chronicle_lines(chronicle_doc(entry, places=places))[0].startswith(f"house 7{shown}: The root zone held 41 houses.")
+
+
+def test_a_road_is_named_by_its_address_the_root_zone_by_its_flag_and_a_place_the_document_lacks_by_its_id():
+    places = {"place:root": {"underground": True, "address": ["根區"]}, "place:tag:a": {"address": ["Alpha", "Beta"]}}
+    split = {"seq": 3, "from": "place:tag:a", "to": "place:tag:b", "label": "Gamma", "houses": ["h1", "h2"], "count_before": 41, "count_after": 39}
+    over = {"seq": 4, "over": "place:tag:zzz", "count": 44}
+    root = {"seq": 5, "over": "place:root", "count": 41}
+    lines = bibliopolis.city.chronicle_lines(chronicle_doc(split, over, root, places=places))
+    assert lines == ["house 3: Beta held 41 houses. Gamma opens as a road with 2 of them; 39 stay.",
+                     "house 4: place:tag:zzz holds 44 houses, more than 40, and no group of 10 or more can open a road. It is marked over.",
+                     "house 5: The root zone holds 41 houses, more than 40, and no group of 10 or more can open a road. It is marked over."]
+
+
+def test_the_chronicle_of_a_mirror_city_is_the_roads_that_became_crowded():
+    tree = forest("a", "b")
+    items = [art(k + 1, ["a"], added_at=stamp(k)) for k in range(45)] + [art(100, ["b"], added_at=stamp(60))]
+    doc = bibliopolis.build_city({"items": items}, tree, mode="mirror")
+    lines = bibliopolis.city.chronicle_lines(doc)
+    assert len(lines) == 1 and lines[0].startswith("house 41") and "A holds 41 houses, more than 40" in lines[0] and "marked over" in lines[0]
+    assert bibliopolis.city.chronicle_lines(bibliopolis.build_city({"items": items[:5]}, tree, mode="mirror")) == []

@@ -3,7 +3,7 @@
 How a library and a topic tree become a city. Formats are in [format.md](format.md).
 
 ```
-inputs ──> plan (directions, from the whole library) ──> world (the arrivals, one house at a time) ──> document (city.json)
+inputs ──> plan (directions, from the whole library) ──> world (the arrivals, one house at a time) ──> document (city.json) ──> picture (city.svg)
 ```
 
 | step | module | what it does |
@@ -13,7 +13,8 @@ inputs ──> plan (directions, from the whole library) ──> world (the arri
 | plan | `bibliopolis.plan` | pins the directions: ring-1 sectors, trunks, heavy paths, sides; and the rule `max` / `min` |
 | world | `bibliopolis.world` | folds the arrivals into a world, one house at a time: the root zone, the roads, the splits, the ribs, the chronicle |
 | document | `bibliopolis.document`, `bibliopolis.layout`, `bibliopolis.coast` | writes the world as the layout v4 document: records, measures, the coast, the stable text |
-| glue | `bibliopolis.city`, `bibliopolis.cli` | `build_city()` and `python -m bibliopolis build` |
+| glue | `bibliopolis.city`, `bibliopolis.cli` | `build_city()`, `chronicle_lines()` and the commands `python -m bibliopolis build`, `picture` and `chronicle` |
+| picture | `bibliopolis.picture` | draws a city document as SVG: one city, or several on one sheet (see "The pictures") |
 
 ## Arrival and address
 
@@ -99,6 +100,21 @@ The topic tree is the street plan.
   last arrival). `assign` alone never makes them, so that a world does not depend on how its arrivals were cut into calls: a record made early would open the
   trunks of the plan before their first house, nearer the plaza.
 
+## The pictures
+
+`bibliopolis.picture` draws a city document, and nothing else: it never reads the library. Units are cells, north is up.
+
+- **One city** (`render`, the command `picture`): the coast, the houses, the roads in four classes (大道 avenue, 路 road, 巷 lane, 弄 alley), the plaza with its
+  name, a title, a line of numbers and a legend.
+- **The root zone is a number.** Its houses stand under the plaza and are not drawn; the plaza says how many (`地下 n 棟`, n houses underground).
+- **A sector is named once it has a road.** The plan pins every sector of ring 1 before the first house, but a picture shows only those with a road, so a
+  city of 40 houses is the town hall alone. Each name stands just beyond the farthest house of its sector, and farther out, with a line, where it would sit on
+  another name.
+- **One sheet** (`sheet`): several cities on the same frame at the same scale, so that growth shows as growth. The frame leaves room for every name of every
+  city. A road is never drawn thicker than at 3.5 pixels to the cell, so a small city is not made of fat lines. Coordinates have one decimal on a sheet and two
+  in a single picture, which keeps a sheet small (a test keeps the sheets under 100 KB).
+- The same document gives the same bytes. A character that XML 1.0 cannot carry (a control character) in a name is replaced, so a picture is always valid XML.
+
 ## Limits and known quirks
 
 - **A tree with one root and houses on the root itself.** The plan gives such houses a ring-1 sector of their own, but no road ever opens there: a house whose
@@ -119,12 +135,13 @@ The topic tree is the street plan.
 | the cut and the plan: leaf and container streets, chains, the sectors of ring 1, the heavy path and the sides | `tests/test_plan.py` |
 | angles, geometry, records, measures, the stable text, the coast | `tests/test_layout.py` |
 | the two input files and their checks | `tests/test_inputs.py`, `tests/test_schema.py` |
-| the pipeline and its summary (the streets that are over now) | `tests/test_city.py` |
-| the command line, the same bytes in separate processes | `tests/test_cli.py` |
+| the pipeline, its summary (the streets that are over now), the replay with `first`, the chronicle as sentences | `tests/test_city.py` |
+| the command line (`build`, `picture`, `chronicle`), the same bytes in separate processes | `tests/test_cli.py` |
+| the picture: what is drawn and left out, the frame of a sheet, valid XML | `tests/test_picture.py` |
 | the sample and what it shows; what the format page says about the sample | `tests/test_example.py`, `tests/test_format_page.py` |
 | empty library, one root, many roots, a long chain | `tests/test_edges.py` |
 | the README does not drift from the program | `tests/test_readme.py` |
-| standard library only, Python 3.11 syntax | `tests/test_package.py` |
+| standard library only, Python 3.11 syntax (also the f-strings that only 3.12 can read) | `tests/test_package.py` |
 
 `tests/checks.py` holds the geometry checks (no overlap, every lot beside the lane of its own street, a road tree that starts at the plaza rim, no road
 through a lot, every lot inside the wedge of its trunk) that the random worlds of `tests/support.py` run after every step.

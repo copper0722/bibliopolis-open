@@ -22,15 +22,15 @@ split as they grow).
 
 ## Layout and checks
 
-- `bibliopolis/` the package (Python 3.11+, standard library only): `inputs` (read and check the two files), `cut` and `plan` (the directions),
-  `world` (the growing city), `document` and `layout` and `coast` (the document), `city` and `cli`. Rules: `docs/engine.md`; formats:
-  `docs/format.md` and `schema/`.
+- `bibliopolis/` the package (Python 3.11+, standard library only): `inputs` (read and check the files), `cut` and `plan` (the directions),
+  `world` (the growing city), `document` and `layout` and `coast` (the document), `picture` (the SVG), `city` and `cli`. Rules: `docs/engine.md`;
+  formats: `docs/format.md` and `schema/`.
 - `examples/` the seeded generator of the synthetic sample (`make_example.py`) and its output; a derived city is never committed.
 - `tests/`: `python -m pytest` from the repository root. Every test is offline and synthetic.
 - The plan, the world of `grow` mode (roads, direct counts, root zone, chronicle, lots, ribs, lines) and the document it makes (places, roads, coast,
   measures) are an extraction of the private engine. A parity test in the private repository compares them with it on random libraries and on the
   sample (the whole document against a private plan without the journal sector). Not compared, because the private engine has nothing to compare
-  with: the input checks, the mirror mode (and `complete`), the command line and its summary, the `at` dates of the chronicle and the replay (`first`). A change
-  there says so in its commit.
+  with: the input checks, the mirror mode (and `complete`), the command line and its summary, the `at` dates of the chronicle, the replay (`first`), the
+  chronicle sentences and the picture. A change there says so in its commit.
 - No third-party code or data is copied in. Two textbook algorithms (largest-remainder apportionment, Douglas-Peucker simplification) are
   implemented here, and the sample is generated from invented word lists.

@@ -1,7 +1,8 @@
-"""Reading and checking the two input documents: the library and the topic tree (docs/format.md, schema/).
+"""Reading and checking the input documents: the library and the topic tree (docs/format.md, schema/), and the city that `picture` and `chronicle` read.
 
     library  {"items": [{"id", "title", "authors", "year", "doi"?, "added_at", "type", "tags", "topics"}, ...]}
     tree     {"nodes": [{"id", "label", "parent"}, ...]}
+    city     the layout v4 document that `build` writes (docs/format.md, The city): only what a picture and the chronicle read is checked
 
 `topics` are ids of tree nodes. The address of a house is its item's deepest topic (ties in code-point order of the id); an item with no
 topic lives in the root zone. Items arrive in `added_at` order, ties by id.
@@ -13,6 +14,7 @@ somewhere. Every problem found is reported at once (up to MAX_PROBLEMS), each wi
 from __future__ import annotations
 
 import json
+import math
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -227,3 +229,59 @@ def read_library(doc, tree: dict) -> list[dict]:
     problems.raise_if_any()
     keyed.sort(key=lambda t: (t[0], t[1]))
     return [t[2] for t in keyed]
+
+
+# ----------------------------------------------------------------------------------------------------- city ----
+ROAD_CLASSES = ("大道", "路", "巷", "弄")
+PLACE_KINDS = ("plaza", "street", "lot", "reserved")
+
+
+def _number(value) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def read_city(doc, name: str = "city") -> dict:
+    """The city document, if it is the layout v4 file that `build` writes and has what `picture` and `chronicle` read; else `InputError` with the places of
+    the problems. It does not re-check the geometry: a city that was edited by hand can still be wrong in ways this does not see."""
+    problems = _Problems()
+    if not isinstance(doc, dict):
+        raise InputError(f"{name}: not a city document: the file does not hold a JSON object")
+    if doc.get("layout_version") != "v4":
+        raise InputError(f"{name}: not a city document: expected the layout v4 file that `bibliopolis build` writes "
+                         f"(layout_version is {doc.get('layout_version')!r}, not 'v4'); a library or a tree file is not a city")
+    for key in ("places", "roads", "composition", "world"):
+        if not isinstance(doc.get(key), dict):
+            problems.add(f"{name}.{key}", "must be an object")
+    problems.raise_if_any()
+    places, roads, comp, world = doc["places"], doc["roads"], doc["composition"], doc["world"]
+    plaza = places.get("place:plaza")
+    if not isinstance(plaza, dict) or not isinstance(plaza.get("label"), str) or not _number(plaza.get("radius")):
+        problems.add(f"{name}.places.place:plaza", "must be an object with a label and a radius")
+    for pid, p in places.items():
+        where = f"{name}.places[{pid!r}]"
+        if not isinstance(p, dict) or p.get("kind") not in PLACE_KINDS:
+            problems.add(where, f"must be an object whose kind is one of {', '.join(PLACE_KINDS)}")
+        elif p["kind"] in ("lot", "reserved") and not p.get("underground"):
+            pos = p.get("position")
+            if not isinstance(pos, dict) or not _number(pos.get("x")) or not _number(pos.get("z")) or p.get("parent") not in places:
+                problems.add(where, "a house on the surface needs a position {x, z} and a parent that is a place")
+    for rid, r in roads.items():
+        where = f"{name}.roads[{rid!r}]"
+        points = r.get("points") if isinstance(r, dict) else None
+        if not isinstance(r, dict) or r.get("class") not in ROAD_CLASSES:
+            problems.add(where, f"must be an object whose class is one of {', '.join(ROAD_CLASSES)}")
+        elif not isinstance(points, list) or len(points) < 2 or not all(isinstance(q, list) and len(q) == 2 and all(_number(v) for v in q) for q in points):
+            problems.add(where, "points must be a list of at least two [x, z] pairs")
+    ring1 = comp.get("ring1")
+    if not isinstance(ring1, list) or not all(isinstance(r, dict) and isinstance(r.get("place"), str) and isinstance(r.get("label"), str)
+                                              and _number(r.get("from")) and _number(r.get("to")) for r in ring1):
+        problems.add(f"{name}.composition.ring1", "must be a list of {place, label, from, to}")
+    if not isinstance(comp.get("measure"), dict) or not isinstance(comp.get("streets"), dict) or not _number(comp.get("buildings")):
+        problems.add(f"{name}.composition", "needs buildings, measure and streets")
+    chronicle, districts = world.get("chronicle"), world.get("districts")
+    if not isinstance(chronicle, list) or not all(isinstance(e, dict) and _number(e.get("seq")) for e in chronicle):
+        problems.add(f"{name}.world.chronicle", "must be a list of entries that have a seq")
+    if not isinstance(districts, dict) or not _number(districts.get("max")) or not _number(districts.get("min")):
+        problems.add(f"{name}.world.districts", "must be an object with max and min")
+    problems.raise_if_any()
+    return doc

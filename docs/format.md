@@ -67,6 +67,9 @@ Every problem found is reported at once (up to 20), each with the place it was f
 `city.json` is the layout v4 document: the geometry and the structure of the city. It holds no title, author, year, DOI, type or tag: those stay in your
 library file, and the house of an item is `place:article:<id>`.
 
+Two commands read it: `python -m bibliopolis picture --city city.json --out city.svg` draws it, and `python -m bibliopolis chronicle --city city.json`
+prints its chronicle as sentences. They refuse a file that is not a city (a library or a tree, say) and name what is missing.
+
 The text is stable: header fields pretty-printed, then one road, one place per line. The same input gives the same bytes on every run (the angles are
 integers of 1/100 degree, the coordinates are rounded to three decimals, everything is written in sorted order). The tests build the sample in separate
 processes with different hash seeds and compare the bytes.

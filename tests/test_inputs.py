@@ -1,9 +1,12 @@
 """Reading and checking the library and the topic tree (bibliopolis.inputs, docs/format.md)."""
 
+import copy
 import json
 
 import pytest
+from support import T, make_tree
 
+import bibliopolis
 from bibliopolis import inputs
 from bibliopolis.tree import TreeView, major_tag
 
@@ -172,3 +175,68 @@ def test_json_files_are_read_as_utf8_with_or_without_a_byte_order_mark_and_a_bad
         inputs.load_json(latin)
     with pytest.raises(OSError):
         inputs.load_json(tmp_path / "missing.json")
+
+
+# ------------------------------------------------------------------------------------------------ the city ----
+@pytest.fixture(scope="module")
+def real_city():
+    tree, items = make_tree({"med": T(0, a=T(25), b=T(16)), "pub": T(14)})
+    return bibliopolis.build_city({"items": items}, tree)
+
+
+def test_a_city_that_build_wrote_is_read_as_it_is_also_after_a_round_trip_through_json(real_city):
+    assert inputs.read_city(real_city) is real_city
+    assert inputs.read_city(json.loads(json.dumps(real_city))) == real_city
+    tree, items = make_tree({"med": T(0, a=T(25), b=T(16)), "pub": T(14)})
+    assert inputs.read_city(bibliopolis.build_city({"items": items}, tree, mode="mirror"))["world"]["mode"] == "mirror"
+
+
+def first_lot(doc):
+    return next(p for p in doc["places"].values() if p["kind"] == "lot" and not p.get("underground"))
+
+
+@pytest.mark.parametrize("change, expected", [
+    (lambda d: d.pop("roads"), "city.roads: must be an object"),
+    (lambda d: d.pop("world"), "city.world: must be an object"),
+    (lambda d: d.update(layout_version="v3"), "layout_version is 'v3', not 'v4'"),
+    (lambda d: d["places"].pop("place:plaza"), "city.places.place:plaza: must be an object with a label and a radius"),
+    (lambda d: d["places"]["place:plaza"].update(radius="big"), "city.places.place:plaza"),
+    (lambda d: d["places"].update({"place:odd": {"kind": "castle"}}), "city.places['place:odd']: must be an object whose kind is one of"),
+    (lambda d: first_lot(d).pop("position"), "a house on the surface needs a position"),
+    (lambda d: first_lot(d).update(parent="place:nowhere"), "a house on the surface needs a position"),
+    (lambda d: next(iter(d["roads"].values())).update({"class": "avenue"}), "must be an object whose class is one of 大道, 路, 巷, 弄"),
+    (lambda d: next(iter(d["roads"].values())).update(points=[[1, 2]]), "points must be a list of at least two [x, z] pairs"),
+    (lambda d: next(iter(d["roads"].values())).update(points=[[1, 2], [3, "x"]]), "points must be a list of at least two [x, z] pairs"),
+    (lambda d: d["composition"].update(ring1=[{"place": 1}]), "city.composition.ring1: must be a list of {place, label, from, to}"),
+    (lambda d: d["composition"].pop("measure"), "city.composition: needs buildings, measure and streets"),
+    (lambda d: d["world"].update(chronicle="none"), "city.world.chronicle: must be a list of entries that have a seq"),
+    (lambda d: d["world"].update(chronicle=[{"n": 1}]), "city.world.chronicle"),
+    (lambda d: d["world"].update(districts={"max": 40}), "city.world.districts: must be an object with max and min"),
+])
+def test_a_city_that_is_not_what_build_writes_is_refused_with_the_place(real_city, change, expected):
+    doc = copy.deepcopy(real_city)
+    change(doc)
+    with pytest.raises(inputs.InputError) as refused:
+        inputs.read_city(doc)
+    assert expected in str(refused.value)
+
+
+@pytest.mark.parametrize("doc", [None, [], "city", 3, {}, {"items": []}, {"nodes": []}, {"layout_version": "v4"}])
+def test_what_is_no_city_at_all_is_refused_with_a_hint(doc):
+    with pytest.raises(inputs.InputError) as refused:
+        inputs.read_city(doc)
+    assert "city" in str(refused.value) and len(str(refused.value).splitlines()) <= inputs.MAX_PROBLEMS + 1
+
+
+def test_the_problems_of_a_city_are_reported_together(real_city):
+    doc = copy.deepcopy(real_city)
+    template = next(iter(doc["roads"].values()))
+    doc["roads"].update({f"road:extra:{i}": dict(template) for i in range(30)})
+    for road in doc["roads"].values():
+        road["class"] = "bad"
+    with pytest.raises(inputs.InputError) as refused:
+        inputs.read_city(doc)
+    lines = str(refused.value).splitlines()
+    roads = len(doc["roads"])
+    assert roads > 3 and len(lines) == (roads if roads <= inputs.MAX_PROBLEMS else inputs.MAX_PROBLEMS + 1)  # one line a road, then "... and n more"
+    assert all("class" in line for line in lines[:3])
