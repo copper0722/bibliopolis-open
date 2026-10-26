@@ -17,29 +17,35 @@ keeps it, so a log made by `append` folds again to the same world. An `undo` is 
 from __future__ import annotations
 
 from .canonical import dumps
-from .events import DEFAULT_RULE, Refusal, check_event, check_item, check_rule, references, standing
+from .events import DEFAULT_RULE, Coded, Problems, Refusal, check_event, check_item, check_rule, references, standing
 from .hand import State, fold
-from .inputs import InputError, _Problems, _shown, load_json
+from .inputs import InputError, _shown, load_json
 
 FORMAT = "bibliopolis.world"
 VERSION = 1
 FILE_KEYS = ("format", "version", "rule", "items", "events")
 
 
-class WorldFileError(InputError):
-    """A world file (or a store) is not what docs/world.md describes. The message lists the problems, one per line, each with its place."""
+class WorldFileError(Coded, InputError):
+    """A world file (or a store) is not what docs/world.md describes. The message lists the problems, one per line, each with its place; the id and the params say it for a
+    page (`bibliopolis.events.Coded`). An error of shape has the id `invalid` and the problems as params, each with an id of its own."""
 
 
-def _refuse(problems: _Problems) -> None:
+def _lines(problems: Problems) -> str:
+    return "\n".join([*problems.found, *([f"... and {problems.more} more"] if problems.more else [])])
+
+
+def _refuse(problems: Problems) -> None:
+    """`Refusal` with the id `invalid` and every problem, if there is one."""
     if problems.found:
-        raise Refusal("\n".join([*problems.found, *([f"... and {problems.more} more"] if problems.more else [])]))
+        raise Refusal(_lines(problems), "invalid", problems=problems.items, more=problems.more)
 
 
 class Journal:
     """A log of events and the `State` it folds to. `rule` is the rule the world starts with; `set_rule` events change it from their place in the log on."""
 
     def __init__(self, rule: dict | None = None):
-        problems = _Problems()
+        problems = Problems()
         checked = check_rule(dict(DEFAULT_RULE) if rule is None else rule, "rule", problems)
         _refuse(problems)
         self.rule: dict = checked  # type: ignore[assignment]
@@ -52,11 +58,12 @@ class Journal:
         journal = cls(rule)
         for e in events:
             if e["seq"] != len(journal.events) + 1:
-                raise Refusal(f"event {e['seq']} comes in place {len(journal.events) + 1}: the events are numbered 1, 2, 3, ... in order")
+                raise Refusal(f"event {e['seq']} comes in place {len(journal.events) + 1}: the events are numbered 1, 2, 3, ... in order", "event_out_of_place",
+                              seq=e["seq"], place=len(journal.events) + 1)
             try:
                 journal.append(e["kind"], e["payload"], e["at"])
             except Refusal as why:
-                raise why.within(f"event {e['seq']} ({e['kind']})") from None
+                raise why.within(e["seq"], e["kind"]) from None
         return journal
 
     def items(self) -> list[dict]:
@@ -65,7 +72,7 @@ class Journal:
 
     def append(self, kind: str, payload: dict, at: str) -> dict:
         """Append an event. Returns it as the log keeps it. `Refusal`, and no change, when its shape is wrong or the world does not take it."""
-        problems = _Problems()
+        problems = Problems()
         event = check_event({"seq": len(self.events) + 1, "at": at, "kind": kind, "payload": payload}, "event", problems)
         _refuse(problems)
         assert event is not None
@@ -87,19 +94,21 @@ class Journal:
         target = event["payload"]["seq"]
         keep = standing(self.events)
         if target >= event["seq"]:
-            raise Refusal(f"an undo names an earlier event; event {target} is not earlier than event {event['seq']}")
+            raise Refusal(f"an undo names an earlier event; event {target} is not earlier than event {event['seq']}", "undo_not_earlier", target=target, seq=event["seq"])
         if target not in keep:
-            raise Refusal(f"event {target} does not count (there is no such event, or it is undone already)")
+            raise Refusal(f"event {target} does not count (there is no such event, or it is undone already)", "undo_not_counting", target=target)
         effect = self.state.effects[target]
         for later in self.events[target:]:
             if later["seq"] in keep:
                 roads, houses = references(later)
                 if roads & set(effect["roads"]) or houses & set(effect["houses"]):
-                    raise Refusal(f"event {target} cannot be undone: event {later['seq']} ({later['kind']}) depends on it; undo that one first")
+                    raise Refusal(f"event {target} cannot be undone: event {later['seq']} ({later['kind']}) depends on it; undo that one first", "undo_depends",
+                                  target=target, later=later["seq"], kind=later["kind"])
         try:
             return fold([*self.events, event], self.rule)
         except Refusal as why:
-            raise Refusal(f"event {target} cannot be undone: {why}") from None
+            raise Refusal(f"event {target} cannot be undone: {why}", "undo_unfoldable", target=target, later=(why.event or {}).get("seq"), kind=(why.event or {}).get("kind"),
+                          cause=why.code, cause_params=why.params) from None
 
 
 # ------------------------------------------------------------------------------------------------ the world file ----
@@ -123,43 +132,47 @@ def dumps_world(doc: dict) -> str:
 def read_world(doc) -> Journal:
     """The journal of a world file read as JSON. Every problem of shape is reported at once with its place (`WorldFileError`); then the events are appended in turn, so
     each is held to the rules of `append`, and the first that the world does not take is named; last, `items` must be what the add_item events carry."""
-    problems = _Problems()
+    problems = Problems()
     if not isinstance(doc, dict):
-        raise WorldFileError(f"world: not a world file: it must be a JSON object, got {type(doc).__name__}")
+        raise WorldFileError(f"world: not a world file: it must be a JSON object, got {type(doc).__name__}", "not_a_world_file", got=type(doc).__name__)
     missing = [k for k in FILE_KEYS if k not in doc]
     extra = [k for k in doc if k not in FILE_KEYS]
     if missing or extra:
         raise WorldFileError("world: not a world file" + (f": missing {', '.join(missing)}" if missing else "") + (f": unknown {', '.join(sorted(map(str, extra)))}" if extra else "")
-                             + f" (it has {', '.join(FILE_KEYS)})")
+                             + f" (it has {', '.join(FILE_KEYS)})", "file_keys", missing=missing, unknown=sorted(map(str, extra)), expected=list(FILE_KEYS))
     if doc["format"] != FORMAT:
-        raise WorldFileError(f"world.format: must be {FORMAT!r}, got {_shown(doc['format'])}")
+        raise WorldFileError(f"world.format: must be {FORMAT!r}, got {_shown(doc['format'])}", "format_wrong", format=_shown(doc["format"]), expected=FORMAT)
     if doc["version"] != VERSION or isinstance(doc["version"], bool):
-        raise WorldFileError(f"world.version: this program reads version {VERSION}, got {_shown(doc['version'])}")
+        raise WorldFileError(f"world.version: this program reads version {VERSION}, got {_shown(doc['version'])}", "version_wrong", version=_shown(doc["version"]), expected=VERSION)
     rule = check_rule(doc["rule"], "world.rule", problems)
     items, events = [], []
     for name, rows, check in (("items", doc["items"], check_item), ("events", doc["events"], check_event)):
         if not isinstance(rows, list):
-            problems.add(f"world.{name}", f"must be a list, got {type(rows).__name__}")
+            problems.add(f"world.{name}", f"must be a list, got {type(rows).__name__}", "not_a_list", got=type(rows).__name__)
             continue
         for i, row in enumerate(rows):
             checked = check(row, f"world.{name}[{i}]", problems)
             if checked is not None:
                 (items if name == "items" else events).append(checked)
     if problems.found:
-        raise WorldFileError("\n".join([*problems.found, *([f"... and {problems.more} more"] if problems.more else [])]))
+        raise WorldFileError(_lines(problems), "invalid", problems=problems.items, more=problems.more)
     for i, e in enumerate(events):
         if e["seq"] != i + 1:
-            raise WorldFileError(f"world.events[{i}].seq: must be {i + 1}: the events are numbered 1, 2, 3, ... in order, got {e['seq']}")
+            raise WorldFileError(f"world.events[{i}].seq: must be {i + 1}: the events are numbered 1, 2, 3, ... in order, got {e['seq']}", "events_not_numbered",
+                                 index=i, seq=e["seq"], expected=i + 1)
     journal = Journal(rule)
     for i, e in enumerate(events):
         try:
             journal.append(e["kind"], e["payload"], e["at"])
         except Refusal as why:
-            raise WorldFileError(f"world.events[{i}] ({e['kind']}): {why}") from None
+            error = WorldFileError(f"world.events[{i}] ({e['kind']}): {why}", why.code, **why.params)
+            error.event, error.where = {"seq": i + 1, "kind": e["kind"]}, f"world.events[{i}]"
+            raise error from None
     derived = journal.items()
     if items != derived:
         place = next((i for i, (a, b) in enumerate(zip(items, derived)) if a != b), min(len(items), len(derived)))
-        raise WorldFileError(f"world.items[{place}]: the items are those of the add_item events, in order ({len(derived)} of them), and the file says otherwise ({len(items)})")
+        raise WorldFileError(f"world.items[{place}]: the items are those of the add_item events, in order ({len(derived)} of them), and the file says otherwise ({len(items)})",
+                             "items_differ", index=place, derived=len(derived), given=len(items))
     return journal
 
 

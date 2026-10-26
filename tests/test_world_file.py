@@ -118,9 +118,8 @@ def test_titles_and_names_in_any_script_are_written_as_they_are_and_read_back(tm
 
 def test_a_lone_surrogate_is_refused_because_it_cannot_be_written_as_text():
     from bibliopolis import events as ev
-    from bibliopolis.inputs import _Problems
 
-    problems = _Problems()
+    problems = ev.Problems()
     assert ev.check_item(item(1, title="\ud800"), "item", problems) is None and "cannot be written as UTF-8" in problems.found[0]
 
 

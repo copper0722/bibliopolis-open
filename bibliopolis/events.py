@@ -16,12 +16,13 @@ A world built by hand is an append-only log of events, and its city and its chro
   set_rule     {max, min, auto}               the rule from here on; `auto` applies the district rule after each arrival (bibliopolis.hand)
 
 Every check here is about the shape of one event, and is made before the world is asked. What the world refuses (a house that is not there, a road that exists
-already, ...) is `Refusal`, raised by the fold.
+already, ...) is `Refusal`, raised by the fold. Every refusal, every problem of shape and every error of a world file has an id and params (`CODES`, `Refusal`), so
+that a page can translate it into any language without reading the English text.
 """
 
 from __future__ import annotations
 
-from .inputs import _LANE_LIKE, _Problems, _shown, _text, _whole, parse_added_at
+from .inputs import _CONTROL, _LANE_LIKE, MAX_PROBLEMS, _Problems, _shown, _whole, parse_added_at
 from .plan import MAX_HOUSES, MIN_HOUSES
 
 KINDS = ("add_item", "open_road", "file", "rename_road", "move_road", "undo", "set_rule")
@@ -38,54 +39,167 @@ YEAR_LIMIT = 10**6
 PAYLOAD_KEYS = {"add_item": ("item",), "open_road": ("road", "name", "parent", "houses"), "file": ("house", "road"), "rename_road": ("road", "name"),
                 "move_road": ("road", "parent"), "undo": ("seq",), "set_rule": RULE_KEYS}
 
+# The ids of every refusal, problem of shape and error of a world file, with the names of their params: the one list (docs/world.md, "Refusals" says when each comes).
+# A page translates from the id and the params. A place is a road id, or None for the root zone; a `got` is the name of a type or a short text of the value.
+CODES = {
+    # ---- the world refuses an event (Refusal)
+    "ring1_full": ("limit", "number"),
+    "house_exists": ("house",),
+    "not_a_house": ("house",),
+    "road_exists": ("road",),
+    "no_road": ("road",),
+    "parent_missing": ("parent",),
+    "move_parent_missing": ("parent",),
+    "too_few_here": ("road", "held", "least"),
+    "too_few_chosen": ("chosen", "least"),
+    "house_elsewhere": ("house", "road", "on"),
+    "already_there": ("house", "road"),
+    "same_name": ("road", "name"),
+    "move_into_itself": ("road", "parent"),
+    "already_below": ("road", "parent"),
+    "rule_unchanged": ("max", "min", "auto"),
+    # ---- an undo is refused
+    "undo_not_earlier": ("target", "seq"),
+    "undo_not_counting": ("target",),
+    "undo_depends": ("target", "later", "kind"),
+    "undo_unfoldable": ("target", "later", "kind", "cause", "cause_params"),
+    # ---- a log or a store is not taken
+    "event_out_of_place": ("seq", "place"),
+    "world_exists": ("path",),
+    "not_next_event": ("path", "held", "next", "seq"),
+    # ---- the shape of an event, a rule or a world file is wrong: `invalid` holds the problems, each `{where, code, params}` with one of the codes that follow
+    "invalid": ("problems", "more"),
+    "keys_missing": ("keys",),
+    "keys_unknown": ("keys", "allowed"),
+    "not_an_object": ("got",),
+    "not_a_list": ("got",),
+    "not_text": ("got",),
+    "text_empty": (),
+    "text_not_utf8": (),
+    "text_control": (),
+    "authors_not_a_list": ("got",),
+    "year_bad": ("limit", "got"),
+    "topics_not_a_list": ("max", "got"),
+    "topics_too_many": ("count", "max"),
+    "topic_not_an_object": (),
+    "level_not_an_object": (),
+    "topic_twice": ("topic", "first"),
+    "rule_not_an_object": ("got",),
+    "rule_number_bad": ("name", "limit", "got"),
+    "not_a_boolean": ("got",),
+    "rule_min_over_max": ("min", "max"),
+    "road_id_lane_like": ("road",),
+    "road_id_reserved": ("road", "prefix"),
+    "undo_seq_bad": ("got",),
+    "houses_empty": (),
+    "house_chosen_twice": ("house",),
+    "event_seq_bad": ("got",),
+    "date_bad": ("at",),
+    "kind_unknown": ("kind", "kinds"),
+    # ---- a world file or a store is not a world (WorldFileError)
+    "not_a_world_file": ("got",),
+    "file_keys": ("missing", "unknown", "expected"),
+    "format_wrong": ("format", "expected"),
+    "version_wrong": ("version", "expected"),
+    "events_not_numbered": ("index", "seq", "expected"),
+    "items_differ": ("index", "derived", "given"),
+    "no_world": ("path",),
+    "not_a_world": ("path", "reason"),
+    "world_table_wrong": ("path", "format", "version"),
+    "row_not_json": ("path", "reason"),
+    "item_table_differs": ("path",),
+}
 
-CODES = {"ring1_full": ("limit", "number")}  # the ids of the refusals that have one, with the names of their params (docs/world.md, "Refusals")
 
+class Coded:
+    """What a refusal and an error of a world file share: the message (English text) and, for a page that translates it, an id and the values the message is made of.
 
-class Refusal(ValueError):
-    """The world does not take this event: the message (English text) says why. The world is as it was.
+    `code` is the id (one of `CODES`) and `params` its values, in the names `CODES` gives, all of them plain JSON values. `event` is `{seq, kind}` when the reason is about an event
+    of a log that was replayed or folded, and `where` the file, or the place in a file, when it is about one. `as_dict()` is all of it as a JSON object."""
 
-    `code` is a stable id of the reason, for a page that translates the message from the id and the `params` (None for a reason that has no id yet; the ids are `CODES`).
-    A refusal that is passed on with the place it came from (`within`) keeps its id and params."""
-
-    def __init__(self, message: str, code: str | None = None, **params):
+    def __init__(self, message: str, code: str, **params):
         super().__init__(message)
         self.code = code
         self.params = params
+        self.event: dict | None = None
+        self.where: str | None = None
 
-    def within(self, where: str) -> "Refusal":
-        """The same refusal with `where` in front of its message (the event it came from), as a new exception: the id and the params stay."""
-        return Refusal(f"{where}: {self}", self.code, **self.params)
+    def as_dict(self) -> dict:
+        return {"code": self.code, "params": self.params, "event": self.event, "where": self.where, "message": str(self)}
+
+
+class Refusal(Coded, ValueError):
+    """The world does not take this event: the message says why, the id and the params say it for a page. The world is as it was."""
+
+    def within(self, seq: int, kind: str) -> "Refusal":
+        """The same refusal as a new exception that says which event of a log it is about: `event 7 (file): ...`, with `event` set. The id and the params stay."""
+        out = Refusal(f"event {seq} ({kind}): {self}", self.code, **self.params)
+        out.event, out.where = {"seq": seq, "kind": kind}, self.where
+        return out
+
+
+class Problems(_Problems):
+    """The problems of the shape of a document, as `_Problems` keeps them (English lines in `found`) and with an id and params each (`items`: `{where, code, params}`)."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.items: list[dict] = []
+
+    def add(self, where: str, what: str, code: str, **params) -> None:  # type: ignore[override]
+        if len(self.found) < MAX_PROBLEMS:
+            self.items.append({"where": where, "code": code, "params": params})
+        super().add(where, what)
+
+
+def text(problems: Problems, where: str, value, *, nonempty: bool = True, plain: bool = False) -> bool:
+    """Whether `value` is a string that can be written as UTF-8; `nonempty` refuses text of white space only and `plain` also control characters (ids and names are written into
+    place ids). The same checks as the readers of the library and the tree, with an id for each fault."""
+    if not isinstance(value, str):
+        problems.add(where, f"must be a string, got {type(value).__name__}", "not_text", got=type(value).__name__)
+        return False
+    if nonempty and not value.strip():
+        problems.add(where, "must not be empty", "text_empty")
+        return False
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError:
+        problems.add(where, "contains a character that cannot be written as UTF-8 (a lone surrogate)", "text_not_utf8")
+        return False
+    if plain and _CONTROL.search(value):
+        problems.add(where, "must not contain control characters", "text_control")
+        return False
+    return True
 
 
 # ------------------------------------------------------------------------------------------------------ items ----
-def _count(problems: _Problems) -> int:
+def _count(problems: Problems) -> int:
     return len(problems.found) + problems.more
 
 
-def _keys(problems: _Problems, where: str, value: dict, required: tuple[str, ...], allowed: tuple[str, ...]) -> bool:
+def _keys(problems: Problems, where: str, value: dict, required: tuple[str, ...], allowed: tuple[str, ...]) -> bool:
     """Whether `value` has every key of `required` and none beyond `allowed`; a problem for each fault."""
     missing = [k for k in required if k not in value]
     extra = [k for k in value if k not in allowed]
     if missing:
-        problems.add(where, f"missing {', '.join(missing)}")
+        problems.add(where, f"missing {', '.join(missing)}", "keys_missing", keys=missing)
     if extra:
-        problems.add(where, f"unknown {', '.join(sorted(map(str, extra)))} (allowed: {', '.join(allowed)})")
+        problems.add(where, f"unknown {', '.join(sorted(map(str, extra)))} (allowed: {', '.join(allowed)})", "keys_unknown", keys=sorted(map(str, extra)), allowed=list(allowed))
     return not missing and not extra
 
 
-def check_topics(value, where: str, problems: _Problems) -> list[dict] | None:
+def check_topics(value, where: str, problems: Problems) -> list[dict] | None:
     """The OpenAlex topics of an item: a list of up to 3, the primary topic first, each with all four levels `{id, name}`, no topic twice."""
     if not isinstance(value, list):
-        problems.add(where, f"must be a list of up to {MAX_TOPICS} topics, got {type(value).__name__}")
+        problems.add(where, f"must be a list of up to {MAX_TOPICS} topics, got {type(value).__name__}", "topics_not_a_list", max=MAX_TOPICS, got=type(value).__name__)
         return None
     start, out, seen = _count(problems), [], {}
     if len(value) > MAX_TOPICS:
-        problems.add(where, f"holds {len(value)} topics; the most an item carries is {MAX_TOPICS} (its primary topic and two more)")
+        problems.add(where, f"holds {len(value)} topics; the most an item carries is {MAX_TOPICS} (its primary topic and two more)", "topics_too_many",
+                     count=len(value), max=MAX_TOPICS)
     for i, entry in enumerate(value[:MAX_TOPICS]):
         here = f"{where}[{i}]"
         if not isinstance(entry, dict):
-            problems.add(here, "must be an object with domain, field, subfield and topic")
+            problems.add(here, "must be an object with domain, field, subfield and topic", "topic_not_an_object")
             continue
         if not _keys(problems, here, entry, ORDER, ORDER):
             continue
@@ -93,49 +207,49 @@ def check_topics(value, where: str, problems: _Problems) -> list[dict] | None:
         for level in ORDER:
             node = entry[level]
             if not isinstance(node, dict):
-                problems.add(f"{here}.{level}", "must be an object {id, name}")
+                problems.add(f"{here}.{level}", "must be an object {id, name}", "level_not_an_object")
                 continue
             if not _keys(problems, f"{here}.{level}", node, ("id", "name"), ("id", "name")):
                 continue
-            ok = _text(problems, f"{here}.{level}.id", node["id"], plain=True)
-            ok = _text(problems, f"{here}.{level}.name", node["name"], plain=True) and ok
+            ok = text(problems, f"{here}.{level}.id", node["id"], plain=True)
+            ok = text(problems, f"{here}.{level}.name", node["name"], plain=True) and ok
             if ok:
                 topic[level] = {"id": node["id"], "name": node["name"]}
         if len(topic) == len(ORDER):
             tid = topic["topic"]["id"]
             if tid in seen:
-                problems.add(f"{here}.topic.id", f"{tid!r} is the topic of {where}[{seen[tid]}] already")
+                problems.add(f"{here}.topic.id", f"{tid!r} is the topic of {where}[{seen[tid]}] already", "topic_twice", topic=tid, first=seen[tid])
             else:
                 seen[tid] = i
             out.append(topic)
     return out if _count(problems) == start else None
 
 
-def check_item(item, where: str, problems: _Problems) -> dict | None:
+def check_item(item, where: str, problems: Problems) -> dict | None:
     """The metadata of an item as a world keeps it, or None with the problems added. `id`, `title`, `authors`, `year` (a whole number or null) and `type` are
     there; `doi` (null when it has none) and `openalex` (the topics, none when unknown) may be left out. Any other key is refused, so that nothing is dropped
     in silence. The result has every key, in the order of ITEM_KEYS."""
     if not isinstance(item, dict):
-        problems.add(where, f"must be an object, got {type(item).__name__}")
+        problems.add(where, f"must be an object, got {type(item).__name__}", "not_an_object", got=type(item).__name__)
         return None
     start = _count(problems)
     if not _keys(problems, where, item, ITEM_REQUIRED, ITEM_KEYS):
         return None
-    _text(problems, f"{where}.id", item["id"], plain=True)
-    _text(problems, f"{where}.title", item["title"], nonempty=False)
-    _text(problems, f"{where}.type", item["type"])
+    text(problems, f"{where}.id", item["id"], plain=True)
+    text(problems, f"{where}.title", item["title"], nonempty=False)
+    text(problems, f"{where}.type", item["type"])
     authors = item["authors"]
     if not isinstance(authors, list):
-        problems.add(f"{where}.authors", f"must be a list of strings, got {type(authors).__name__}")
+        problems.add(f"{where}.authors", f"must be a list of strings, got {type(authors).__name__}", "authors_not_a_list", got=type(authors).__name__)
     else:
         for j, name in enumerate(authors):
-            _text(problems, f"{where}.authors[{j}]", name, nonempty=False)
+            text(problems, f"{where}.authors[{j}]", name, nonempty=False)
     year = item["year"]
     if year is not None and (not _whole(year) or abs(year) > YEAR_LIMIT):
-        problems.add(f"{where}.year", f"must be a whole number (at most {YEAR_LIMIT} either way) or null, got {_shown(year)}")
+        problems.add(f"{where}.year", f"must be a whole number (at most {YEAR_LIMIT} either way) or null, got {_shown(year)}", "year_bad", limit=YEAR_LIMIT, got=_shown(year))
     doi = item.get("doi")
     if doi is not None:
-        _text(problems, f"{where}.doi", doi)
+        text(problems, f"{where}.doi", doi)
     topics = check_topics(item.get("openalex", []), f"{where}.openalex", problems)
     if _count(problems) != start or topics is None:
         return None
@@ -143,41 +257,42 @@ def check_item(item, where: str, problems: _Problems) -> dict | None:
 
 
 # ------------------------------------------------------------------------------------------------------ rules ----
-def check_rule(rule, where: str, problems: _Problems) -> dict | None:
+def check_rule(rule, where: str, problems: Problems) -> dict | None:
     """A rule `{max, min, auto}`: whole numbers 1 <= min <= max, and a boolean."""
     if not isinstance(rule, dict):
-        problems.add(where, f"must be an object {{max, min, auto}}, got {type(rule).__name__}")
+        problems.add(where, f"must be an object {{max, min, auto}}, got {type(rule).__name__}", "rule_not_an_object", got=type(rule).__name__)
         return None
     start = _count(problems)
     if not _keys(problems, where, rule, RULE_KEYS, RULE_KEYS):
         return None
     for name in ("max", "min"):
         if not _whole(rule[name]) or not 1 <= rule[name] <= RULE_LIMIT:
-            problems.add(f"{where}.{name}", f"must be a whole number from 1 to {RULE_LIMIT}, got {_shown(rule[name])}")
+            problems.add(f"{where}.{name}", f"must be a whole number from 1 to {RULE_LIMIT}, got {_shown(rule[name])}", "rule_number_bad",
+                         name=name, limit=RULE_LIMIT, got=_shown(rule[name]))
     if not isinstance(rule["auto"], bool):
-        problems.add(f"{where}.auto", f"must be true or false, got {_shown(rule['auto'])}")
+        problems.add(f"{where}.auto", f"must be true or false, got {_shown(rule['auto'])}", "not_a_boolean", got=_shown(rule["auto"]))
     if _count(problems) == start and rule["min"] > rule["max"]:
-        problems.add(where, f"min ({rule['min']}) is more than max ({rule['max']})")
+        problems.add(where, f"min ({rule['min']}) is more than max ({rule['max']})", "rule_min_over_max", min=rule["min"], max=rule["max"])
     return {k: rule[k] for k in RULE_KEYS} if _count(problems) == start else None
 
 
 # ----------------------------------------------------------------------------------------------------- events ----
-def _road_id(problems: _Problems, where: str, value, *, new: bool = False) -> bool:
+def _road_id(problems: Problems, where: str, value, *, new: bool = False) -> bool:
     """A road id: text without control characters. A new road may not look like the id of a continuation rib (lane:<id>:<n>) nor start with `auto:`."""
-    if not _text(problems, where, value, plain=True):
+    if not text(problems, where, value, plain=True):
         return False
     if new and _LANE_LIKE.match(value):
-        problems.add(where, f"{value!r} looks like the block key of a continuation rib (lane:<id>:<n>); use another id")
+        problems.add(where, f"{value!r} looks like the block key of a continuation rib (lane:<id>:<n>); use another id", "road_id_lane_like", road=value)
         return False
     if new and value.startswith(AUTO_PREFIX):
-        problems.add(where, f"{value!r} starts with {AUTO_PREFIX!r}, which is for the roads that the rule opens by itself")
+        problems.add(where, f"{value!r} starts with {AUTO_PREFIX!r}, which is for the roads that the rule opens by itself", "road_id_reserved", road=value, prefix=AUTO_PREFIX)
         return False
     return True
 
 
-def _payload(kind: str, payload, where: str, problems: _Problems) -> dict | None:
+def _payload(kind: str, payload, where: str, problems: Problems) -> dict | None:
     if not isinstance(payload, dict):
-        problems.add(where, f"must be an object, got {type(payload).__name__}")
+        problems.add(where, f"must be an object, got {type(payload).__name__}", "not_an_object", got=type(payload).__name__)
         return None
     keys = PAYLOAD_KEYS[kind]
     start = _count(problems)
@@ -190,49 +305,49 @@ def _payload(kind: str, payload, where: str, problems: _Problems) -> dict | None
         return check_rule(payload, where, problems)
     if kind == "undo":
         if not _whole(payload["seq"]) or payload["seq"] < 1:
-            problems.add(f"{where}.seq", f"must be the number of an event (1 or more), got {_shown(payload['seq'])}")
+            problems.add(f"{where}.seq", f"must be the number of an event (1 or more), got {_shown(payload['seq'])}", "undo_seq_bad", got=_shown(payload["seq"]))
     elif kind == "open_road":
         _road_id(problems, f"{where}.road", payload["road"], new=True)
-        _text(problems, f"{where}.name", payload["name"], plain=True)
+        text(problems, f"{where}.name", payload["name"], plain=True)
         if payload["parent"] is not None:
             _road_id(problems, f"{where}.parent", payload["parent"])
         houses = payload["houses"]
         if not isinstance(houses, list) or not houses:
-            problems.add(f"{where}.houses", "must be a list of house ids, not empty")
+            problems.add(f"{where}.houses", "must be a list of house ids, not empty", "houses_empty")
         else:
             for j, h in enumerate(houses):
-                if _text(problems, f"{where}.houses[{j}]", h, plain=True) and h in houses[:j]:
-                    problems.add(f"{where}.houses[{j}]", f"{h!r} is chosen twice")
+                if text(problems, f"{where}.houses[{j}]", h, plain=True) and h in houses[:j]:
+                    problems.add(f"{where}.houses[{j}]", f"{h!r} is chosen twice", "house_chosen_twice", house=h)
     elif kind == "file":
-        _text(problems, f"{where}.house", payload["house"], plain=True)
+        text(problems, f"{where}.house", payload["house"], plain=True)
         _road_id(problems, f"{where}.road", payload["road"])
     elif kind == "rename_road":
         _road_id(problems, f"{where}.road", payload["road"])
-        _text(problems, f"{where}.name", payload["name"], plain=True)
+        text(problems, f"{where}.name", payload["name"], plain=True)
     elif kind == "move_road":
         _road_id(problems, f"{where}.road", payload["road"])
         _road_id(problems, f"{where}.parent", payload["parent"])
     return {k: payload[k] for k in keys} if _count(problems) == start else None
 
 
-def check_event(event, where: str, problems: _Problems) -> dict | None:
+def check_event(event, where: str, problems: Problems) -> dict | None:
     """One event as the log keeps it (keys in the order seq, at, kind, payload; the payload in the order of its kind), or None with the problems added."""
     if not isinstance(event, dict):
-        problems.add(where, f"must be an object, got {type(event).__name__}")
+        problems.add(where, f"must be an object, got {type(event).__name__}", "not_an_object", got=type(event).__name__)
         return None
     start = _count(problems)
     if not _keys(problems, where, event, ("seq", "at", "kind", "payload"), ("seq", "at", "kind", "payload")):
         return None
     if not _whole(event["seq"]) or event["seq"] < 1:
-        problems.add(f"{where}.seq", f"must be a whole number, 1 or more, got {_shown(event['seq'])}")
-    if _text(problems, f"{where}.at", event["at"]):
+        problems.add(f"{where}.seq", f"must be a whole number, 1 or more, got {_shown(event['seq'])}", "event_seq_bad", got=_shown(event["seq"]))
+    if text(problems, f"{where}.at", event["at"]):
         try:
             parse_added_at(event["at"])
         except (ValueError, OverflowError):
-            problems.add(f"{where}.at", f"{event['at']!r} is not an ISO 8601 date or date and time")
+            problems.add(f"{where}.at", f"{event['at']!r} is not an ISO 8601 date or date and time", "date_bad", at=event["at"])
     kind = event["kind"]
     if kind not in KINDS:
-        problems.add(f"{where}.kind", f"{_shown(kind)} is not a kind of event ({', '.join(KINDS)})")
+        problems.add(f"{where}.kind", f"{_shown(kind)} is not a kind of event ({', '.join(KINDS)})", "kind_unknown", kind=_shown(kind), kinds=list(KINDS))
         return None
     payload = _payload(kind, event["payload"], f"{where}.payload", problems)
     if _count(problems) != start or payload is None:

@@ -48,7 +48,7 @@ def suggest_road(world, at: str | None) -> dict | None:
     share no topic in a group of at least `min`. `houses` are the houses of the largest group at the most specific level that gives one (see `largest_group`), `name`
     the default name for the road (the name of that topic). `Refusal` for a road that is not there."""
     if at is not None and at not in world.nodes:
-        raise Refusal(f"there is no road {at!r}")
+        raise Refusal(f"there is no road {at!r}", "no_road", road=at)
     group = largest_group({h: world.items[h]["openalex"] for h in world.houses_at(at)}, world.rule["min"])
     if group is None:
         return None
@@ -73,7 +73,7 @@ def suggest_file(world, house: str) -> dict | None:
     for a road that scores better than the one it stands on. None when the house has no topic, no road shares one, or the road it stands on is as good.
     `Refusal` for a house that is not there."""
     if house not in world.items:
-        raise Refusal(f"{house!r} is not a house")
+        raise Refusal(f"{house!r} is not a house", "not_a_house", house=house)
     mine = _ids(world.items[house]["openalex"])
     scores: dict[str, list[int]] = {}
     for road in world.nodes:

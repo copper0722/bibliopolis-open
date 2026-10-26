@@ -122,13 +122,107 @@ the same bytes as the picture of the city.
 
 ## Refusals
 
-A world that does not take an event raises `Refusal` (a `ValueError`) and is as it was. Its message is English text. A refusal that a page has to show in another language has an **id**:
-`Refusal.code`, with the values the message is made of in `Refusal.params`. A page translates from the id and the params, not from the text. A reason that has no id yet has `code` `None`.
-`Refusal.within(where)` passes a refusal on with the place it came from (the event of a log that is replayed) and keeps its id and params.
+A world that does not take an event raises `Refusal` (a `ValueError`) and is as it was. A world file or a store that is not a world raises `WorldFileError`. Both carry the English message
+and, for a page that translates it, **an id and params**:
+
+- `code`: one of the ids of `bibliopolis.events.CODES`, the one list of them;
+- `params`: the values the message is made of, in the names that the list gives, all plain JSON values (a place is a road id, or null for the root zone);
+- `event`: `{seq, kind}` when the reason is about an event of a log that was replayed, folded or read, else null;
+- `where`: the file, or the place in a file, when the reason is about one, else null;
+- `as_dict()` is all of it, with the message, as a JSON object.
+
+A page translates from `code` and `params`, never from the text. **Every** refusal and every error of a world file has an id: a test reads the source for each place that raises one, and
+runs a scenario for each id (`tests/refusal_cases.py`); the tables below are checked against those scenarios, so each message is what the program says.
+
+`Refusal.within(seq, kind)` passes a refusal on with the event of the log that it is about (the message gets `event 7 (file): ` in front) and keeps its id and params. A world file or a store
+that is read passes the refusal of an event on as a `WorldFileError` with the same id and params, with `event` and `where`. A shape that is wrong has the id `invalid`, whose `problems` are
+`{where, code, params}`, each with an id of the table of shapes.
+
+### The world refuses an event
 
 | id | params | when | message |
 |---|---|---|---|
-| `ring1_full` | `limit` (13), `number` (the number of the category: 14) | `open_road` with `parent` null, when all 13 directions are used | the first ring has at most 13 avenues and all 13 directions are used, so the 14th category goes below an avenue |
+| `ring1_full` | `limit`, `number` | `open_road` with `parent` null, when all 13 directions are used (`limit` is 13, `number` the number of the category) | the first ring has at most 13 avenues and all 13 directions are used, so the 14th category goes below an avenue |
+| `house_exists` | `house` | `add_item` of an item whose id is a house already | 'h0001' is a house already |
+| `not_a_house` | `house` | a house id that is not a house: in `open_road`, `file` and `suggest_file` | 'nobody' is not a house |
+| `road_exists` | `road` | `open_road` with the id of a road that is there | there is a road 'a' already |
+| `no_road` | `road` | a road id that is not a road: the road of `file`, `rename_road` and `move_road`, and `suggest_road` | there is no road 'nowhere' |
+| `parent_missing` | `parent` | `open_road` below a road that is not there | there is no road 'ghost' to open a road below |
+| `move_parent_missing` | `parent` | `move_road` below a road that is not there | there is no road 'nowhere' to move a road below |
+| `too_few_here` | `road`, `held`, `least` | `open_road` from a place that holds fewer than `least` houses directly (`road` is null for the root zone) | the root zone holds 9 houses directly; a road is opened from a place that holds at least 10 |
+| `too_few_chosen` | `chosen`, `least` | `open_road` with fewer than `least` houses chosen | 9 houses are chosen; a road takes at least 10 |
+| `house_elsewhere` | `house`, `road`, `on` | `open_road` names a house that does not stand directly on the place it opens from (`road`; `on` is where the house stands; null is the root zone) | the house 'h0001' does not stand directly on the root zone; it stands on the road 'a' |
+| `already_there` | `house`, `road` | `file` onto the road the house stands on | the house 'h0001' stands on the road 'a' already |
+| `same_name` | `road`, `name` | `rename_road` to the name the road has | the road 'a' is called 'Alpha' already |
+| `move_into_itself` | `road`, `parent` | `move_road` below itself, or below a road of its own | the road 'a1' cannot move below 'a1', which is itself or one of its own roads |
+| `already_below` | `road`, `parent` | `move_road` below the road it is below | the road 'a1' is below 'a' already |
+| `rule_unchanged` | `max`, `min`, `auto` | `set_rule` to the rule that is in force | the rule is this already |
+
+### An undo is refused
+
+| id | params | when | message |
+|---|---|---|---|
+| `undo_not_earlier` | `target`, `seq` | an undo that names an event that is not earlier than the undo | an undo names an earlier event; event 9 is not earlier than event 4 |
+| `undo_not_counting` | `target` | an undo that names an event that does not count (there is none, or it is undone) | event 3 does not count (there is no such event, or it is undone already) |
+| `undo_depends` | `target`, `later`, `kind` | an undo of an event on which a later event that counts depends (`later` and `kind` say which) | event 15 cannot be undone: event 16 (rename_road) depends on it; undo that one first |
+| `undo_unfoldable` | `target`, `later`, `kind`, `cause`, `cause_params` | an undo after which the log does not fold: `later` and `kind` name the event that no longer applies, `cause` and `cause_params` the refusal it gets (an id of this list and its params) | event 43 cannot be undone: event 44 (open_road): the house 'h0011' does not stand directly on the root zone; it stands on the road 'a' |
+
+### A log or a store is not taken
+
+| id | params | when | message |
+|---|---|---|---|
+| `event_out_of_place` | `seq`, `place` | replaying a log whose events are not numbered 1, 2, 3, ... in order | event 7 comes in place 6: the events are numbered 1, 2, 3, ... in order |
+| `world_exists` | `path` | making a world, or importing one, where a file is already (a world is never overwritten) | <folder>/w.sqlite is there already; a world is not overwritten (choose another file with --world, or move that one away) |
+| `not_next_event` | `path`, `held`, `next`, `seq` | appending to a store an event that is not the next number | <folder>/w.sqlite holds 3 events; the next is number 4, not 6 |
+
+### The shape of an event, a rule or a world file is wrong
+
+| id | params | when | message |
+|---|---|---|---|
+| `invalid` | `problems`, `more` | an event or a rule whose shape is wrong, or a world file with such a part: `problems` lists them (at most 20), each `{where, code, params}` with an id of the next table, and `more` counts those not listed | event.payload.item.id: must be a string, got int |
+| `keys_missing` | `keys` | an object lacks keys that it needs | event: missing at, kind, payload |
+| `keys_unknown` | `keys`, `allowed` | an object has keys that it may not have | event.payload.item: unknown colour (allowed: id, title, authors, year, doi, type, openalex) |
+| `not_an_object` | `got` | a part that must be an object is not (`got` is the name of its type) | event: must be an object, got list |
+| `not_a_list` | `got` | a part of a world file that must be a list is not | world.items: must be a list, got dict |
+| `not_text` | `got` | a part that must be text is not | event.payload.item.id: must be a string, got int |
+| `text_empty` | none | text that must not be empty is (or holds white space only) | event.payload.item.id: must not be empty |
+| `text_not_utf8` | none | text with a lone surrogate, which cannot be written as UTF-8 | event.payload.item.title: contains a character that cannot be written as UTF-8 (a lone surrogate) |
+| `text_control` | none | an id or a name with a control character | event.payload.item.id: must not contain control characters |
+| `authors_not_a_list` | `got` | `authors` of an item is not a list | event.payload.item.authors: must be a list of strings, got str |
+| `year_bad` | `limit`, `got` | `year` of an item is not a whole number within the limit, or null | event.payload.item.year: must be a whole number (at most 1000000 either way) or null, got '2020' |
+| `topics_not_a_list` | `max`, `got` | `openalex` of an item is not a list | event.payload.item.openalex: must be a list of up to 3 topics, got str |
+| `topics_too_many` | `count`, `max` | `openalex` of an item holds more topics than `max` | event.payload.item.openalex: holds 4 topics; the most an item carries is 3 (its primary topic and two more) |
+| `topic_not_an_object` | none | a topic of an item is not an object | event.payload.item.openalex[0]: must be an object with domain, field, subfield and topic |
+| `level_not_an_object` | none | a level of a topic (domain, field, subfield, topic) is not an object `{id, name}` | event.payload.item.openalex[0].domain: must be an object {id, name} |
+| `topic_twice` | `topic`, `first` | an item carries the same topic twice (`first` is the place of the first) | event.payload.item.openalex[2].topic.id: 'ex:d1.f1.s1.t1' is the topic of event.payload.item.openalex[0] already |
+| `rule_not_an_object` | `got` | a rule is not an object | world.rule: must be an object {max, min, auto}, got list |
+| `rule_number_bad` | `name`, `limit`, `got` | `max` or `min` of a rule is not a whole number from 1 to `limit` (`name` says which) | world.rule.max: must be a whole number from 1 to 100000, got 0 |
+| `not_a_boolean` | `got` | `auto` of a rule is not true or false | world.rule.auto: must be true or false, got 'yes' |
+| `rule_min_over_max` | `min`, `max` | a rule whose `min` is more than its `max` | world.rule: min (9) is more than max (5) |
+| `road_id_lane_like` | `road` | a new road id of the form `lane:<id>:<n>` | event.payload.road: 'lane:x:2' looks like the block key of a continuation rib (lane:<id>:<n>); use another id |
+| `road_id_reserved` | `road`, `prefix` | a new road id that starts with `prefix`, which is for the roads that the rule opens | event.payload.road: 'auto:7' starts with 'auto:', which is for the roads that the rule opens by itself |
+| `undo_seq_bad` | `got` | `seq` of an undo is not the number of an event | event.payload.seq: must be the number of an event (1 or more), got 0 |
+| `houses_empty` | none | `houses` of an `open_road` is not a list, or is empty | event.payload.houses: must be a list of house ids, not empty |
+| `house_chosen_twice` | `house` | a house chosen twice in `houses` of an `open_road` | event.payload.houses[1]: 'a' is chosen twice |
+| `event_seq_bad` | `got` | `seq` of an event is not a whole number, 1 or more | event.seq: must be a whole number, 1 or more, got 0 |
+| `date_bad` | `at` | `at` of an event is not an ISO 8601 date or date and time | event.at: 'yesterday' is not an ISO 8601 date or date and time |
+| `kind_unknown` | `kind`, `kinds` | `kind` of an event is not one of `kinds` | event.kind: 'sweep' is not a kind of event (add_item, open_road, file, rename_road, move_road, undo, set_rule) |
+
+### A world file or a store is not a world
+
+| id | params | when | message |
+|---|---|---|---|
+| `not_a_world_file` | `got` | a world file that is not a JSON object | world: not a world file: it must be a JSON object, got list |
+| `file_keys` | `missing`, `unknown`, `expected` | a world file that lacks keys (`missing`) or has others (`unknown`) | world: not a world file: missing rule (it has format, version, rule, items, events) |
+| `format_wrong` | `format`, `expected` | `format` of a world file is not `expected` | world.format: must be 'bibliopolis.world', got 'something.else' |
+| `version_wrong` | `version`, `expected` | `version` of a world file is not `expected` | world.version: this program reads version 1, got 2 |
+| `events_not_numbered` | `index`, `seq`, `expected` | the events of a world file are not numbered 1, 2, 3, ... in order (`index` is the place of the first that is not) | world.events[5].seq: must be 6: the events are numbered 1, 2, 3, ... in order, got 7 |
+| `items_differ` | `index`, `derived`, `given` | `items` of a world file are not the items of its add_item events (`index` is the place of the first difference) | world.items[13]: the items are those of the add_item events, in order (14 of them), and the file says otherwise (13) |
+| `no_world` | `path` | a store that is not there | <folder>/none.sqlite: there is no world here (make one with `world new`, or read a world file with `world import`) |
+| `not_a_world` | `path`, `reason` | a file that is not a SQLite database | <folder>/text.sqlite: not a world of this program (file is not a database) |
+| `world_table_wrong` | `path`, `format`, `version` | a store whose `world` table is not one row of this format and version | <folder>/other.sqlite: not a world of this program: its world table must hold one row, 'bibliopolis.world' version 1 |
+| `row_not_json` | `path`, `reason` | a row of a store whose JSON text is not JSON | <folder>/w.sqlite: a row does not hold JSON (Expecting value: line 1 column 1 (char 0)) |
+| `item_table_differs` | `path` | a store whose `item` table is not the items of its add_item events | <folder>/w.sqlite: the item table is not the items of the add_item events |
 
 ## Suggestions
 
@@ -194,6 +288,7 @@ suggest_road(journal.state, None)
 | stability of the lots, and the planted faults that turn it red | `tests/test_stability.py` |
 | the journal | `tests/test_journal.py` |
 | suggestions, `crowded`, the rule `auto`, the sample | `tests/test_suggest.py` |
+| the ids and params of every refusal, and a scenario for each | `tests/test_refusals.py`, `tests/refusal_cases.py` |
 | the world file, the SQLite file, the home folder | `tests/test_world_file.py` |
 | the command `world` | `tests/test_world_cli.py` |
 | the number form and the pinned hashes | `tests/test_canonical.py`, `tests/test_world_file.py` |

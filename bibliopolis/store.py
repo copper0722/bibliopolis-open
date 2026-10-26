@@ -70,7 +70,7 @@ class Store:
         """A new file with the world of `journal`, all or nothing: the file is not left behind when something goes wrong. `Refusal` when the file is there already."""
         store = cls(path)
         if store.path.exists():
-            raise Refusal(f"{store.path} is there already; a world is not overwritten (choose another file with --world, or move that one away)")
+            raise Refusal(f"{store.path} is there already; a world is not overwritten (choose another file with --world, or move that one away)", "world_exists", path=str(store.path))
         store.path.parent.mkdir(parents=True, exist_ok=True)
         try:
             with closing(_connect(store.path)) as db, db:
@@ -96,28 +96,31 @@ class Store:
         """The journal of the world in the file: its rule, then every event appended in turn under the rules of `append`, then the `item` table checked against the events.
         `WorldFileError` when the file is not a world of this program, or its content is not a world."""
         if not self.path.is_file():
-            raise WorldFileError(f"{self.path}: there is no world here (make one with `world new`, or read a world file with `world import`)")
+            raise WorldFileError(f"{self.path}: there is no world here (make one with `world new`, or read a world file with `world import`)", "no_world", path=str(self.path))
         try:
             with closing(_connect(self.path)) as db:
                 head = db.execute("SELECT format, version, rule FROM world").fetchall()
                 events = db.execute("SELECT seq, at, kind, payload FROM event ORDER BY seq").fetchall()
                 items = db.execute("SELECT seq, id, json FROM item ORDER BY seq").fetchall()
         except sqlite3.DatabaseError as exc:
-            raise WorldFileError(f"{self.path}: not a world of this program ({exc})") from None
+            raise WorldFileError(f"{self.path}: not a world of this program ({exc})", "not_a_world", path=str(self.path), reason=str(exc)) from None
         if len(head) != 1 or head[0][0] != FORMAT or head[0][1] != VERSION:
-            raise WorldFileError(f"{self.path}: not a world of this program: its world table must hold one row, {FORMAT!r} version {VERSION}")
+            raise WorldFileError(f"{self.path}: not a world of this program: its world table must hold one row, {FORMAT!r} version {VERSION}", "world_table_wrong",
+                                 path=str(self.path), format=head[0][0] if len(head) == 1 else None, version=head[0][1] if len(head) == 1 else None)
         try:
             rule = json.loads(head[0][2])
             log = [{"seq": seq, "at": at, "kind": kind, "payload": json.loads(payload)} for seq, at, kind, payload in events]
             kept = [(seq, id_, json.loads(text)) for seq, id_, text in items]
         except json.JSONDecodeError as exc:
-            raise WorldFileError(f"{self.path}: a row does not hold JSON ({exc})") from None
+            raise WorldFileError(f"{self.path}: a row does not hold JSON ({exc})", "row_not_json", path=str(self.path), reason=str(exc)) from None
         try:
             journal = Journal.replay(rule, log)
         except Refusal as why:
-            raise WorldFileError(f"{self.path}: {why}") from None
+            error = WorldFileError(f"{self.path}: {why}", why.code, **why.params)
+            error.event, error.where = why.event, str(self.path)
+            raise error from None
         if kept != [(e["seq"], e["payload"]["item"]["id"], e["payload"]["item"]) for e in journal.events if e["kind"] == "add_item"]:
-            raise WorldFileError(f"{self.path}: the item table is not the items of the add_item events")
+            raise WorldFileError(f"{self.path}: the item table is not the items of the add_item events", "item_table_differs", path=str(self.path))
         return journal
 
     def append(self, event: dict) -> None:
@@ -125,7 +128,8 @@ class Store:
         with closing(_connect(self.path)) as db, db:
             (last,) = db.execute("SELECT COALESCE(MAX(seq), 0) FROM event").fetchone()
             if event["seq"] != last + 1:
-                raise Refusal(f"{self.path} holds {last} events; the next is number {last + 1}, not {event['seq']}")
+                raise Refusal(f"{self.path} holds {last} events; the next is number {last + 1}, not {event['seq']}", "not_next_event", path=str(self.path), held=last,
+                              next=last + 1, seq=event["seq"])
             self._insert(db, event)
 
     def export_text(self) -> str:

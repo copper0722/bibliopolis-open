@@ -6,11 +6,11 @@ import shlex
 from pathlib import Path
 
 import pytest
+import refusal_cases as rc
 from hand_support import Hand, hid, item, stamp, topic
 
 from bibliopolis import cli, hand
 from bibliopolis import events as ev
-from bibliopolis.inputs import _Problems
 
 ROOT = Path(__file__).resolve().parents[1]
 PAGE = (ROOT / "docs" / "world.md").read_text(encoding="utf-8")
@@ -35,7 +35,7 @@ def test_every_json_example_of_the_page_is_an_item_or_an_event_that_the_readers_
     values = [v for block in blocks("json") for v in json_values(block)]
     assert len(values) >= 2
     for value in values:
-        problems = _Problems()
+        problems = ev.Problems()
         if "kind" in value:
             assert ev.check_event(value, "example", problems) == value, problems.found
         else:
@@ -58,17 +58,20 @@ def test_the_sector_table_is_the_table_of_the_program():
     assert str(hand.GOLDEN) in PAGE and "% 36000" in PAGE and "// 10**12" in PAGE
 
 
-def test_the_table_of_refusal_ids_is_the_ids_and_the_message_of_the_program():
-    rows = re.findall(r"^\| `(\w+)` \| (.+?) \| (.+?) \| (.+?) \|$", PAGE.split("## Refusals")[1].split("## Suggestions")[0], flags=re.M)
+def test_the_tables_of_refusal_ids_are_the_ids_the_params_and_the_messages_of_the_program(tmp_path):
+    """Every id of `events.CODES`, once and in the order of the list, with its params and the message that its scenario (tests/refusal_cases.py) makes."""
+    section = PAGE.split("## Refusals")[1].split("## Suggestions")[0]
+    rows = re.findall(r"^\| `(\w+)` \| (.+?) \| (.+?) \| (.+) \|$", section, flags=re.M)
     assert [code for code, *_ in rows] == list(ev.CODES)
-    given = []
-    for k in range(13):
-        given.append(hand.ring1_wedge(given, k))
-    with pytest.raises(ev.Refusal) as why:
-        hand.ring1_wedge(given, 13)
-    for code, params, _when, message in rows:
-        assert tuple(re.findall(r"`(\w+)`", params)) == ev.CODES[code] == tuple(why.value.params), code
-        assert message == str(why.value) and why.value.code == code
+    for code, params, when, message in rows:
+        assert (() if params == "none" else tuple(re.findall(r"`(\w+)`", params))) == ev.CODES[code], code
+        assert when.strip(), code
+        folder = tmp_path / code
+        folder.mkdir()
+        made = rc.CASES[code](folder)
+        shown = made["text"] if isinstance(made, dict) else str(made).replace(str(folder), "<folder>")
+        assert message == shown.splitlines()[0], code
+    assert "tests/refusal_cases.py" in PAGE and "bibliopolis.events.CODES" in PAGE
 
 
 def test_the_table_of_events_names_the_kinds_and_the_payloads_of_the_program():

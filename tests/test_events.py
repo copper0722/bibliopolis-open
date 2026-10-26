@@ -6,11 +6,10 @@ import pytest
 from hand_support import hid, item, stamp, topic
 
 from bibliopolis import events as ev
-from bibliopolis.inputs import _Problems
 
 
 def checked(check, value, where="x"):
-    problems = _Problems()
+    problems = ev.Problems()
     out = check(value, where, problems)
     return out, problems.found
 
@@ -141,28 +140,40 @@ def test_a_road_id_may_start_with_auto_only_when_it_names_a_road_that_already_ex
 
 
 # ---------------------------------------------------------------------------------------------- refusals ----
-def test_a_refusal_is_a_value_error_with_english_text_and_an_id_and_params_when_it_has_them():
-    plain = ev.Refusal("there is no road 'x'")
-    assert isinstance(plain, ValueError) and str(plain) == "there is no road 'x'" and plain.code is None and plain.params == {}
+def test_a_refusal_is_a_value_error_with_english_text_an_id_and_params_and_a_place_for_a_page():
     full = ev.Refusal("text", "ring1_full", limit=13, number=14)
-    assert (str(full), full.code, full.params) == ("text", "ring1_full", {"limit": 13, "number": 14})
+    assert isinstance(full, ValueError) and (str(full), full.code, full.params, full.event, full.where) == ("text", "ring1_full", {"limit": 13, "number": 14}, None, None)
+    assert full.as_dict() == {"code": "ring1_full", "params": {"limit": 13, "number": 14}, "event": None, "where": None, "message": "text"}
+    with pytest.raises(TypeError):
+        ev.Refusal("a refusal has no id")  # (an id is not optional: every refusal has one)
 
 
-def test_a_refusal_passed_on_with_its_place_keeps_its_id_and_params_and_is_a_new_exception():
+def test_a_refusal_passed_on_with_its_event_keeps_its_id_and_params_and_is_a_new_exception():
     full = ev.Refusal("the first ring is full", "ring1_full", limit=13, number=14)
-    wrapped = full.within("event 7 (open_road)")
+    wrapped = full.within(7, "open_road")
     assert wrapped is not full and str(wrapped) == "event 7 (open_road): the first ring is full" and str(full) == "the first ring is full"
-    assert (wrapped.code, wrapped.params) == ("ring1_full", {"limit": 13, "number": 14})
-    assert ev.Refusal("x").within("event 1").code is None
+    assert (wrapped.code, wrapped.params, wrapped.event) == ("ring1_full", {"limit": 13, "number": 14}, {"seq": 7, "kind": "open_road"}) and full.event is None
+    assert wrapped.as_dict()["event"] == {"seq": 7, "kind": "open_road"} and wrapped.as_dict()["message"] == str(wrapped)
 
 
-def test_the_ids_of_the_refusals_are_the_codes_with_the_names_of_their_params():
-    from bibliopolis.hand import ring1_wedge
+def test_the_problems_of_a_shape_have_an_id_and_params_each_and_are_listed_the_way_the_readers_list_them():
+    problems = ev.Problems()
+    problems.add("event.seq", "must be a whole number, 1 or more, got 'x'", "event_seq_bad", got="'x'")
+    problems.add("event", "missing at", "keys_missing", keys=["at"])
+    assert problems.found == ["event.seq: must be a whole number, 1 or more, got 'x'", "event: missing at"]
+    assert problems.items == [{"where": "event.seq", "code": "event_seq_bad", "params": {"got": "'x'"}}, {"where": "event", "code": "keys_missing", "params": {"keys": ["at"]}}]
+    for i in range(30):
+        problems.add("x", "y", "text_empty")
+    assert len(problems.found) == len(problems.items) == 20 and problems.more == 12  # as many as the readers of a city file report; the rest are counted
 
-    assert ev.CODES == {"ring1_full": ("limit", "number")}
-    with pytest.raises(ev.Refusal) as why:
-        ring1_wedge([(-100, 1000)], 0)
-    assert why.value.code in ev.CODES and tuple(why.value.params) == ev.CODES[why.value.code]
+
+def test_the_text_check_has_an_id_for_each_fault():
+    cases = [(5, "not_text"), ("  ", "text_empty"), ("\ud800", "text_not_utf8"), ("a\x01b", "text_control")]
+    for value, code in cases:
+        problems = ev.Problems()
+        assert ev.text(problems, "x", value, plain=True) is False and [p["code"] for p in problems.items] == [code]
+    problems = ev.Problems()
+    assert ev.text(problems, "x", "ok", plain=True) and ev.text(problems, "x", "", nonempty=False) and ev.text(problems, "x", "a\x01", plain=False) and problems.items == []
 
 
 # ---------------------------------------------------------------------------------------------- what counts ----

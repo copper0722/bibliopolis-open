@@ -307,7 +307,7 @@ class State:
     def do_add_item(self, e: dict, p: dict) -> None:
         item = p["item"]
         if item["id"] in self.items:
-            raise Refusal(f"{item['id']!r} is a house already")
+            raise Refusal(f"{item['id']!r} is a house already", "house_exists", house=item["id"])
         w, before = self.world(e), len(self.doc["chronicle"])
         w.seq += 1  # the arrival number: log order
         w.arrival_ids.add(item["id"])
@@ -343,19 +343,21 @@ class State:
         key, name, parent, ids = p["road"], p["name"], p["parent"], p["houses"]
         least = self.rule["min"]
         if key in self.nodes:
-            raise Refusal(f"there is a road {key!r} already")
+            raise Refusal(f"there is a road {key!r} already", "road_exists", road=key)
         if parent is not None and parent not in self.nodes:
-            raise Refusal(f"there is no road {parent!r} to open a road below")
+            raise Refusal(f"there is no road {parent!r} to open a road below", "parent_missing", parent=parent)
         held = self.houses_at(parent)
         if len(held) < least:
-            raise Refusal(f"{self.where(parent)} holds {len(held)} houses directly; a road is opened from a place that holds at least {least}")
+            raise Refusal(f"{self.where(parent)} holds {len(held)} houses directly; a road is opened from a place that holds at least {least}", "too_few_here",
+                          road=parent, held=len(held), least=least)
         if len(ids) < least:
-            raise Refusal(f"{len(ids)} houses are chosen; a road takes at least {least}")
+            raise Refusal(f"{len(ids)} houses are chosen; a road takes at least {least}", "too_few_chosen", chosen=len(ids), least=least)
         for h in ids:
             if h not in self.items:
-                raise Refusal(f"{h!r} is not a house")
+                raise Refusal(f"{h!r} is not a house", "not_a_house", house=h)
             if self.road_of[h] != parent:
-                raise Refusal(f"the house {h!r} does not stand directly on {self.where(parent)}; it stands on {self.where(self.road_of[h])}")
+                raise Refusal(f"the house {h!r} does not stand directly on {self.where(parent)}; it stands on {self.where(self.road_of[h])}", "house_elsewhere",
+                              house=h, road=parent, on=self.road_of[h])
         wedge = self.next_wedge() if parent is None else None  # (may refuse: before anything changes)
         w, before = self.world(e), len(self.doc["chronicle"])
         self.open(w, key, name, parent, ids, "open_road", wedge)
@@ -365,11 +367,11 @@ class State:
     def do_file(self, e: dict, p: dict) -> None:
         house, key = p["house"], p["road"]
         if house not in self.items:
-            raise Refusal(f"{house!r} is not a house")
+            raise Refusal(f"{house!r} is not a house", "not_a_house", house=house)
         if key not in self.nodes:
-            raise Refusal(f"there is no road {key!r}")
+            raise Refusal(f"there is no road {key!r}", "no_road", road=key)
         if self.road_of[house] == key:
-            raise Refusal(f"the house {house!r} stands on the road {key!r} already")
+            raise Refusal(f"the house {house!r} stands on the road {key!r} already", "already_there", house=house, road=key)
         w, before = self.world(e), len(self.doc["chronicle"])
         w.file_house(house, key, "file")
         self.road_of[house] = key
@@ -379,10 +381,10 @@ class State:
     def do_rename_road(self, e: dict, p: dict) -> None:
         key, name = p["road"], p["name"]
         if key not in self.nodes:
-            raise Refusal(f"there is no road {key!r}")
+            raise Refusal(f"there is no road {key!r}", "no_road", road=key)
         was = self.nodes[key]["name"]
         if was == name:
-            raise Refusal(f"the road {key!r} is called {name!r} already")
+            raise Refusal(f"the road {key!r} is called {name!r} already", "same_name", road=key, name=name)
         self.nodes[key]["name"] = name
         place = lay.tag_place(key)
         if place in self.plan["streets"]:  # a ring-1 road: the plan holds its name too
@@ -400,15 +402,15 @@ class State:
     def do_move_road(self, e: dict, p: dict) -> None:
         key, parent = p["road"], p["parent"]
         if key not in self.nodes:
-            raise Refusal(f"there is no road {key!r}")
+            raise Refusal(f"there is no road {key!r}", "no_road", road=key)
         if parent not in self.nodes:
-            raise Refusal(f"there is no road {parent!r} to move a road below")
+            raise Refusal(f"there is no road {parent!r} to move a road below", "move_parent_missing", parent=parent)
         below = self.subtree(key)
         if parent in below:
-            raise Refusal(f"the road {key!r} cannot move below {parent!r}, which is itself or one of its own roads")
+            raise Refusal(f"the road {key!r} cannot move below {parent!r}, which is itself or one of its own roads", "move_into_itself", road=key, parent=parent)
         old = self.nodes[key]["parent"]
         if old == parent:
-            raise Refusal(f"the road {key!r} is below {parent!r} already")
+            raise Refusal(f"the road {key!r} is below {parent!r} already", "already_below", road=key, parent=parent)
         moved = [h for h in self.items if self.road_of[h] in below]
         self.nodes[key]["parent"] = parent
         w, before = self.world(e), len(self.doc["chronicle"])
@@ -425,7 +427,7 @@ class State:
     def do_set_rule(self, e: dict, p: dict) -> None:
         rule = {"max": p["max"], "min": p["min"], "auto": p["auto"]}
         if rule == self.rule:
-            raise Refusal("the rule is this already")
+            raise Refusal("the rule is this already", "rule_unchanged", max=rule["max"], min=rule["min"], auto=rule["auto"])
         self.rule = rule
         self.plan["params"]["districts"] = districts_of(rule)
         w, before = self.world(e), len(self.doc["chronicle"])
@@ -457,5 +459,5 @@ def fold(events: list[dict], rule: dict) -> State:
             else:
                 state.skip(e)
         except Refusal as why:
-            raise why.within(f"event {e['seq']} ({e['kind']})") from None
+            raise why.within(e["seq"], e["kind"]) from None
     return state
