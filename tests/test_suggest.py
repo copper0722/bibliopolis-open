@@ -3,13 +3,15 @@ are crowded."""
 
 import json
 import os
+import random
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
-from hand_support import Hand, hand_problems, hid, landing_violations, lot_snapshot, play, sample_world_items, stability_violations, topic
+from hand_support import Hand, hand_problems, hid, landing_violations, lot_snapshot, play, random_item, sample_world_items, stability_violations, topic
 
+from bibliopolis import suggest as suggest_module
 from bibliopolis.events import ORDER, Refusal
 from bibliopolis.suggest import crowded, landing, roads_by_node, suggest_file, suggest_road
 
@@ -730,12 +732,16 @@ def simulate(items, top, least):
     return road_of, [roads[k] for k in roads]
 
 
-def sample_differences(items, state):
+def differences(items, state, top=40, least=10):
     """How the world differs from the rule written out again (`simulate`): the road of a house, or a road (id, parent, level, node). Empty: they agree."""
-    road_of, roads = simulate(items, 40, 10)
+    road_of, roads = simulate(items, top, least)
     out = [f"the house {h} stands on {state.road_of[h]!r}, not {road!r}" for h, road in road_of.items() if state.road_of.get(h) != road]
     opened = [(k, n["parent"], n["topic"]["level"], n["topic"]["id"]) for k, n in state.nodes.items()]
     return out + ([] if opened == [tuple(r) for r in roads] else ["the roads opened are not the same, or not in the same order"])
+
+
+def sample_differences(items, state):
+    return differences(items, state, 40, 10)
 
 
 def test_the_rule_auto_on_the_sample_agrees_with_the_rule_written_out_again(auto_sample, sample_items):
@@ -755,8 +761,11 @@ def shallowest_landing(world, item):
     return min(found, key=lambda r: (found[r][0], found[r][1])) if found else None
 
 
-@pytest.mark.parametrize("fault", ["shallowest road", "no landing", "root zone only"])
-def test_a_planted_fault_in_the_rule_auto_turns_the_agreement_with_the_rule_written_out_red_and_the_world_ends_green(fault, monkeypatch, sample_items):
+FAULTS = ["shallowest road", "no landing", "root zone only"]
+
+
+def plant(fault, monkeypatch):
+    """A fault in the rule `auto`, in force until `monkeypatch.undo()`."""
     import bibliopolis.hand as hand_module
 
     if fault == "shallowest road":
@@ -766,9 +775,71 @@ def test_a_planted_fault_in_the_rule_auto_turns_the_agreement_with_the_rule_writ
     else:  # looks at the root zone after each arrival, not at the place the house landed on and the roads the split opens
         real = hand_module.State.settle
         monkeypatch.setattr(hand_module.State, "settle", lambda self, w, e, start, touched, opened: real(self, w, e, None, touched, opened))
+
+
+@pytest.mark.parametrize("fault", FAULTS)
+def test_a_planted_fault_in_the_rule_auto_turns_the_agreement_with_the_rule_written_out_red_and_the_world_ends_green(fault, monkeypatch, sample_items):
+    plant(fault, monkeypatch)
     assert sample_differences(sample_items, refold_sample(sample_items)), fault
     monkeypatch.undo()
     assert sample_differences(sample_items, refold_sample(sample_items)) == []
+
+
+def random_arrivals(seed):
+    """Items that arrive one after the other, with topics that cluster (hand_support.random_item), and a rule `auto` with the most and the least of a road drawn too."""
+    rng = random.Random(seed)
+    top = rng.choice([6, 8, 12, 20])
+    return [random_item(rng, i) for i in range(1, rng.randint(80, 200))], top, min(top, rng.choice([2, 3, 5]))
+
+
+def random_differences(seed):
+    items, top, least = random_arrivals(seed)
+    h = Hand({"max": top, "min": least, "auto": True})
+    h.add_items(items)
+    return differences(items, h.state, top, least)
+
+
+@pytest.mark.parametrize("seed", range(16))
+def test_the_rule_auto_on_random_arrivals_agrees_with_the_rule_written_out_again(seed):
+    """The rule written out again from the page (`simulate`, on plain dictionaries) and the program: the road of every house and the roads opened, in order, for arrivals of random topics under
+    a random `max` and `min`, not only for the one sample."""
+    assert random_differences(seed) == []
+
+
+@pytest.mark.parametrize("fault", FAULTS)
+def test_a_planted_fault_in_the_rule_auto_turns_the_agreement_red_on_random_arrivals_too(fault, monkeypatch):
+    plant(fault, monkeypatch)
+    red = [seed for seed in range(16) if random_differences(seed)]
+    monkeypatch.undo()
+    assert len(red) >= 8, (fault, red)
+    assert [seed for seed in range(16) if random_differences(seed)] == []
+
+
+def shallowest_of(found):
+    return min(found, key=lambda road: (found[road][0], found[road][1]))
+
+
+def last_topic_wins_of(found):
+    return min(found, key=lambda road: (-found[road][0], -found[road][1]))
+
+
+@pytest.mark.parametrize("fault", [shallowest_of, last_topic_wins_of], ids=["the shallowest road", "of two as deep the road of the later topic"])
+def test_the_landing_oracle_sees_a_fault_in_the_function_that_the_engine_asks_itself(fault, monkeypatch):
+    """`suggest.landing` is the function the engine asks where an arrival stands. An oracle that asked it too would agree with it whatever it said, so the oracle of the arrivals
+    (`hand_support.expected_landing`) is the rule written out again; with a fault in the helper that `landing` is made of, it is red on the random logs, and green without."""
+    def seeds_with_violations():
+        out = []
+        for seed in range(12):
+            j = play(seed, steps=300, auto=True, suggested=True, arrivals=0.85)
+            if landing_violations(j.events, j.rule):
+                out.append(seed)
+        return out
+
+    monkeypatch.setattr(suggest_module, "_best", fault)
+    red = seeds_with_violations()
+    monkeypatch.undo()
+    assert len(red) >= 6, red
+    assert seeds_with_violations() == []
 
 
 def depth(state, key):

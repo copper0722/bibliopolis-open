@@ -17,7 +17,7 @@ from bibliopolis import world as zw
 from bibliopolis.events import Refusal, standing
 from bibliopolis.hand import SECTORS, State, bearing, fold
 from bibliopolis.journal import Journal
-from bibliopolis.suggest import landing, suggest_merge, suggest_road
+from bibliopolis.suggest import suggest_merge, suggest_road
 
 START = datetime(2026, 1, 1, tzinfo=timezone.utc)
 ROOT = zw.ROOT_PLACE
@@ -518,9 +518,22 @@ def stability_violations(events: list[dict], rule: dict) -> list[str]:
     return bad
 
 
+def expected_landing(state: State, item: dict) -> str | None:
+    """Where an item that arrives stands under the rule `auto`, written out again from docs/world.md and not by asking `bibliopolis.suggest.landing`, the function that the engine asks (an
+    oracle that asked it would agree with it whatever it said): of the roads whose node one of the topics of the item has, at the level of the node, the deepest; of two as deep, the one
+    that the topic nearer the primary one reaches. None, the root zone, when there is none."""
+    best = None
+    for order, topics in enumerate(item["openalex"]):
+        for depth, level in enumerate(("domain", "field", "subfield", "topic")):
+            for road, node in state.nodes.items():
+                if node["topic"] is not None and (node["topic"]["level"], node["topic"]["id"]) == (level, topics[level]["id"]) and (best is None or (-depth, order) < best[0]):
+                    best = ((-depth, order), road)
+    return None if best is None else best[1]
+
+
 def landing_violations(events: list[dict], rule: dict) -> list[str]:
-    """Replay the log one event at a time and check where each arrival stands under the rule `auto`: on the road `bibliopolis.suggest.landing` names in the world before it
-    (the root zone when none), or on a road that the same event opened out of the place it landed on (the group of a split goes down, level by level)."""
+    """Replay the log one event at a time and check where each arrival stands under the rule `auto`: on the road `expected_landing` names in the world before it (the root zone when
+    none), or on a road that the same event opened out of the place it landed on (the group of a split goes down, level by level)."""
     bad = []
     state, seen = State(rule), []
     for e in events:
@@ -529,7 +542,7 @@ def landing_violations(events: list[dict], rule: dict) -> list[str]:
             state = fold(seen, rule)
             continue
         item, auto = (e["payload"]["item"], state.rule["auto"]) if e["kind"] == "add_item" else (None, False)
-        want, before_nodes = (landing(state, item) if auto else None), set(state.nodes)
+        want, before_nodes = (expected_landing(state, item) if auto else None), set(state.nodes)
         state.apply(e)
         if item is None:
             continue
