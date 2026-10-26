@@ -170,6 +170,13 @@ def test_the_page_states_the_scope_of_the_restore_in_place_that_the_journal_test
         assert phrase in page, phrase
 
 
+def test_the_page_says_what_survives_a_crash_and_what_is_left_behind():
+    page = " ".join(PAGE.split("## The files")[1].split("## In Python")[0].split())
+    for phrase in ("synced to the disk (`fsync`) before it is published, and the folder is synced after the link", "never half a file", "`.<name>.<random>.part`", "the `-journal` of a world that was being built",
+                   "a second name for the finished file", "Nothing removes them later"):
+        assert phrase in page, phrase
+
+
 def test_the_limits_the_page_states_are_the_limits_of_the_program():
     h = Hand()
     h.add(10)

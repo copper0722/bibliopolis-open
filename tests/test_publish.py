@@ -9,7 +9,6 @@ The interleavings are controlled: the other party's file appears at a chosen mom
 import errno
 import os
 import stat
-from pathlib import Path
 
 import pytest
 from hand_support import play
@@ -97,22 +96,79 @@ def test_a_failure_removes_the_temporary_file_and_nothing_else(tmp_path, monkeyp
     assert names(tmp_path) == before
 
 
-def test_the_temporary_file_is_made_exclusively_under_a_name_of_its_own(tmp_path, monkeypatch):
-    """A file that is called what the temporary file used to be called (`.<name>.<pid>.part`) is never opened: the name is random and made with `O_EXCL`."""
-    victim = tmp_path / f".out.json.{os.getpid()}.part"
-    victim.write_text("a world, for example", encoding="utf-8")
-    seen = []
-    real = store.tempfile.mkstemp
-
-    def watching(*args, **kw):
-        fd, name = real(*args, **kw)
-        seen.append(Path(name).name)
-        return fd, name
-
-    monkeypatch.setattr(store.tempfile, "mkstemp", watching)
+def test_the_temporary_file_is_made_exclusively_under_a_random_name_and_a_name_that_is_taken_is_not_opened(tmp_path, monkeypatch):
+    """A file that is called what the temporary file is about to be called (a world, for example) is never opened: `O_EXCL` refuses the name and another random one is drawn."""
+    taken = tmp_path / ".out.json.deadbeefdeadbeef.part"
+    taken.write_text("a world, for example", encoding="utf-8")
+    drawn = iter(["deadbeefdeadbeef", "0123456789abcdef"])
+    monkeypatch.setattr("secrets.token_hex", lambda size: next(drawn))
     publish_text(tmp_path / "out.json", "the text")
-    assert victim.read_text(encoding="utf-8") == "a world, for example" and (tmp_path / "out.json").read_text(encoding="utf-8") == "the text"
-    assert len(seen) == 1 and seen[0] != victim.name and seen[0].startswith(".out.json.") and seen[0].endswith(".part")
+    assert taken.read_text(encoding="utf-8") == "a world, for example" and (tmp_path / "out.json").read_text(encoding="utf-8") == "the text"
+    assert names(tmp_path) == [".out.json.deadbeefdeadbeef.part", "out.json"] and list(drawn) == []
+
+
+def test_a_temporary_file_is_given_up_after_a_hundred_names_that_are_taken_and_nothing_is_published(tmp_path, monkeypatch):
+    """The names are drawn from the system's source of randomness: a hundred taken in a row is a folder that is not what it seems, and the error is the system's own."""
+    taken = tmp_path / ".out.json.0000000000000000.part"
+    taken.write_text("taken", encoding="utf-8")
+    calls = []
+    monkeypatch.setattr("secrets.token_hex", lambda size: (calls.append(size), "0000000000000000")[1])
+    with pytest.raises(FileExistsError):
+        publish_text(tmp_path / "out.json", "the text")
+    assert len(calls) == store.TEMP_TRIES and names(tmp_path) == [taken.name]
+
+
+def test_the_permissions_come_from_the_kernel_and_the_umask_is_never_read_or_set(tmp_path, monkeypatch):
+    """Reading the umask means setting it for an instant, for the whole process; the file is made with the permissions asked for and the kernel takes the umask's bits away."""
+    before = os.umask(0o027)
+    try:
+        def not_touched(*args):
+            raise AssertionError("the umask was read or set")
+
+        monkeypatch.setattr(os, "umask", not_touched)
+        publish_text(tmp_path / "out.json", "the text")
+        Store.import_journal(tmp_path / "w.sqlite", play(2, steps=30))
+        monkeypatch.undo()
+    finally:
+        os.umask(before)
+    assert stat.S_IMODE((tmp_path / "out.json").stat().st_mode) == 0o640 and stat.S_IMODE((tmp_path / "w.sqlite").stat().st_mode) == 0o640
+    assert names(tmp_path) == ["out.json", "w.sqlite"]
+
+
+def watching_syncs_and_links(monkeypatch):
+    """The order of the calls that make a file safe: what is synced (a file, a folder) and when the link is made."""
+    seen, real_fsync, real_link = [], os.fsync, os.link
+
+    def fsync(fd):
+        seen.append("sync folder" if stat.S_ISDIR(os.fstat(fd).st_mode) else "sync file")
+        return real_fsync(fd)
+
+    def link(src, dst, *args, **kw):
+        seen.append("link")
+        return real_link(src, dst, *args, **kw)
+
+    monkeypatch.setattr(os, "fsync", fsync)
+    monkeypatch.setattr(os, "link", link)
+    return seen
+
+
+@pytest.mark.parametrize("what", ["text", "a world"])
+def test_the_finished_file_is_synced_before_it_is_published_and_the_folder_after_the_link(what, tmp_path, monkeypatch):
+    """What survives a crash: the bytes are on the disk before the name is made, and the name after it. (SQLite syncs its own file at the commit, through the C library, not through here.)"""
+    seen = watching_syncs_and_links(monkeypatch)
+    if what == "text":
+        publish_text(tmp_path / "out.json", "the text")
+    else:
+        Store.import_journal(tmp_path / "w.sqlite", play(2, steps=30))
+    assert seen == ["sync file", "link", "sync folder"]
+
+
+def test_a_name_that_is_taken_is_met_after_the_file_is_synced_and_nothing_is_synced_for_the_folder(tmp_path, monkeypatch):
+    (tmp_path / "out.json").write_text("the first", encoding="utf-8")
+    seen = watching_syncs_and_links(monkeypatch)
+    with pytest.raises(Refusal, match="is there already"):
+        publish_text(tmp_path / "out.json", "the second")
+    assert seen == ["sync file", "link"]
 
 
 # ------------------------------------------------------------------------------------ no hard links ----

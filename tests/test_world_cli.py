@@ -298,7 +298,7 @@ def test_the_temporary_file_of_an_output_is_never_a_file_that_is_there(command, 
 
 @pytest.mark.parametrize("command", list(WRITERS))
 def test_the_file_a_command_writes_has_the_permissions_of_any_file_the_user_makes(command, tmp_path, capsys):
-    """A temporary file made by `tempfile.mkstemp` is 0600: the file that is published must not be."""
+    """The file that is published has the permissions asked for less the umask, not the private ones that a temporary file is often given."""
     world = a_world(tmp_path)
     before = os.umask(0o027)
     try:

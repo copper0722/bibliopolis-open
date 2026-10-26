@@ -351,6 +351,13 @@ this is for never doing. Only `build` and `picture` replace their output, which 
 (`output_is_an_input`, under any name for it), a SQLite database (`output_is_a_database`) and a world file (`output_is_a_world_file`: a JSON object whose `format` is that of a world file), and
 they use a file of their own with a random name too, so an input that is called what a temporary file used to be called is never opened for writing.
 
+**What survives a crash.** The text, or the world, is written to its file of its own and synced to the disk (`fsync`) before it is published, and the folder is synced after the link, so that
+once a command has returned the file and its name are on the disk (where the system lets a folder be synced; Windows and some network shares do not, and nothing is done there). A stop in the
+middle (a crash, a power cut, a kill) leaves the name either not there or whole, never half a file. What it can leave behind: the file `.<name>.<random>.part` that was being written, the
+`-journal` of a world that was being built, and, if the stop came between the link and the removal of the temporary name, a second name for the finished file. Nothing removes them later: a
+later run cannot tell that a name of this kind is not another run's file that is still being written, and removing it by its name is what the threat model below puts out of scope. They are
+safe to delete by hand once no run of the tool is writing in the folder.
+
 **Threat model.** In scope: several runs of this tool by one user at once, a wrong name given to a command (a mistyped `--out`), a fault or an interrupt in the middle of a call, and a disk with no
 hard links. Out of scope: a hostile process with write access to the same folder. It could delete or replace the world itself, and no way of publishing a file stops that. So a call removes the
 temporary file it made by its name (random, made by that call alone), and the looks that come before a write (`output_is_the_world`, `output_is_a_database`) tell the user what is there and are not

@@ -1,7 +1,8 @@
 """Where a hand-built world lives on disk: the home folder, a SQLite file, and the world file (bibliopolis.journal) that moves a world between stores.
 
     home() -> (folder, created)     the folder of the player's worlds: $BIBLIOPOLIS_HOME, else ~/Bibliopolis, made on first use
-    Store.create(path, rule)        a new SQLite world; Store.import_journal(path, journal) makes one from a journal; neither ever writes over a file
+    Store.create(path, rule)        a new SQLite world; Store.import_journal(path, journal) makes one from a journal; neither ever writes over a file (a temporary file of its own,
+                                    synced, then a hard link; docs/world.md, "The files": what survives a crash, and the threat model)
     Store(path).journal()           the journal of the world in the file (every event appended again, under the rules of `append`)
     Store(path).append(event)       one more event, one transaction
     Store(path).export_text()       the world file text of the world in the file
@@ -19,9 +20,9 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 import sqlite3
 import stat
-import tempfile
 from contextlib import closing
 from pathlib import Path
 
@@ -135,33 +136,53 @@ def check_replace(path: str | Path, inputs: list) -> None:
         raise Refusal(f"{out} is a world file; a world file is not replaced by a city or a picture (choose another file, or move that one away)", "output_is_a_world_file", path=str(out))
 
 
-def _new_file_mode(base: int) -> int:
-    """The permissions that a file gets when it is made asking for `base` (0o666 for text, 0o644 for a SQLite file): the umask of this user takes its bits away. (The umask can only be read by
-    setting it, for an instant; the commands of this package make one file at a time.)"""
-    umask = os.umask(0)
-    os.umask(umask)
-    return base & ~umask
+TEMP_TRIES = 100  # names drawn for a temporary file before it is given up (a taken name is a draw in 2**64)
 
 
 def temp_file(folder: Path, name: str, base: int = 0o666) -> tuple[int, Path]:
-    """A new, empty file in `folder` for the file `name` to be written to before it is published. It is made by `tempfile.mkstemp`: exclusively and under a random name, so it is never a
-    file that was there (a world or a city that is called what a temporary file used to be called is never opened) and its name cannot be guessed. It has the permissions that any file made
-    by this user gets (`base` less the bits of the umask), not the private ones of mkstemp. Returns the open descriptor, which the caller closes, and the path."""
-    fd, made = tempfile.mkstemp(dir=folder, prefix=f".{name}.", suffix=".part")
-    temp = Path(made)
+    """A new, empty file in `folder` for the file `name` to be written to before it is published. It is made with `O_CREAT | O_EXCL` under a random name (64 bits from `secrets`), so it is
+    never a file that was there (a world or a city that is called what a temporary file used to be called is never opened) and its name cannot be guessed; a taken name is drawn again. It has
+    the permissions `base` (0o666 for text, 0o644 for a SQLite file) less the umask, which the kernel takes away as it makes the file: nothing reads or sets the umask, which can only be read
+    by setting it for the whole process. Returns the open descriptor, which the caller closes, and the path."""
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    for _ in range(TEMP_TRIES - 1):
+        temp = folder / f".{name}.{secrets.token_hex(8)}.part"
+        try:
+            return os.open(temp, flags, base), temp
+        except FileExistsError:
+            continue
+    temp = folder / f".{name}.{secrets.token_hex(8)}.part"
+    return os.open(temp, flags, base), temp  # the last draw: if that name is taken too, the error (FileExistsError) is the caller's
+
+
+def sync_file(path: Path) -> None:
+    """Flush the file at `path` to the disk (a descriptor of its own: what is written through any descriptor of a file is flushed)."""
+    fd = os.open(path, os.O_RDWR | getattr(os, "O_BINARY", 0))
     try:
-        if hasattr(os, "fchmod"):
-            os.fchmod(fd, _new_file_mode(base))
-    except BaseException:
+        os.fsync(fd)
+    finally:
         os.close(fd)
-        temp.unlink(missing_ok=True)
-        raise
-    return fd, temp
+
+
+def sync_folder(folder: Path) -> None:
+    """Flush the entries of `folder` to the disk, so that a name that was made or replaced in it survives a crash. Where the system cannot open a folder or sync one (Windows, some network
+    shares) nothing is done: the file is in place already, and the call must not fail for it."""
+    try:
+        fd = os.open(folder, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    except OSError:
+        return
+    try:
+        os.fsync(fd)
+    except OSError:
+        pass
+    finally:
+        os.close(fd)
 
 
 def _publish(temp: Path, dest: Path) -> None:
     """Make the finished file `temp` the file `dest` without ever replacing a file that is there: `FileExistsError` when something is (a file, a folder, a link, a link that leads
-    nowhere), however late it came. A hard link does it in one step, whole or not at all, and the caller removes `temp` after. There is no second way. Where a hard link cannot be made
+    nowhere), however late it came. A hard link does it in one step, whole or not at all, and the caller removes `temp` after; the caller has synced `temp` before, and the folder is synced
+    after the link, so that a crash leaves the name either not there or whole. There is no second way. Where a hard link cannot be made
     (`os.link` fails with anything but `FileExistsError`: a disk with no hard links, such as a FAT or exFAT volume, or a network share) nothing is published, and `Refusal`
     (`no_hard_links`) says so: a copy into a name made for it can be overtaken by another party's file and then removed, which is what this function is for never doing."""
     try:
@@ -172,6 +193,7 @@ def _publish(temp: Path, dest: Path) -> None:
         reason = exc.strerror or str(exc)
         raise Refusal(f"{dest} cannot be published: a hard link could not be made in {dest.parent} ({reason}); choose a folder on a disk that supports hard links",
                       "no_hard_links", path=str(dest), folder=str(dest.parent), reason=reason) from None
+    sync_folder(dest.parent)  # the name is on the disk (the file was synced before, by the caller)
 
 
 def publish_text(path: str | Path, text: str) -> None:
@@ -184,6 +206,8 @@ def publish_text(path: str | Path, text: str) -> None:
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
             f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
         _publish(temp, dest)
     except FileExistsError:
         raise output_taken(dest) from None
@@ -254,6 +278,7 @@ class Store:
                 for e in journal.events:
                     cls._insert(db, e)
                 db.commit()
+            sync_file(temp)
             _publish(temp, store.path)
         except FileExistsError:
             raise Refusal(f"{store.path} is there already; a world is not overwritten (choose another file with --world, or move that one away)", "world_exists", path=str(store.path)) from None

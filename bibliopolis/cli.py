@@ -77,13 +77,16 @@ def write_text_atomically(path: Path, text: str) -> None:
     """Write `text` to `path` (UTF-8, \\n line ends on every system) so that a reader never sees half a file, replacing a file that is there (a city or a picture is made again
     whenever it is wanted; `world export` and `world fold` never replace one, `store.publish_text`). The text goes first to a file of its own in the same folder (`store.temp_file`:
     made exclusively under a random name, so it is never a file that was there, such as an input called what a temporary file used to be called, and with the permissions any file
-    made by this user gets, the umask deciding) and `os.replace` puts it in place. A failure removes the file of its own and nothing else."""
+    made by this user gets, the umask deciding), which is synced, `os.replace` puts it in place, and the folder is synced. A failure removes the file of its own and nothing else."""
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, temp = store.temp_file(path.parent, path.name)
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
             f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
         os.replace(temp, path)
+        store.sync_folder(path.parent)
     except BaseException:
         temp.unlink(missing_ok=True)
         raise
