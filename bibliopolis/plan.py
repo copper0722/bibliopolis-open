@@ -16,8 +16,8 @@ Two modes share it:
 
   grow     the roads are decided by the houses that stand: a crowded road opens a road for its largest group. The plan pins the directions
            and the ring-1 streets the root zone may open.
-  mirror   every topic that holds a house, directly or below, is a road from the start (`plan["roads"]`), and the plan has a street for each
-           of them: the topic tree is the street plan.
+  mirror   every topic an item is filed under (any of its topics), and every topic above one, is a road from the start (`plan["roads"]`), and
+           the plan has a street for each of them: the topic tree is the street plan.
 """
 
 from __future__ import annotations
@@ -163,5 +163,5 @@ def build_plan(tree: TreeView, items: list[dict], *, mode: str = GROW, max_house
         "sites": dict(sorted(sites.items())),
     }
     if mode == MIRROR:
-        plan["roads"] = comp.holders()
+        plan["roads"] = comp.filed_topics()
     return plan

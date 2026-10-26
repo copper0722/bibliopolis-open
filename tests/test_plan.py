@@ -128,7 +128,7 @@ def test_the_cut_counts_the_houses_of_each_topic_and_below_it():
     tree, items = make_tree({"a": T(3, b=T(4, c=T(5)), d=T(2)), "e": T(1)})
     comp = cut.compose(TreeView(tree), items)
     assert comp.sub == {"a": 14, "b": 9, "c": 5, "d": 2, "e": 1} and comp.centre_tag is None and comp.topic_roots == ["a", "e"]
-    assert comp.holders() == ["a", "b", "c", "d", "e"]
+    assert comp.filed_topics() == ["a", "b", "c", "d", "e"]
     assert {k: len(n.direct) for k, n in comp.nodes.items()} == {"a": 3, "b": 4, "c": 5, "d": 2, "e": 1}
     assert comp.role == {"a": "leaf", "b": "interior", "c": "interior", "d": "interior", "e": "leaf"}  # a holds 14 <= 20: a leaf street, everything below is folded
     whole = cut.compose(TreeView(tree), items, whole_tree=True)

@@ -536,6 +536,12 @@ class World:
         self.add_houses(found["place"], go, trigger)
         self.add_houses(road, stay, trigger)
 
+    def ensure_roads(self) -> None:
+        """Mirror: make the street record of every road that has none, in code-point order of the place: a road that no house stands on or below
+        (a topic an item is filed under whose address is elsewhere) has a record only from here on."""
+        for place in sorted(self.road_def):
+            self.ensure_street(place)
+
     # ---- records
     def fresh_road(self, base: str) -> str:
         """A road id not used before."""
@@ -966,3 +972,18 @@ def assign(plan: dict | PlanView, tree: dict | TreeView, placed: dict, arrivals:
     for aid in w.placements:  # (a house a later split moved is where it stands now)
         w.placements[aid] = w.places.get(lay.article_place(aid))
     return w.result(placements=w.placements)
+
+
+def complete(plan: dict | PlanView, tree: dict | TreeView, placed: dict, *, event_id: int | None = None) -> dict:
+    """What a world needs after its last arrival. In a `mirror` plan every topic of `plan["roads"]` is a road, but a road that no house stands on or
+    below (a topic an item is filed under whose address is elsewhere) has no street record until the world is completed; this writes it. Nothing else
+    changes, and a `grow` plan has nothing to complete (the delta is empty).
+
+    It is a separate call, not part of `assign`, so that a world does not depend on how its arrivals were cut into calls: the records of a road
+    that a later arrival is going to need would otherwise be made early, at the end of the first call."""
+    pv = plan if isinstance(plan, PlanView) else PlanView(plan)
+    tv = tree if isinstance(tree, TreeView) else TreeView(tree)
+    w = World(pv, tv, placed, event_id=event_id)
+    if w.mirror:
+        w.ensure_roads()
+    return w.result()

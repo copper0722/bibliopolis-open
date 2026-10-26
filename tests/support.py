@@ -73,6 +73,10 @@ def random_world(seed):
 
     spec = {f"root{i}": sub(1) for i in range(rng.choice([2, 3]))}
     tree, items = make_tree(spec)
+    every = [n["id"] for n in tree["nodes"]]
+    for a in items:  # one item in ten is filed under a second topic, anywhere in the tree: its house still stands once, at the deepest of the two
+        if rng.random() < 0.1:
+            a["topics"].append(rng.choice(every))
     n = len(items)
     for _ in range(rng.randint(0, 40)):
         n += 1
@@ -165,6 +169,11 @@ class Town:
         self.doc = zw.apply_delta(self.doc, res["delta"])
         self.check()
         return res
+
+    def finish(self):
+        """Complete the world after its last arrival (a mirror city: the roads no house stands on or below) and check it."""
+        self.doc = zw.apply_delta(self.doc, zw.complete(self.plan, self.tv, self.doc)["delta"])
+        self.check()
 
     def tagged(self, *tags):
         return by_tag(self.items, *tags)
@@ -333,4 +342,8 @@ def simulate_districts(seed, *, max_houses=12, min_houses=4, trunk_min=40, batch
             problems.append((seed, step, "an entry of the chronicle carries another event", event))
         if step % check_every == 0:
             audit("assign")
+    doc = zw.apply_delta(doc, zw.complete(plan, tv, doc)["delta"])
+    audit("complete")
+    if mode == plan_mod.MIRROR and set(roads_of(doc)) != {tag_street(t) for t in plan["roads"]}:
+        problems.append((seed, step, "a completed mirror world lacks a road of its plan", sorted(set(plan["roads"]) - {p["tag"] for p in roads_of(doc).values()})[:3]))
     return problems, doc, step, plan, tv

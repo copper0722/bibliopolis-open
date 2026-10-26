@@ -78,13 +78,18 @@ next, because the road of a house depends on the splits the houses before it cau
 
 The topic tree is the street plan.
 
-- Every topic that holds a house, directly or below, is a road from the start. The centre (the single root of a tree with one root) is not a road.
-- Nothing is folded and nothing is collapsed: the plan has a street for each of those topics, and a topic with no house of its own is a road with no lots, a
-  group of the roads below it. A topic with no house at or below it is no road.
+- Every topic an item is filed under (any entry of its `topics`, not only the one that is its address), and every topic above one, is a road from the start.
+  The centre (the single root of a tree with one root) is not a road. An item still stands once, at its address, its deepest topic.
+- Nothing is folded and nothing is collapsed: the plan has a street for each of those topics. A road with no lots of its own is a road with `lots: 0`: a topic
+  with roads below it and no house of its own, or a topic an item is filed under while the house stands elsewhere. It has a place, an address and a level, and a
+  ring-1 road of this kind has its wedge and its spoke. A topic that nothing is filed under, directly or below, is no road.
 - There is no split: `min` has no effect (it stays in `world.districts`). A road that holds more than `max` houses is marked `over`, and the chronicle records
   when it became so. Over is a hint that a collection is crowded.
 - An item with no topic, and an item whose address is the centre, stand in the root zone.
 - Houses are placed exactly as in `grow`: arrival order, the lowest empty lot, continuation ribs.
+- The roads that no house stands on or below get their street record when the world is completed (`bibliopolis.world.complete`, which `build_city` calls after the
+  last arrival). `assign` alone never makes them, so that a world does not depend on how its arrivals were cut into calls: a record made early would open the
+  trunks of the plan before their first house, nearer the plaza.
 
 ## Limits and known quirks
 

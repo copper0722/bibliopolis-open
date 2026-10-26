@@ -31,6 +31,7 @@ def build_world(library: dict, tree: dict, *, mode: str = GROW, max_houses: int 
     world = world_mod.new_world(plan)
     result = world_mod.assign(plan, tv, world, items)
     world = world_mod.apply_delta(world, result["delta"])
+    world = world_mod.apply_delta(world, world_mod.complete(plan, tv, world)["delta"])  # a mirror city: the roads no house stands on or below
     for entry in world["chronicle"]:  # `seq` is the arrival counter: the n-th item in arrival order caused the entry
         entry["at"] = items[entry["seq"] - 1]["added_at"]
     return plan, tv, world, items

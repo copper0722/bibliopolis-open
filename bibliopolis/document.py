@@ -74,12 +74,16 @@ HIDDEN_STREET_KEYS = frozenset({"line", "role", "side", "inner"})  # what the pl
 def needed(doc: dict, with_reserved: bool) -> tuple[set[str], set[str]]:
     """(streets, roads) the document needs: the streets that carry a lot, then whatever those point at - the street above, the street a
     continuation belongs to, the trunk that carries a rib, their roads, the road above each road, and the street of every road.
-    The root zone (an `underground` street) stands once it exists, whatever it holds: the chronicle names it (`from`) after a split that left it empty."""
+    The root zone (an `underground` street) stands once it exists, whatever it holds: the chronicle names it (`from`) after a split that left it empty.
+    In a `mirror` city every road stands once it exists, with a house on it or below it or not."""
     places, roads = doc["places"], doc["roads"]
     streets: set[str] = set()
     out_roads: set[str] = set()
-    street_todo = sorted({p["parent"] for p in places.values() if p["kind"] == "lot" or (with_reserved and p["kind"] == "reserved")}
-                         | {pid for pid, p in places.items() if p["kind"] == "street" and p.get("underground")})
+    seeds = {p["parent"] for p in places.values() if p["kind"] == "lot" or (with_reserved and p["kind"] == "reserved")}
+    seeds |= {pid for pid, p in places.items() if p["kind"] == "street" and p.get("underground")}
+    if doc.get("mode") == "mirror":
+        seeds |= {pid for pid, p in places.items() if p["kind"] == "street" and "lane_of" not in p and p.get("tag") is not None}
+    street_todo = sorted(seeds)
     road_todo: list[str] = []
     while street_todo or road_todo:
         while street_todo:

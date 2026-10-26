@@ -11,8 +11,9 @@ The cut runs on the number of houses per topic, with no depth cap:
   ring 1      the topic roots (the children of the centre when the tree has exactly one root, which then is the town hall itself).
 
 The cut decides what the plan (bibliopolis.plan) pins before the first house arrives: the ring-1 sectors, their weights, and which topics are
-collapsed into which street. With `whole_tree` every topic that holds a house is a street of its own: nothing is folded into a leaf and no
-chain is collapsed (the `mirror` mode).
+collapsed into which street. With `whole_tree` every topic an item is filed under (any of the item's topics, not only the address), and every topic
+above one, is a street of its own: nothing is folded into a leaf and no chain is collapsed (the `mirror` mode). An item still stands once, at its
+address; a topic it is filed under without being its address is a street with no lots.
 """
 
 from __future__ import annotations
@@ -202,7 +203,8 @@ class Composition:
     major: dict[str, str | None]
     streets: dict[str, Street]  # place -> street (lanes are ribs of their street, not streets)
     topic_roots: list[str]
-    sub: dict[str, int]  # topic -> houses at or below it (the centre's own houses are not counted)
+    sub: dict[str, int]  # topic -> houses at or below it, by address (the centre's own houses are not counted)
+    filed: set[str]  # the topics an item is filed under (any of its topics) and every topic above one
 
     def all_streets(self) -> list[Street]:
         out: list[Street] = []
@@ -216,13 +218,15 @@ class Composition:
             walk(s)
         return out
 
-    def holders(self) -> list[str]:
-        """The topics that hold a house at or below them, other than the centre, in code-point order: the roads of a `mirror` city."""
-        return sorted(k for k, n in self.sub.items() if n > 0 and k != self.centre_tag)
+    def filed_topics(self) -> list[str]:
+        """The topics an item is filed under (any of its topics) and every topic above one, other than the centre, in code-point order: the roads of
+        a `mirror` city."""
+        return sorted(k for k in self.filed if k != self.centre_tag)
 
 
 def compose(tree: TreeView, items: list[dict], home_max: int = HOME_MAX, *, whole_tree: bool = False) -> Composition:
-    """The cut of the whole library: the topic tree around the centre. With `whole_tree` every topic that holds a house is a street."""
+    """The cut of the whole library: the topic tree around the centre. With `whole_tree` every topic an item is filed under, and every topic above
+    one, is a street."""
     ordered = sorted(items, key=lambda a: a["id"])
     nodes = topic_nodes(tree, home_max)
     topic_roots = tree.roots()
@@ -244,7 +248,14 @@ def compose(tree: TreeView, items: list[dict], home_max: int = HOME_MAX, *, whol
 
     for key in top:
         count(key)
-    role = classify(nodes, sub, top, 0 if whole_tree else home_max, collapse=not whole_tree)
+    filed: set[str] = set()  # an item is filed under all its topics and stands once, at the deepest: the topics it is filed under are roads too
+    for a in ordered:
+        for t in a.get("topics", []):
+            cur = t if t in tree else None
+            while cur is not None and cur not in filed:
+                filed.add(cur)
+                cur = tree.parent(cur)
+    role = classify(nodes, {k: int(k in filed) for k in nodes} if whole_tree else sub, top, 0 if whole_tree else home_max, collapse=not whole_tree)
     ring1 = build_streets(nodes, role, top)
     if centre_tag is not None and nodes[centre_tag].direct:  # the root itself carries houses: a ring-1 street of their own in the plan
         own = Street(nodes[centre_tag], "leaf", 1, nodes[centre_tag].label, [nodes[centre_tag].label], None)
@@ -260,4 +271,4 @@ def compose(tree: TreeView, items: list[dict], home_max: int = HOME_MAX, *, whol
             cur = stack.pop()
             streets[cur.place] = cur
             stack.extend(cur.leaves + cur.containers)
-    return Composition(home_max, centre_tag, ring1, nodes, role, major, streets, topic_roots, sub)
+    return Composition(home_max, centre_tag, ring1, nodes, role, major, streets, topic_roots, sub, filed)

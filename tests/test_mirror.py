@@ -9,7 +9,7 @@ import json
 
 import checks
 import pytest
-from support import ROOT, T, Town, art, as_text, by_tag, count, make_tree, ribs_of, roads_of, simulate_districts, stamp, tag_street
+from support import ROOT, T, Town, art, as_text, by_tag, count, make_tree, ribs_of, roads_of, simulate_districts, sound, stamp, tag_street
 
 import bibliopolis
 from bibliopolis import layout as lay
@@ -144,3 +144,98 @@ def test_random_mirror_worlds_keep_every_invariant(seed):
     assert doc["chronicle"] == [] or all("over" in e for e in doc["chronicle"])  # nothing splits, ever
     roads = roads_of(doc)
     assert set(roads) <= {tag_street(x) for x in plan["roads"]}  # a road stands once a house stands on it or below it
+
+
+# ------------------------------------------------------------------------ an item filed under several topics ----
+def two_branches():
+    """Two roots with a child each, and one item filed under both children: its house stands once, the second topic is a road with no lots."""
+    tree = {"nodes": [{"id": "a", "label": "A", "parent": None}, {"id": "x", "label": "X", "parent": "a"},
+                      {"id": "b", "label": "B", "parent": None}, {"id": "y", "label": "Y", "parent": "b"}]}
+    return tree, [art(1, ["y", "x"])]
+
+
+def test_an_item_filed_under_two_branches_makes_a_road_on_each_and_its_house_stands_once_at_the_deepest_topic():
+    tree, items = two_branches()
+    doc = bibliopolis.build_city({"items": items}, tree, mode="mirror")
+    places = doc["places"]
+    roads = {p["tag"]: pid for pid, p in places.items() if p["kind"] == "street" and p.get("tag")}
+    assert sorted(roads) == ["a", "b", "x", "y"]  # a road for every topic the item is filed under, and for the topics above them
+    lots = [p for p in places.values() if p["kind"] == "lot"]
+    assert len(lots) == doc["world"]["houses"] == 1 and lots[0]["parent"] == tag_street("x")  # one house, at the deepest topic (both are depth 2: the lower id)
+    for name in ("a", "b", "y"):  # the roads that no house stands on: a road all the same, with a place, an address, a level and no lots
+        rec = places[tag_street(name)]
+        assert (rec["lots"], rec["reserved"]) == (0, 0) and "rib" not in rec and rec["address"][-1] == name.upper() and rec["level"] == len(rec["address"])
+    assert places[tag_street("b")]["shape"] == "trunk" and places[tag_street("b")]["road"] in doc["roads"]  # a ring-1 road keeps its wedge and its spoke
+    assert places[tag_street("y")]["parent"] == tag_street("b") and places[tag_street("x")]["parent"] == tag_street("a")
+    assert checks.document_problems(doc) == {} and doc["composition"]["streets"]["total"] == 4
+    assert [r["place"] for r in doc["composition"]["ring1"]] == [tag_street("a"), tag_street("b")]
+
+
+def test_in_grow_mode_the_same_item_makes_no_road_at_all():
+    tree, items = two_branches()
+    doc = bibliopolis.build_city({"items": items}, tree, mode="grow")
+    assert doc["composition"]["streets"]["total"] == 0 and doc["composition"]["measure"]["underground_lots"] == 1  # roads open for houses, not for filing
+
+
+def test_a_topic_above_an_address_and_a_topic_beside_it_are_both_roads():
+    tree = {"nodes": [{"id": "a", "label": "A", "parent": None}, {"id": "b", "label": "B", "parent": None}, {"id": "y", "label": "Y", "parent": "b"},
+                      {"id": "z", "label": "Z", "parent": "y"}]}
+    doc = bibliopolis.build_city({"items": [art(1, ["a", "z"])]}, tree, mode="mirror")  # the address is z (depth 3); a is filed only; b and y are above z
+    roads = sorted(p["tag"] for p in doc["places"].values() if p["kind"] == "street" and p.get("tag"))
+    assert roads == ["a", "b", "y", "z"] and doc["places"][tag_street("z")]["lots"] == 1 and doc["places"][tag_street("a")]["lots"] == 0
+    assert checks.document_problems(doc) == {}
+
+
+def test_a_filed_topic_that_is_the_town_hall_is_no_road_and_an_item_filed_only_there_stands_in_the_root_zone():
+    tree = {"nodes": [{"id": "r", "label": "R", "parent": None}, {"id": "c", "label": "C", "parent": "r"}, {"id": "d", "label": "D", "parent": "r"}]}
+    doc = bibliopolis.build_city({"items": [art(1, ["r"]), art(2, ["c", "d"])]}, tree, mode="mirror")
+    assert sorted(p["tag"] for p in doc["places"].values() if p["kind"] == "street" and p.get("tag")) == ["c", "d"]  # r is the centre
+    assert doc["composition"]["measure"]["underground_lots"] == 1 and doc["world"]["houses"] == 2
+
+
+def test_the_mirror_plan_names_the_roads_of_every_filing_and_has_a_street_for_each():
+    tree, items = two_branches()
+    plan = plan_mod.build_plan(TreeView(tree), items, mode="mirror")
+    assert plan["roads"] == ["a", "b", "x", "y"] and set(plan["streets"]) == {tag_street(t) for t in plan["roads"]}
+    assert plan["streets"][tag_street("y")]["weight"] == 0 and plan["streets"][tag_street("x")]["weight"] == lay.rib_slots(1)
+    assert [r["place"] for r in plan["ring1"]] == [tag_street("a"), tag_street("b")] and plan["trunks"][tag_street("b")]["role"] == "ring1"
+    grown = plan_mod.build_plan(TreeView(tree), items, mode="grow")
+    assert "roads" not in grown and tag_street("y") not in grown["streets"]
+
+
+def test_the_roads_nobody_stands_on_are_made_by_complete_and_not_before():
+    tree, items = two_branches()
+    plan = plan_mod.build_plan(TreeView(tree), items, mode="mirror")
+    doc = zw.new_world(plan)
+    doc = zw.apply_delta(doc, zw.assign(plan, tree, doc, items)["delta"])
+    assert sorted(p["tag"] for p in roads_of(doc).values()) == ["a", "x"]  # the road of the address and the one above it: what a house needs
+    done = zw.complete(plan, tree, doc)
+    assert sorted(t for t in (p.get("tag") for p in done["places"].values()) if t) == ["b", "y"] and done["delta"]["chronicle"] == doc["chronicle"]
+    full = zw.apply_delta(doc, done["delta"])
+    assert sorted(p["tag"] for p in roads_of(full).values()) == ["a", "b", "x", "y"] and full["seq"] == doc["seq"] == 1
+    assert zw.complete(plan, tree, full)["delta"]["places"] == {} and zw.complete(plan, tree, full)["delta"]["roads"] == {}  # done once, done
+    grow_plan = plan_mod.build_plan(TreeView(tree), items, mode="grow")
+    grow = zw.new_world(grow_plan)
+    assert zw.complete(grow_plan, tree, grow)["delta"]["places"] == {}  # a grow world has nothing to complete
+
+
+def test_a_mirror_world_is_the_same_whether_its_arrivals_come_in_one_call_or_one_by_one():
+    # a trunk with houses of its own and of four roads below it, a heavy path (m) and a side branch (q): the bands of the trunk fill up before the first
+    # house of m arrives, so a member that opened early would start nearer the plaza than one that opens when its first house comes
+    spec = {"a": T(12, a1=T(12), a2=T(12), a3=T(12), m=T(0, m1=T(8), m2=T(8)), q=T(0, q1=T(8), q2=T(8))), "b": T(3)}
+    tree, items = make_tree(spec)
+    by_tag(items, "m1")[0]["topics"].append("q2")  # an item of m1 also filed under q2: the same depth, the address is the lower id, m1
+    by_tag(items, "q1")[0]["topics"].append("b")  # an item of q1 also filed under b: the address is the deeper one, q1
+    plan = plan_mod.build_plan(TreeView(tree), items, mode="mirror", max_houses=12, min_houses=4, trunk_min=10)
+    assert {r["role"] for r in plan["trunks"].values()} == {"ring1", "heavy", "side"}
+    whole = zw.new_world(plan)
+    whole = zw.apply_delta(whole, zw.assign(plan, tree, whole, items)["delta"])
+    one = zw.new_world(plan)
+    for a in items:
+        one = zw.apply_delta(one, zw.assign(plan, tree, one, [a])["delta"])
+    assert as_text(one["places"]) == as_text(whole["places"]) and as_text(one["lines"]) == as_text(whole["lines"])  # (nothing is made early: the geometry is the same)
+    whole, one = (zw.apply_delta(d, zw.complete(plan, tree, d)["delta"]) for d in (whole, one))
+    assert as_text(one["places"]) == as_text(whole["places"]) and as_text(one["roads"]) == as_text(whole["roads"]) and as_text(one["lines"]) == as_text(whole["lines"])
+    assert {p["tag"] for p in roads_of(whole).values()} == set(plan["roads"])
+    assert [m["s0"] for m in whole["lines"]["place:tag:a"]["members"]] == [6.0, 15.0]  # m opened at the frontier of a trunk whose bands had grown
+    sound(whole, plan, tree)

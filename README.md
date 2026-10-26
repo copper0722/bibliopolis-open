@@ -11,9 +11,10 @@ open extraction of a private, self-use project.
 
 ## Two modes
 
-- **Your library as a city (`mirror`).** Your topic tree (for Zotero, the collection tree) is the street plan: every topic that holds an
-  item is a road from the start. Items arrive in the order you added them, so the growth of the city can be replayed. Items in no topic
-  live underground, below the town hall. A road that holds more than 40 houses is marked as crowded.
+- **Your library as a city (`mirror`).** Your topic tree (for Zotero, the collection tree) is the street plan: every topic an item is
+  filed under is a road from the start, and so is every topic above one. An item stands once, at its deepest topic. Items arrive in the
+  order you added them, so the growth of the city can be replayed. Items in no topic live underground, below the town hall. A road that
+  holds more than 40 houses is marked as crowded.
 - **A city from zero (`grow`, data-driven).** Houses arrive one at a time and the roads grow from the data:
   - The first houses live underground, below the town hall.
   - A road holds 10 to 40 houses directly.
@@ -75,8 +76,9 @@ python -m pytest
 
 ## 兩種模式
 
-- **把你的文獻庫變成城邦（`mirror`）。** 你的主題樹（用 Zotero 的話，就是 collection 樹）就是路網：每個放有文獻的主題，一開始就是一條路。
-  文獻依加入的先後抵達，所以城市的成長可以回放。沒有主題的文獻，住在市政廳正下方的地底。一條路住超過 40 棟，會被標成擁擠。
+- **把你的文獻庫變成城邦（`mirror`）。** 你的主題樹（用 Zotero 的話，就是 collection 樹）就是路網：文獻歸在哪些主題，那些主題一開始就是路，
+  它們上面的主題也是。一篇文獻只蓋一棟房子，蓋在它最深的那個主題。文獻依加入的先後抵達，所以城市的成長可以回放。沒有主題的文獻，住在市政廳正下方的地底。
+  一條路住超過 40 棟，會被標成擁擠。
 - **從零開始建城邦（`grow`，依資料長出來）。** 房子一棟一棟進來，路依資料自己長出來：
   - 最早的房子住在市政廳正下方的地底。
   - 一條路直接住 10 到 40 棟。

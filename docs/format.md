@@ -28,7 +28,7 @@ JSON Schema files for the two inputs are in `schema/`. A schema cannot say every
 | `added_at` | string | ISO 8601: a date (`2026-04-06`), or a date and time with or without an offset (`2026-04-06T09:30:00+08:00`, `2026-04-06 09:30:00`). A time without an offset is read as UTC. Items arrive in this order, ties by `id` in code-point order. |
 | `type` | string, not empty | the kind of document: `article`, `review`, `editorial`, `letter`, `news`, `erratum`, `retraction notice`, and so on. Not read by the engine. |
 | `tags` | list of strings | free tags: the residents of the house. Not read by the engine. |
-| `topics` | list of strings | ids of nodes of the tree. The address of the house is the deepest of them (a root is depth 1; ties: the lower id). Empty: the house stands in the root zone, under the town hall. |
+| `topics` | list of strings | ids of nodes of the tree: the topics the item is filed under. The address of the house is the deepest of them (a root is depth 1; ties: the lower id), and the house stands once, there. In `mirror` mode every topic listed is also a road (see below). Empty: the house stands in the root zone, under the town hall. |
 
 The order of the items in the file does not matter: only `added_at` and `id` do. Other keys are ignored.
 
@@ -152,5 +152,6 @@ The walk from the plaza to a door is the sum of the `at` of its road and its anc
 
 ## Two modes
 
-`grow` builds the city the way a collection grows: the roads open as the houses arrive. `mirror` builds the street plan of the tree you give it. Both read
+`grow` builds the city the way a collection grows: the roads open as the houses arrive. `mirror` builds the street plan of the tree you give it: a road for
+every topic an item is filed under (every entry of its `topics`) and for every topic above one, while each house still stands once, at its address. Both read
 the same two files and write the same kind of document; `world.mode` says which. The rules are in [engine.md](engine.md).
