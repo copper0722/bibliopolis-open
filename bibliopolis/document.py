@@ -66,8 +66,8 @@ NOTES_DISTRICTS = {
     "lot.underground": "the house stands in the root zone: its cell is on a compact grid under the plaza, outside the coast, the roads and the surface measures",
 }
 NOTES_HAND = {
-    "world.mode": "hand: the world is the fold of a log of events that the player appended (docs/world.md); a road is a category the player opened, and nothing "
-                  "splits or is marked over by itself",
+    "world.mode": "hand: the world is the fold of a log of events that the player appended (docs/world.md); a road is a category the player opened or, under the rule `auto`, a road "
+                  "that the rule opened for a node of OpenAlex; nothing is marked over, and nothing splits by itself except under `auto`",
     "world.chronicle": "every road opened, house filed, road renamed or moved, avenues merged, undo and change of rule, in the order of the log (`event_id` is the number of the event, "
                        "`seq` the arrivals so far, `at` the `at` of the event)",
 }

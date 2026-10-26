@@ -58,7 +58,9 @@ def build_parser() -> argparse.ArgumentParser:
     n.add_argument("--world", metavar="PATH", help=where)
     n.add_argument("--max-houses", type=int, default=MAX_HOUSES, metavar="N", help="the most a road is meant to hold; `crowded` lists what holds more (default: %(default)s)")
     n.add_argument("--min-houses", type=int, default=MIN_HOUSES, metavar="N", help="the least a new road takes (default: %(default)s)")
-    n.add_argument("--auto", action="store_true", help="open a road by itself for the largest group of the root zone after each arrival that leaves it above the most")
+    n.add_argument("--auto", action="store_true",
+                   help="turn the rule `auto` on: an arriving item stands on the deepest road whose node it is under, and a road or the root zone that then holds more than the most opens a road "
+                        "for the largest group of its houses one level below the place (docs/world.md, 'The rule auto')")
     i = ws.add_parser("import", help="read a world file into a new SQLite world (an existing world is never overwritten)")
     i.add_argument("file", metavar="FILE", help="the world file (JSON)")
     i.add_argument("--world", metavar="PATH", help=where)

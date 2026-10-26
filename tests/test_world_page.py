@@ -116,6 +116,28 @@ def test_the_python_of_the_page_runs():
     assert scope["journal"].state.items and scope["suggest_road"]
 
 
+def test_the_help_of_new_auto_says_what_the_page_says_the_rule_does(capsys):
+    """An arrival stands on the deepest road whose node it is under, and a place that then holds more than `max` houses opens a road for its largest group, one level of OpenAlex below it:
+    the help of `world new --auto` once said the root zone only."""
+    rule = " ".join(PAGE.split("**The rule `auto`.**")[1].split("**Numbers.**")[0].split())
+    with pytest.raises(SystemExit):
+        cli.main(["world", "new", "--help"])
+    shown = " ".join(capsys.readouterr().out.split())
+    for phrase in ("the deepest road whose node it is under", "for the largest group of its houses one level below the place"):
+        assert phrase in rule and phrase in shown, phrase
+
+
+def test_the_notes_of_a_city_say_that_the_rule_auto_splits_a_road_by_itself_and_that_nothing_else_does():
+    h = Hand({"max": 5, "min": 2, "auto": True})
+    h.add(8, topic(1, 1, 1, 1))  # the sixth house takes the root zone over 5: a road for the domain, which splits by field, by subfield and by topic in the same event
+    h.add(2, topic(1, 1, 1, 1))
+    state = h.state
+    assert list(state.nodes) == ["auto:6", "auto:6.2", "auto:6.3", "auto:6.4"] and [n["parent"] for n in state.nodes.values()] == [None, "auto:6", "auto:6.2", "auto:6.3"]
+    mode = state.city()["world"]["notes"]["world.mode"]
+    assert "nothing splits by itself except under `auto`" in mode and "under the rule `auto`, a road that the rule opened for a node of OpenAlex" in mode
+    assert "nothing splits by itself, except under `auto`" in PAGE and "nothing is marked over" in mode  # (the page says it in its Limits)
+
+
 def test_the_limits_the_page_states_are_the_limits_of_the_program():
     h = Hand()
     h.add(10)
