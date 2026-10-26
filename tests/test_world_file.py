@@ -13,6 +13,7 @@ from hand_support import Hand, hid, item, play, scripted, scripted_merge, script
 
 from bibliopolis import layout as lay
 from bibliopolis import store
+from bibliopolis.canonical import dumps
 from bibliopolis.events import Refusal
 from bibliopolis.inputs import InputError
 from bibliopolis.journal import FORMAT, VERSION, Journal, WorldFileError, dumps_world, load_world_file, read_world, world_document
@@ -289,6 +290,46 @@ def test_an_event_appended_to_a_store_is_there_when_it_is_read_again_and_only_th
     with pytest.raises(Refusal, match="not 3"):
         Store(path).append(j.events[2])
     assert len(Store(path).journal().events) == 3
+
+
+def test_a_store_is_read_as_it_is_at_one_moment_while_another_call_appends_to_it(tmp_path, monkeypatch):
+    """The three tables are read in one read transaction. Another call that appends after the event table is read and before the item table is read must not give the reader the
+    old events and the new item (a false `item_table_differs`): the reader's transaction holds the file, and the writer waits for it."""
+    path = tmp_path / "w.sqlite"
+    Store.create(path)
+    j = Store(path).journal()
+    for i in range(1, 4):
+        Store(path).append(j.append("add_item", {"item": item(i)}, stamp(i)))
+    fourth = j.append("add_item", {"item": item(4)}, stamp(4))
+    said = []
+
+    def another_call_appends():
+        with closing(sqlite3.connect(path, timeout=0)) as db:  # (no waiting: a writer that cannot go on at once says so)
+            try:
+                with db:
+                    db.execute("INSERT INTO event (seq, at, kind, payload) VALUES (?, ?, ?, ?)", (4, fourth["at"], fourth["kind"], dumps(fourth["payload"])))
+                    db.execute("INSERT INTO item (seq, id, json) VALUES (?, ?, ?)", (4, hid(4), dumps(fourth["payload"]["item"])))
+            except sqlite3.OperationalError as exc:
+                return str(exc)
+        return "appended"
+
+    class Spy(sqlite3.Connection):
+        def execute(self, sql, *args):
+            if "FROM item" in sql and not said:  # the event table has been read, the item table is next
+                said.append(another_call_appends())
+            return super().execute(sql, *args)
+
+    def spy_connect(where):
+        db = sqlite3.connect(where, factory=Spy)
+        db.execute("PRAGMA foreign_keys = ON")
+        return db
+
+    monkeypatch.setattr(store, "_connect", spy_connect)
+    seen = Store(path).journal()  # once the read is done, the writer may go on
+    monkeypatch.undo()
+    assert said == ["database is locked"] and len(seen.events) == 3 and list(seen.state.items) == houses(1, 3)
+    Store(path).append(fourth)
+    assert len(Store(path).journal().events) == 4
 
 
 def test_the_log_of_a_store_is_append_only_the_file_itself_refuses_an_update_or_a_delete(tmp_path):

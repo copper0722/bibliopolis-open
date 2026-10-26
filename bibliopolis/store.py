@@ -136,9 +136,11 @@ class Store:
             raise WorldFileError(f"{self.path}: there is no world here (make one with `world new`, or read a world file with `world import`)", "no_world", path=str(self.path))
         try:
             with closing(_connect(self.path)) as db:
+                db.execute("BEGIN")  # one read transaction: the three tables are read as they are at one moment, whatever another call appends in between (it waits for this one)
                 head = db.execute("SELECT format, version, rule FROM world").fetchall()
                 events = db.execute("SELECT seq, at, kind, payload FROM event ORDER BY seq").fetchall()
                 items = db.execute("SELECT seq, id, json FROM item ORDER BY seq").fetchall()
+                db.rollback()
         except sqlite3.DatabaseError as exc:
             raise WorldFileError(f"{self.path}: not a world of this program ({exc})", "not_a_world", path=str(self.path), reason=str(exc)) from None
         if len(head) != 1 or head[0][0] != FORMAT or head[0][1] != VERSION:

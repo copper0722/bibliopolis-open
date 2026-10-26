@@ -328,7 +328,8 @@ program for the rest. `tests/test_world_schema.py` holds the schema to the progr
 **A SQLite file** (standard library `sqlite3`) holds the same content in three tables: `world` (one row: format, version, the starting rule as JSON text), `event` (`seq`, `at`, `kind`,
 `payload` as JSON text) and `item` (`seq`, `id`, `json`: the item of each `add_item` event). The log is append-only: the file refuses an update, a delete or a replace of a row (a trigger
 guards each table; `INSERT OR REPLACE`, `OR IGNORE` and `ON CONFLICT` on a key that is there are refused too). Importing a world file and
-exporting it again gives the same bytes, and so does exporting a store and importing the file.
+exporting it again gives the same bytes, and so does exporting a store and importing the file. A store is read in one read transaction, the three tables as they are at one moment, so a call
+that appends while another reads waits for the read and never gives it half a world.
 
 **The home folder** is `$BIBLIOPOLIS_HOME`, else `~/Bibliopolis`; it is made on first use and printed. The world of a command without `--world` is `world.sqlite` in it. A world is never
 overwritten: `world new` and `world import` refuse a file that is there, even one that appears while they work (the file is made exclusively, so of two commands for one path one is refused,
