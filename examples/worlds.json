@@ -1,0 +1,8 @@
+{
+ "about": "The golden files of the engine for a port (docs/world.md, 'For a port'). Each world file is a log of events; folding it gives a city whose text, as 'python3 -m bibliopolis world fold' writes it, has the sha256 below. tests/test_world_examples.py keeps these files, this index and the engine equal.",
+ "worlds": [
+  {"file":"scripted.world.json","helper":"scripted","what":"every kind of event but a merge: roads opened from the middle of the root zone, houses filed out of roads and out of the root zone, a road with roads below it moved, a rename, a rule, an undo from the middle; items with no topic","events":97,"world_sha256":"d4ac8dbde73d982905bf7f4505bbed1dc8e9c3807472e662fba73c2d53e23da4","city_sha256":"1cca2a64a6bb1bf88eb2525869e5f78663ed33c104904f92a6ccdf9a039c66bf"},
+  {"file":"scripted_nodes.world.json","helper":"scripted_nodes","what":"OpenAlex topics: a suggestion taken as it stands, roads that stand for nodes, a house with topics in two domains, the rule auto splitting a road three levels down in one event, a move of a road for a node, an undo","events":45,"world_sha256":"fee2dd7f74da8af729f2193e61122ecd74cead594bfad049dafce5a9f8361252","city_sha256":"8b26e4bd049f5370bf6e2242bc227aa5fc10d668f2230c9fb085daf3ca3db4a6"},
+  {"file":"scripted_merge.world.json","helper":"scripted_merge","what":"the first ring filled (13 avenues) and merged: a merge by suggestion and one by hand, avenues in the freed directions, an avenue moved below another road (its direction is free for the next), a rename, a filing, an undo","events":144,"world_sha256":"02ae4cc1706d3befd8671bf3438ed9b183b94ab6cbfa07f2b6008fc217b94870","city_sha256":"5d5c5767dde9920b37eabf5c3a0a87e134f0f45234b002bf454cab891570c6e1"}
+ ]
+}

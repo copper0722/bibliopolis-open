@@ -346,9 +346,11 @@ suggest_road(journal.state, None)
 
 The TypeScript engine must give the same bytes as this one. What is easy to get wrong:
 
-- **The check.** `tests/test_world_file.py` pins the sha256 of the world file and of the text of the city for three fixed logs, `scripted`, `scripted_nodes` and `scripted_merge` of
-  `tests/hand_support.py` (a log of every kind of event; one with OpenAlex topics, nodes and the rule `auto`; one in which the first ring fills and is merged). A port that folds those logs to
-  those hashes agrees on every kind of event. The helpers build the logs, `world_document` and `dumps_world` write them.
+- **The golden files.** `examples/scripted.world.json`, `examples/scripted_nodes.world.json` and `examples/scripted_merge.world.json` are three logs: every kind of event; OpenAlex topics, the
+  node of a road and the rule `auto`; the first ring filled and merged. `examples/worlds.json` gives, for each, the sha256 of the file and of the city that it folds to, as
+  `python3 -m bibliopolis world fold` writes it. A port that folds those files to those hashes agrees on every kind of event. `examples/make_worlds.py` makes them from the helpers
+  `scripted`, `scripted_nodes` and `scripted_merge` of `tests/hand_support.py`; `tests/test_world_examples.py` keeps the files, the index and the pins of `tests/test_world_file.py` equal.
+  No city is committed: a derived city is rebuilt from its log.
 - **Ties by code point.** Every "ties by code point" (a node id, a road id, a parent id) compares Unicode code points, as Python compares strings. A string comparison in JavaScript or
   TypeScript compares UTF-16 units, and the two differ for a character beyond U+FFFF: U+10000 comes after U+E000 here and before it there.
 - **Directions.** The 13 sectors above, as whole units of 1/100 degree; a new avenue takes the lowest number that no avenue holds; a merge keeps the direction of the member with the widest
@@ -383,6 +385,7 @@ The TypeScript engine must give the same bytes as this one. What is easy to get 
 | the ids and params of every refusal, and a scenario for each | `tests/test_refusals.py`, `tests/refusal_cases.py` |
 | merging avenues, `suggest_merge`, the directions held and freed | `tests/test_merge.py` |
 | the world file, the SQLite file, the home folder | `tests/test_world_file.py` |
+| the golden world files of `examples/` and their index: byte for byte, the pinned cities, the schema | `tests/test_world_examples.py` |
 | the schema of the world file (`schema/world.schema.json`) | `tests/test_world_schema.py` |
 | the command `world` | `tests/test_world_cli.py` |
 | the city file of a world built by hand: the reader, the chronicle and the picture against one wrong field at a time | `tests/test_hand_cityfile.py` |
