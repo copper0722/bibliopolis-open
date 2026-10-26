@@ -2,6 +2,7 @@
 
 import json
 import os
+import shutil
 import stat
 import subprocess
 import sys
@@ -146,6 +147,35 @@ def test_the_city_file_has_the_permissions_of_any_file_the_user_makes(files, tmp
     plain.write_text("x", encoding="utf-8")
     assert run_main(capsys, "build", "--library", str(lib), "--tree", str(t), "--out", str(out))[0] == 0
     assert stat.S_IMODE(out.stat().st_mode) == stat.S_IMODE(plain.stat().st_mode)  # (a temporary file would be 0600)
+
+
+def test_the_temporary_file_of_an_output_is_never_an_input_that_is_called_what_it_used_to_be(files, tmp_path, capsys):
+    """`build` and `picture` put their output in place through a file of their own. It used to be called `.<output>.<pid>.part`, and a library or a city with that name was opened for
+    writing, which empties it, and then renamed away."""
+    t, lib, *_ = files
+    library = tmp_path / f".city.json.{os.getpid()}.part"
+    shutil.copy(lib, library)
+    out = tmp_path / "city.json"
+    assert run_main(capsys, "build", "--library", str(library), "--tree", str(t), "--out", str(out))[0] == 0
+    assert library.read_bytes() == lib.read_bytes() and json.loads(out.read_text(encoding="utf-8"))["world"]["houses"] == 58
+    city = tmp_path / f".city.svg.{os.getpid()}.part"
+    shutil.copy(out, city)
+    assert run_main(capsys, "picture", "--city", str(city), "--out", str(tmp_path / "city.svg"))[0] == 0
+    assert city.read_bytes() == out.read_bytes() and (tmp_path / "city.svg").read_text(encoding="utf-8").startswith("<svg ")
+    assert sorted(p.name for p in tmp_path.iterdir()) == sorted([library.name, city.name, "city.json", "city.svg", "library.json", "tree.json"])
+
+
+def test_an_output_that_is_there_is_still_replaced_by_build_and_picture(files, tmp_path, capsys):
+    """The scope of the commands that never replace a file is `world export` and `world fold`: a city or a picture is made again whenever it is wanted."""
+    t, lib, *_ = files
+    out = tmp_path / "city.json"
+    out.write_text("an old city", encoding="utf-8")
+    assert run_main(capsys, "build", "--library", str(lib), "--tree", str(t), "--out", str(out))[0] == 0
+    first = out.read_bytes()
+    assert first != b"an old city" and run_main(capsys, "build", "--library", str(lib), "--tree", str(t), "--out", str(out))[0] == 0 and out.read_bytes() == first
+    svg = tmp_path / "city.svg"
+    svg.write_text("an old picture", encoding="utf-8")
+    assert run_main(capsys, "picture", "--city", str(out), "--out", str(svg))[0] == 0 and svg.read_text(encoding="utf-8").startswith("<svg ")
 
 
 # ------------------------------------------------------------------------------------- picture and chronicle ----

@@ -3,6 +3,7 @@
 import json
 import os
 import sqlite3
+import stat
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
@@ -201,19 +202,94 @@ def test_a_command_never_writes_over_another_sqlite_file(command, tmp_path, caps
         assert everything_in(tmp_path) == before
 
 
+def expected_text(command, journal):
+    return dumps_world(world_document(journal)) if command == "export" else lay.render(journal.state.city())
+
+
 @pytest.mark.parametrize("command", list(WRITERS))
-def test_a_command_writes_over_text_and_into_a_new_file_as_it_always_did(command, tmp_path, capsys):
-    """The controls of the two refusals above: a file of text, even one that begins like a database file, is replaced, and a file that is not there is made."""
+def test_a_command_writes_a_new_file_and_makes_its_folder(command, tmp_path, capsys):
+    """The control of the refusals: a file that is not there is written, in a folder that is made if it is not there."""
     world = a_world(tmp_path)
-    before = everything_in(tmp_path)
-    old_city = tmp_path / "old.json"
-    old_city.write_text("an old file", encoding="utf-8")
+    out = tmp_path / "new" / "fresh.json"
+    code, err, _ = run_main(capsys, *WRITERS[command](out, world))
+    assert code == 0, err
+    assert out.read_text(encoding="utf-8") == expected_text(command, Store(world).journal())
+    assert sorted(p.name for p in out.parent.iterdir()) == ["fresh.json"] and sorted(p.name for p in tmp_path.iterdir()) == ["new", "w.sqlite"]  # no temporary file is left
+
+
+@pytest.mark.parametrize("command", list(WRITERS))
+def test_a_command_never_writes_over_a_file_that_is_there_whatever_it_holds(command, tmp_path, capsys):
+    """An old export, text that begins like a database file, a folder, a link that leads nowhere: all are taken names. (Only `build` and `picture` replace their output.)"""
+    world = a_world(tmp_path)
+    old = tmp_path / "old.json"
+    old.write_text("an old file", encoding="utf-8")
     lookalike = tmp_path / "lookalike.json"
     lookalike.write_text("SQLite format 3 is how such a file begins, but this is text", encoding="utf-8")
-    for name in (old_city, lookalike, tmp_path / "new" / "fresh.json"):
+    (tmp_path / "taken").mkdir()
+    try:
+        (tmp_path / "nowhere.json").symlink_to(tmp_path / "behind.json")
+    except OSError:
+        pass
+    before = everything_in(tmp_path)
+    for name in (old, lookalike, tmp_path / "taken", tmp_path / "nowhere.json"):
+        if not os.path.lexists(name):
+            continue
         code, err, _ = run_main(capsys, *WRITERS[command](name, world))
-        assert code == 0 and name.read_text(encoding="utf-8").startswith(("{", "{\n")), (name, err)
-    assert everything_in(tmp_path)[0]["w.sqlite"] == before[0]["w.sqlite"]
+        assert code == 2 and f"{name} is there already" in err, (name, err)
+        assert everything_in(tmp_path) == before and not (tmp_path / "behind.json").exists(), name  # nothing changed, no file made behind a link, no temporary file left
+
+
+@pytest.mark.parametrize("command", list(WRITERS))
+@pytest.mark.parametrize("appears", ["a world", "a file of text"])
+def test_a_file_that_appears_between_the_check_and_the_write_is_never_written_over(command, appears, tmp_path, capsys, monkeypatch):
+    """The check that the output is not a database passes, the world is read, and the other party makes the file in the meantime: the write was an `os.replace`, which replaced it."""
+    world = a_world(tmp_path)
+    out, made = tmp_path / "out.json", []
+    real = Store.journal
+
+    def read_and_then_the_file_appears(self):
+        journal = real(self)
+        if appears == "a world":
+            Store.create(out)
+        else:
+            out.write_text("the other party's file", encoding="utf-8")
+        made.append(out.read_bytes())
+        return journal
+
+    monkeypatch.setattr(Store, "journal", read_and_then_the_file_appears)
+    code, err, _ = run_main(capsys, *WRITERS[command](out, world))
+    monkeypatch.undo()
+    assert code == 2 and f"{out} is there already" in err, err
+    assert made and out.read_bytes() == made[0]  # the other party's file is as it was made
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["out.json", "w.sqlite"]  # no temporary file is left
+
+
+@pytest.mark.parametrize("command", list(WRITERS))
+def test_the_temporary_file_of_an_output_is_never_a_file_that_is_there(command, tmp_path, capsys):
+    """The temporary file was named `.<output>.<pid>.part`: a world with that name was opened for writing, which empties it, and was then renamed away."""
+    world = tmp_path / f".out.json.{os.getpid()}.part"
+    Store.import_journal(world, play(3, steps=60))
+    before, out = world.read_bytes(), tmp_path / "out.json"
+    code, err, _ = run_main(capsys, *WRITERS[command](out, world))
+    assert code == 0, err
+    assert world.read_bytes() == before  # the world is where it was, as it was
+    assert out.read_text(encoding="utf-8") == expected_text(command, Store(world).journal())
+    assert sorted(p.name for p in tmp_path.iterdir()) == sorted([world.name, "out.json"])
+
+
+@pytest.mark.parametrize("command", list(WRITERS))
+def test_the_file_a_command_writes_has_the_permissions_of_any_file_the_user_makes(command, tmp_path, capsys):
+    """A temporary file made by `tempfile.mkstemp` is 0600: the file that is published must not be."""
+    world = a_world(tmp_path)
+    before = os.umask(0o027)
+    try:
+        plain = tmp_path / "plain.txt"
+        plain.write_text("x", encoding="utf-8")
+        code, err, _ = run_main(capsys, *WRITERS[command](tmp_path / "out.json", world))
+    finally:
+        os.umask(before)
+    assert code == 0, err
+    assert stat.S_IMODE((tmp_path / "out.json").stat().st_mode) == stat.S_IMODE(plain.stat().st_mode) == 0o640
 
 
 @pytest.mark.parametrize("command", list(WRITERS))
@@ -285,7 +361,16 @@ def test_fold_into_a_place_that_cannot_be_written_is_an_error_and_not_a_tracebac
     run_main(capsys, "world", "new", "--world", str(tmp_path / "w.sqlite"))
     (tmp_path / "taken").mkdir()
     code, err, _ = run_main(capsys, "world", "fold", "--out", str(tmp_path / "taken"), "--world", str(tmp_path / "w.sqlite"))
-    assert code == 1 and err.startswith("bibliopolis: ")
+    assert code == 2 and err.startswith("bibliopolis: ") and f"{tmp_path / 'taken'} is there already" in err  # (a folder is a taken name)
+    (tmp_path / "locked").mkdir()
+    (tmp_path / "locked").chmod(0o500)
+    try:
+        if os.access(tmp_path / "locked", os.W_OK):
+            return  # (a user who may write anywhere cannot be refused here)
+        code, err, _ = run_main(capsys, "world", "fold", "--out", str(tmp_path / "locked" / "c.json"), "--world", str(tmp_path / "w.sqlite"))
+        assert code == 1 and err.startswith("bibliopolis: ") and not list((tmp_path / "locked").iterdir())
+    finally:
+        (tmp_path / "locked").chmod(0o700)
 
 
 # ---------------------------------------------------------------------------------------- as a program ----

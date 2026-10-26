@@ -547,7 +547,9 @@ def test_a_file_is_not_written_over_the_world_it_comes_from_even_where_no_file_i
     assert why.value.code == "output_is_the_world" and why.value.params == {"path": str(tmp_path / "none.sqlite"), "world": str(tmp_path / "none.sqlite")}
     store.check_output(tmp_path / "a.json", tmp_path / "none.sqlite")  # two names, nothing there: nothing to protect
     (tmp_path / "taken").mkdir()
-    store.check_output(tmp_path / "taken", tmp_path / "none.sqlite")  # (a folder is no database; the write itself fails later, and says so)
+    with pytest.raises(Refusal) as taken:  # (a folder is no database, but it is a taken name)
+        store.check_output(tmp_path / "taken", tmp_path / "none.sqlite")
+    assert (taken.value.code, taken.value.params) == ("output_exists", {"path": str(tmp_path / "taken")})
 
 
 # --------------------------------------------------------------------------------------------- the home ----

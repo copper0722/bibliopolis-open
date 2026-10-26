@@ -223,6 +223,7 @@ that is read passes the refusal of an event on as a `WorldFileError` with the sa
 | `not_next_event` | `path`, `held`, `next`, `seq` | appending to a store an event that is not the next number | <folder>/w.sqlite holds 3 events; the next is number 4, not 6 |
 | `output_is_the_world` | `path`, `world` | `world export` or `world fold` asked to write a file that is the world being read, under any name for it (another spelling, a link, a hard link): the world would be replaced by text | <folder>/w.sqlite is the world that is being read (<folder>/w.sqlite); a world is not written over (choose another file) |
 | `output_is_a_database` | `path` | `world export` or `world fold` asked to write a file that is a SQLite database already (a world or not; found by the first 16 bytes) | <folder>/other.sqlite is a SQLite database already; a world is not written over (choose another file, or move that one away) |
+| `output_exists` | `path` | `world export` or `world fold` asked to write a file, and something is there already (a file, a folder, a link, a link that leads nowhere), when the command began or when the file was to be published: these commands write a new file and never replace one | <folder>/w.sqlite is there already; a file is not written over (choose another file, or move that one away) |
 
 ### The shape of an event, a rule or a world file is wrong
 
@@ -335,8 +336,11 @@ that appends while another reads waits for the read and never gives it half a wo
 
 **The home folder** is `$BIBLIOPOLIS_HOME`, else `~/Bibliopolis`; it is made on first use and printed. The world of a command without `--world` is `world.sqlite` in it. A world is never
 overwritten: `world new` and `world import` refuse a file that is there, even one that appears while they work (the file is made exclusively, so of two commands for one path one is refused,
-and a command that fails removes only a file it made itself), and `world export` and `world fold` refuse to write a file that is the world they read (under any name for it) or any SQLite
-database (`output_is_the_world`, `output_is_a_database`).
+and a command that fails removes only a file it made itself), and `world export` and `world fold` write a new file and never replace one: the text goes to a file of its own in the folder (made
+exclusively, under a random name, with the permissions any file of the user gets) and is published to the name by a hard link, which fails when the name is taken, so a file that appears
+meanwhile is not written over either (`output_exists`); a look before the world is read says what is there: the world itself under any name (`output_is_the_world`) or a SQLite database
+(`output_is_a_database`). On a file system with no hard links the name is made with `O_EXCL` and the finished file is copied into it. Only `build` and `picture` replace their output, which is made
+again whenever it is wanted; they use a file of their own with a random name too, so an input that is called what a temporary file used to be called is never opened for writing.
 
 ## In Python
 
@@ -404,6 +408,7 @@ The TypeScript engine must give the same bytes as this one. What is easy to get 
 | the golden world files of `examples/` and their index: byte for byte, the pinned cities, the schema | `tests/test_world_examples.py` |
 | the schema of the world file (`schema/world.schema.json`) | `tests/test_world_schema.py` |
 | the command `world` | `tests/test_world_cli.py` |
+| publishing a file without ever replacing one: the temporary file, the hard link and its fallback, the interleavings | `tests/test_publish.py` |
 | the city file of a world built by hand: the reader, the chronicle and the picture against one wrong field at a time | `tests/test_hand_cityfile.py` |
 | the number form and the pinned hashes | `tests/test_canonical.py`, `tests/test_world_file.py` |
 | this page: its examples load through the readers and its numbers are the program's | `tests/test_world_page.py` |

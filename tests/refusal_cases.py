@@ -15,7 +15,7 @@ from hand_support import Hand, hid, item, stamp, topic
 from bibliopolis import events as ev
 from bibliopolis.events import Problems, Refusal
 from bibliopolis.journal import Journal, WorldFileError, dumps_world, read_world, world_document
-from bibliopolis.store import Store, check_output
+from bibliopolis.store import Store, check_output, publish_text
 from bibliopolis.suggest import suggest_file, suggest_road
 
 
@@ -269,6 +269,11 @@ def output_is_a_database(tmp):
     Store.create(tmp / "w.sqlite")
     Store.create(tmp / "other.sqlite")
     return raised(lambda: check_output(tmp / "other.sqlite", tmp / "w.sqlite"))
+
+
+def output_exists(tmp):
+    Store.create(tmp / "w.sqlite")
+    return raised(lambda: publish_text(tmp / "w.sqlite", "the text"))
 
 
 def invalid(tmp):

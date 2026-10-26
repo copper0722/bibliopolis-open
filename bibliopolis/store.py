@@ -5,7 +5,8 @@
     Store(path).journal()           the journal of the world in the file (every event appended again, under the rules of `append`)
     Store(path).append(event)       one more event, one transaction
     Store(path).export_text()       the world file text of the world in the file
-    check_output(path, world)       before a file is written at `path`: `Refusal` when that would replace the world at `world`, or any SQLite file
+    check_output(path, world)       before a file is written at `path`: `Refusal` when `path` is the world at `world`, a SQLite file, or anything else that is there
+    publish_text(path, text)        write `text` to a new file at `path`, never over a file that is there (`world export`, `world fold`)
 
 The SQLite file holds the same content as a world file in three tables: `world` (one row: format, version and the rule the world started with), `event` (one row for
 each event: seq, at, kind, and the payload as the canonical JSON text) and `item` (the metadata of each add_item event, by the seq of the event, as the canonical JSON
@@ -17,7 +18,10 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sqlite3
+import stat
+import tempfile
 from contextlib import closing
 from pathlib import Path
 
@@ -65,10 +69,16 @@ def _same_file(a: Path, b: Path) -> bool:
         return False
 
 
+def output_taken(path: Path) -> Refusal:
+    """The refusal when a file is to be written at `path` and something is there already (a file, a folder, a link, a link that leads nowhere)."""
+    return Refusal(f"{path} is there already; a file is not written over (choose another file, or move that one away)", "output_exists", path=str(path))
+
+
 def check_output(path: str | Path, world: str | Path) -> None:
-    """Call this before a file is written at `path` by a command that reads the world in the file `world` (`world export`, `world fold`). `Refusal` (`output_is_the_world`) when `path` is
-    that file under any name, since the world would be replaced by the text written from it; and `Refusal` (`output_is_a_database`) when `path` is a SQLite database already, a world or
-    not (a database is never written over). Nothing is touched."""
+    """Call this before a file is written at `path` by a command that reads the world in the file `world` (`world export`, `world fold`), to spare the work and say what the file is.
+    `Refusal` (`output_is_the_world`) when `path` is that file under any name, since the world would be replaced by the text written from it; `Refusal` (`output_is_a_database`) when
+    `path` is a SQLite database already, a world or not; `Refusal` (`output_exists`) when anything else is there. Nothing is touched. This is a look, not the guard: a file that appears
+    after it is met by `publish_text`, which never writes over a file."""
     out, source = Path(path), Path(world)
     if _same_file(out, source):
         raise Refusal(f"{out} is the world that is being read ({source}); a world is not written over (choose another file)", "output_is_the_world", path=str(out), world=str(source))
@@ -76,6 +86,84 @@ def check_output(path: str | Path, world: str | Path) -> None:
         with open(out, "rb") as f:
             if f.read(len(SQLITE_MAGIC)) == SQLITE_MAGIC:
                 raise Refusal(f"{out} is a SQLite database already; a world is not written over (choose another file, or move that one away)", "output_is_a_database", path=str(out))
+    if os.path.lexists(out):
+        raise output_taken(out)
+
+
+def _new_file_mode(base: int) -> int:
+    """The permissions that a file gets when it is made asking for `base` (0o666 for text, 0o644 for a SQLite file): the umask of this user takes its bits away."""
+    umask = os.umask(0)
+    os.umask(umask)
+    return base & ~umask
+
+
+def temp_file(folder: Path, name: str, base: int = 0o666) -> tuple[int, Path]:
+    """A new, empty file in `folder` for the file `name` to be written to before it is published. It is made by `tempfile.mkstemp`: exclusively and under a random name, so it is never a
+    file that was there (a world or a city that is called what a temporary file used to be called is never opened) and its name cannot be guessed. It has the permissions that any file made
+    by this user gets (`base` less the bits of the umask), not the private ones of mkstemp. Returns the open descriptor, which the caller closes, and the path."""
+    fd, made = tempfile.mkstemp(dir=folder, prefix=f".{name}.", suffix=".part")
+    temp = Path(made)
+    try:
+        if hasattr(os, "fchmod"):
+            os.fchmod(fd, _new_file_mode(base))
+    except BaseException:
+        os.close(fd)
+        temp.unlink(missing_ok=True)
+        raise
+    return fd, temp
+
+
+def _remove_if_ours(path: Path, made: os.stat_result) -> None:
+    """Remove `path` if it is still the file that was made (`made` is the stat of its descriptor: the same device and inode); a file that has taken the name since is not ours to remove.
+    (The name could change hands once more between the look and the removal; no system call removes a file by what it is.)"""
+    try:
+        now = os.stat(path, follow_symlinks=False)
+    except FileNotFoundError:
+        return
+    if os.path.samestat(made, now):
+        path.unlink(missing_ok=True)
+
+
+def _publish(temp: Path, dest: Path) -> None:
+    """Make the finished file `temp` the file `dest` without ever replacing a file that is there: `FileExistsError` when something is (a file, a folder, a link, a link that leads
+    nowhere), however late it came. A hard link does it in one step, whole or not at all, and the caller removes `temp` after. On a file system that has no hard links (`os.link` fails
+    with anything but `FileExistsError`) `dest` is made with `O_CREAT | O_EXCL`, so it is still never a file that was there, and `temp` is copied into it with its permissions; that takes
+    time, so a reader can see part of the file, and a failed copy removes `dest` if it is still the file that was made here, and nothing else."""
+    try:
+        os.link(temp, dest)
+        return
+    except FileExistsError:
+        raise
+    except OSError:
+        pass
+    with open(temp, "rb") as src:
+        fd = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0), 0o666)
+        made = os.fstat(fd)
+        try:
+            with os.fdopen(fd, "wb") as out:
+                if hasattr(os, "fchmod"):
+                    os.fchmod(out.fileno(), stat.S_IMODE(os.fstat(src.fileno()).st_mode))
+                shutil.copyfileobj(src, out)
+        except BaseException:
+            _remove_if_ours(dest, made)
+            raise
+
+
+def publish_text(path: str | Path, text: str) -> None:
+    """Write `text` (UTF-8, \\n line ends on every system) to a new file at `path`, never over a file that is there: `Refusal` (`output_exists`) when something is, even if it came after the
+    call began. The text is written first to a file of its own in the folder of `path` (`temp_file`) and that file is published to `path` (`_publish`), so a reader never sees half a file; a
+    failure removes the file of its own and nothing else. The folder is made when it is not there."""
+    dest = Path(path)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp = temp_file(dest.parent, dest.name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
+            f.write(text)
+        _publish(temp, dest)
+    except FileExistsError:
+        raise output_taken(dest) from None
+    finally:
+        temp.unlink(missing_ok=True)
 
 
 def _plain(value):

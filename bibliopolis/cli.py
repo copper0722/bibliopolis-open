@@ -64,27 +64,28 @@ def build_parser() -> argparse.ArgumentParser:
     i = ws.add_parser("import", help="read a world file into a new SQLite world (an existing world is never overwritten)")
     i.add_argument("file", metavar="FILE", help="the world file (JSON)")
     i.add_argument("--world", metavar="PATH", help=where)
-    e = ws.add_parser("export", help="write the world as a world file (JSON): the same bytes that `import` would read (never over a SQLite file, so never over the world itself)")
+    e = ws.add_parser("export", help="write the world as a world file (JSON): the same bytes that `import` would read (a new file: never over a file that is there)")
     e.add_argument("file", metavar="FILE", help="where to write the world file")
     e.add_argument("--world", metavar="PATH", help=where)
-    f = ws.add_parser("fold", help="fold the log of the world into its city and write it as `build` does (the layout v4 document; never over a SQLite file)")
+    f = ws.add_parser("fold", help="fold the log of the world into its city and write it as `build` does (the layout v4 document; a new file: never over a file that is there)")
     f.add_argument("--out", required=True, metavar="city.json", help="where to write the city")
     f.add_argument("--world", metavar="PATH", help=where)
     return ap
 
 
 def write_text_atomically(path: Path, text: str) -> None:
-    """Write `text` to `path` (UTF-8, \\n line ends on every system) so that a reader never sees half a file. The file gets the permissions any
-    file made by this user gets (the umask decides), not the private ones of a temporary file."""
+    """Write `text` to `path` (UTF-8, \\n line ends on every system) so that a reader never sees half a file, replacing a file that is there (a city or a picture is made again
+    whenever it is wanted; `world export` and `world fold` never replace one, `store.publish_text`). The text goes first to a file of its own in the same folder (`store.temp_file`:
+    made exclusively under a random name, so it is never a file that was there, such as an input called what a temporary file used to be called, and with the permissions any file
+    made by this user gets, the umask deciding) and `os.replace` puts it in place. A failure removes the file of its own and nothing else."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f".{path.name}.{os.getpid()}.part")
+    fd, temp = store.temp_file(path.parent, path.name)
     try:
-        with open(tmp, "w", encoding="utf-8", newline="\n") as f:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
             f.write(text)
-        os.replace(tmp, path)
+        os.replace(temp, path)
     except BaseException:
-        if tmp.exists():
-            tmp.unlink()
+        temp.unlink(missing_ok=True)
         raise
 
 
@@ -143,13 +144,13 @@ def world_command(args: argparse.Namespace) -> int:
     elif args.world_command == "export":
         store.check_output(args.file, path)
         journal = store.Store(path).journal()
-        write_text_atomically(Path(args.file), dumps_world(world_document(journal)))
+        store.publish_text(args.file, dumps_world(world_document(journal)))
         print(f"wrote {args.file}: {len(journal.events)} events, {len(journal.items())} items", file=sys.stderr)
     else:
         store.check_output(args.out, path)
         journal = store.Store(path).journal()
         doc = journal.state.city()
-        write_text_atomically(Path(args.out), render(doc))
+        store.publish_text(args.out, render(doc))
         s = summary(doc)
         print(f"wrote {args.out}: {s['houses']} houses on {s['roads']} roads, {s['underground']} under the town hall, "
               f"{s['splits']} splits, {s['over']} over (mode {s['mode']})", file=sys.stderr)
