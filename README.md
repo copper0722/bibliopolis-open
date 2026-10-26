@@ -56,7 +56,8 @@ wrote city.svg: 39457 bytes
 ```
 
 **5. Look at it.** Open `city.svg` in a web browser: drag the file onto a browser window, or right-click it and choose "Open with". You see the town hall
-in the middle, the roads that go out from it, and a coloured house for each article. The example library is invented; to use your own, see "Try it" below.
+in the middle, the roads that go out from it, and a coloured house for each article. The picture is big (1800 pixels wide): if your browser shows only part
+of it, zoom out with Ctrl and the minus key (Cmd and the minus key on a Mac). The example library is invented; to use your own, see "Try it" below.
 
 You need `python3 -m pip install pytest` only if you want to run the tests (see Tests below).
 
@@ -212,7 +213,7 @@ wrote city.svg: 39457 bytes
 ```
 
 **5. 看看成果。** 用瀏覽器打開 `city.svg`：把檔案拖進瀏覽器視窗，或對檔案按右鍵，選「開啟方式」。你會看到市政廳在中央，路從它往外延伸，每篇文獻是一棟上了色的房子。
-範例文獻庫是虛構的；要用你自己的文獻庫，請看下面的「試試看」。
+這張圖很大（寬 1800 像素），如果瀏覽器只顯示一部分，請縮小畫面：按 Ctrl 加減號（Mac 按 Cmd 加減號）。範例文獻庫是虛構的；要用你自己的文獻庫，請看下面的「試試看」。
 
 只有要跑測試時，才需要 `python3 -m pip install pytest`（見下面的「測試」）。
 

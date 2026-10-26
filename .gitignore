@@ -18,9 +18,11 @@ var/
 *.local
 .DS_Store
 
-# a derived city is rebuilt from its library, never committed
+# a derived city and its picture are rebuilt from the library, never committed
 /city.json
 /city-*.json
+/city.svg
+/city-*.svg
 
 # binary payload never enters Git
 *.png

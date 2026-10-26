@@ -4,11 +4,14 @@ import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import tomllib
 import xml.etree.ElementTree as ET
 from pathlib import Path
+
+import pytest
 
 import bibliopolis
 from bibliopolis import picture
@@ -152,6 +155,25 @@ def test_the_readme_shows_the_line_the_picture_command_prints_after_that_build(t
     done = run(["-m", "bibliopolis", "picture", "--city", "city.json", "--out", "city.svg"], tmp_path)
     assert done.returncode == 0 and done.stderr.strip() == shown[0]
     assert shown[0] == f"wrote city.svg: {(tmp_path / 'city.svg').stat().st_size} bytes"
+
+
+def test_the_picture_of_set_up_is_the_size_the_readme_says_it_is(tmp_path):
+    assert build_on_the_sample(tmp_path, "--mode", "grow", "--out", "city.json").returncode == 0
+    assert run(["-m", "bibliopolis", "picture", "--city", "city.json", "--out", "city.svg"], tmp_path).returncode == 0
+    root = ET.parse(tmp_path / "city.svg").getroot()
+    assert float(root.get("width")) == 1800 and float(root.get("height")) < 1800  # the longest side is 1800 pixels: wider than most laptop windows
+    assert "1800 pixels wide" in ENGLISH and "寬 1800 像素" in CHINESE
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
+def test_the_files_the_readme_tells_the_reader_to_make_are_ignored_by_git_in_the_folder_of_the_files(tmp_path):
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    shutil.copy(ROOT / ".gitignore", tmp_path / ".gitignore")
+    made = {shlex.split(c)[shlex.split(c).index("--out") + 1] for half in (ENGLISH, CHINESE) for c in commands(half) if "--out" in shlex.split(c)}
+    assert made == {"city.json", "city.svg", "city-mirror.json", "city-41.json", "city-41.svg"}
+    for name in sorted(made):
+        assert subprocess.run(["git", "-C", str(tmp_path), "check-ignore", "-q", name], check=False).returncode == 0, name  # `git status` stays clean
+    assert subprocess.run(["git", "-C", str(tmp_path), "check-ignore", "-q", "docs/images/concept.svg"], check=False).returncode == 1  # the pictures of the page are not
 
 
 def test_the_readme_shows_the_chronicle_the_command_prints_on_the_sample(tmp_path):
