@@ -34,6 +34,8 @@ RING_MIN = lay.PLAZA_RADIUS + lay.LEAD + lay.BAND / 2  # the least lane radius: 
 RING_AVENUE_ARC = 2 * (lay.TRUNK_LANE + 1.0)  # the arc one avenue needs at the ring's outer edge: its spoke lane (TRUNK_LANE each side of the axis) and a lot (1) on each side: 3
 RING_CLASS_RING = 1  # the ring road and its laps are ring 1 (display class 大道)
 EPS = 1e-9
+RING_SAGITTA = 0.05  # the most a chord of a ring road's polyline lies inside its circle (cells): the road drawn stays on its lane at any radius
+RING_CHORD_STEP = 72  # a ring road's polyline has a whole multiple of 72 chords: 73 points (5 degrees a chord) wherever that is fine enough
 
 
 def lap_place(k: int) -> str:
@@ -167,9 +169,25 @@ def ring_street_record(k: int, label: str, radius: float, gates: tuple[float, ..
     return rec
 
 
+def ring_chords(radius: float) -> int:
+    """The number of chords of the polyline of a ring road of lane radius `radius`: the least whole multiple of RING_CHORD_STEP (72: 5 degrees a chord) that is at least
+    ceil(pi / acos(1 - RING_SAGITTA / radius)), so that a chord lies at most RING_SAGITTA inside the circle (its sagitta, radius * (1 - cos(pi / n))). 72 chords (73 points) up to
+    radius 52.5; beyond, 144, 216, ... (288 at radius 800)."""
+    need = math.ceil(math.pi / math.acos(1.0 - RING_SAGITTA / radius))
+    return RING_CHORD_STEP * max(1, math.ceil(need / RING_CHORD_STEP))
+
+
+def ring_points(radius: float) -> list[list[float]]:
+    """The closed polyline of a ring road: `ring_chords(radius)` chords from north clockwise, the last point the first. With 72 chords these are the very points of
+    `lay.arc_points(radius, 0.0, 360.0)` (the same arithmetic: a + (b - a) * k / n)."""
+    n = ring_chords(radius)
+    return [lay.pt(lay.polar_xz(radius, 0.0 + (360.0 - 0.0) * k / n)) for k in range(n + 1)]
+
+
 def ring_road_record(k: int, radius: float) -> dict:
-    """The road of lap `k`: a closed circle of radius `radius` from north clockwise (73 points, the last is the first), with no parent."""
-    return lay.road_record(lap_place(k), "ring", RING_CLASS_RING, None, 0.0, lay.arc_points(radius, 0.0, 360.0), 2 * math.pi * radius, radius=radius)
+    """The road of lap `k`: a closed circle of radius `radius` from north clockwise (`ring_points`: 73 points up to radius 52.5, more beyond, the last is the first), with no
+    parent."""
+    return lay.road_record(lap_place(k), "ring", RING_CLASS_RING, None, 0.0, ring_points(radius), 2 * math.pi * radius, radius=radius)
 
 
 def sectors_units(ring: dict) -> tuple[tuple[int, int], ...]:

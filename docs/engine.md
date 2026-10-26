@@ -110,8 +110,8 @@ day one, with its road (a closed circle from north, clockwise), and a house on i
 geometry is `bibliopolis.ring` (pure functions of numbers; the order of the operations matters to the last bit).
 
 - **Gates.** Every direction an avenue can take leaves the ring through a gap, so that a later avenue never moves a house of the ring. G1 is the axes of the plan's
-  ring-1 trunks (each the middle of its wedge, mod 360, to three decimals, sorted, without repeats); G2 is G1 and the axes of the side trunks (a lap beyond the first
-  can lie across the spoke of a side line). A gate is cut in both rows: outward it is where the avenue leaves, inward it is how the town hall reaches the ring.
+  ring-1 trunks (each the middle of its wedge, mod 360, to three decimals, sorted, without repeats; a plan that names the spoke axes of all its directions, `params.ring.axes`, has
+  those instead); G2 is G1 and the axes of the side trunks (a lap beyond the first can lie across the spoke of a side line). A gate is cut in both rows: outward it is where the avenue leaves, inward it is how the town hall reaches the ring.
 - **Cells and slots.** The lane is cut into cells one long, from north clockwise, each starting where the one before ended, skipping a stretch of one round every
   gate. A cell holds two lots: slot `s` is in cell `s // 2`, the inner lot (radius `R - 1`, facing out) when `s` is even, the outer lot (radius `R + 1`, facing
   in) when it is odd. A house takes the lowest free slot of the lowest lap that has one. There are no empty-lot records on the ring: the cell of a slot is a
@@ -123,6 +123,9 @@ geometry is `bibliopolis.ring` (pure functions of numbers; the order of the oper
   when none is open): back to back with the lap before while no avenue is open, beyond everything that stands when one is. Every lap is a span of every line, so
   no band, no street along a spoke and no branch circle lies across a lap; a road crosses a lap at its gates. A lap no house stands on any more stays in the
   world and takes houses before another lap opens; the document leaves it out.
+- **The road.** The road of a lap is a closed polyline from north, clockwise, whose last point is its first: `n` chords, `n` the least whole multiple of 72 with
+  `R * (1 - cos(pi / n)) <= 0.05` (a chord lies at most 0.05 cell inside the lane), the point `k` at the bearing `360 * k / n`. So 73 points up to `R = 52.5`, 289 at `R = 800`; the
+  road of a far lap does not cut across its inner row of lots.
 - **The walk** from the plaza to a house on the ring goes out through the nearest gate of G1 to the lane, then along the lane: `R + R * radians(d)`, `d` the angle
   between the house and that gate.
 - **Stability.** A split from the ring frees the lots of the group that leaves and nothing else: the houses that stay keep their lots. Every other road packs its

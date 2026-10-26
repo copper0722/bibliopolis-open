@@ -582,3 +582,39 @@ def test_the_same_inputs_give_the_same_bytes_twice_and_a_stored_world_gives_the_
     assert json.dumps(res["delta"], sort_keys=True) == json.dumps(again["delta"], sort_keys=True)
     one, two = bibliopolis.build_city({"items": items}, tree, first=100), bibliopolis.build_city({"items": items}, tree)
     assert one["world"]["chronicle"] == [e for e in two["world"]["chronicle"] if e["seq"] <= 100] and one["places"][ROOT]["ring"] == two["places"][ROOT]["ring"]
+
+
+# --------------------------------------------------------------------------------------- the polyline of the road ----
+@pytest.mark.parametrize("radius", [8.5, 11.5, 20.0, 52.5, 52.6, 53.5, 100.0, 200.0, 500.0, 800.0])
+def test_the_polyline_of_a_ring_road_has_the_least_multiple_of_72_chords_that_keeps_every_chord_within_a_twentieth_of_a_cell_of_its_circle(radius):
+    points = ring.ring_points(radius)
+    n = len(points) - 1
+    assert n % 72 == 0 and len(points) == checks.chord_points(radius) == ring.ring_chords(radius) + 1  # (the count is found two ways)
+    assert points[0] == points[-1] == [0.0, -radius] and all(abs(math.hypot(x, z) - radius) < 2e-3 for x, z in points)
+    assert radius * (1 - math.cos(math.pi / n)) <= 0.05  # the sagitta of a chord
+    assert n == 72 or radius * (1 - math.cos(math.pi / (n - 72))) > 0.05  # and with 72 chords fewer it would not be
+    for (x1, z1), (x2, z2) in zip(points, points[1:]):  # the middle of each chord lies at most 0.05 inside the lane (the points are rounded to 3 decimals)
+        assert radius - math.hypot((x1 + x2) / 2, (z1 + z2) / 2) <= 0.05 + 2e-3
+
+
+def test_up_to_a_radius_of_52_5_the_polyline_is_the_73_points_of_every_five_degrees_byte_for_byte_and_it_is_73_at_the_ends_and_289_at_800():
+    for radius in (8.5, 11.5, 20.0, 40.0, 52.5):
+        assert ring.ring_points(radius) == lay.arc_points(radius, 0.0, 360.0) and len(ring.ring_points(radius)) == 73
+    assert [len(ring.ring_points(r)) for r in (52.5, 52.6, 800.0)] == [73, 145, 289]
+    road = ring.ring_road_record(2, 800.0)
+    assert road["points"] == ring.ring_points(800.0) and road["radius"] == 800.0 and road["kind"] == "ring" and abs(road["length"] - 2 * math.pi * 800.0) < 1e-3  # (the length is written to three decimals)
+
+
+def test_a_far_ring_of_a_world_built_by_hand_carries_the_longer_polyline_and_the_check_is_red_with_the_73_points_of_old(monkeypatch):
+    from hand_support import Hand
+
+    h = Hand({"max": 10000, "min": 3, "auto": False})
+    h.add(12)
+    road = h.state.doc["roads"]["road:place:root"]
+    assert h.state.plan["params"]["ring"]["radius"] == 799.5 and len(road["points"]) == 289
+    assert checks.ring_problems(h.state.city()) == [] and checks.all_problems(h.state.doc) == {}
+    monkeypatch.setattr(ring, "ring_chords", lambda radius: 72)
+    old = Hand({"max": 10000, "min": 3, "auto": False})
+    old.add(12)
+    assert len(old.state.doc["roads"]["road:place:root"]["points"]) == 73
+    assert any("closed circle" in why for _, why in checks.ring_problems(old.state.city()))

@@ -480,6 +480,16 @@ def free_cells(radius, gates):
     return out
 
 
+def chord_points(radius):
+    """The points of the closed polyline of a ring road of lane radius `radius`, stated apart from the engine (docs/engine.md, "The ring road"): the polyline has the least whole
+    multiple of 72 chords whose sagitta, radius * (1 - cos(pi / n)), is at most 0.05 cell, and one point more (the last is the first): 73 up to radius 52.5, 289 at radius 800.
+    Found by trying 72, 144, ... in turn."""
+    n = 72
+    while radius * (1 - math.cos(math.pi / n)) > 0.05:
+        n += 72
+    return n + 1
+
+
 def ring_problems(doc):
     """A world with the ring road: its streets and roads are what the geometry says, and every house stands on the cell of its slot."""
     places, roads = doc["places"], doc["roads"]
@@ -518,7 +528,7 @@ def ring_problems(doc):
             bad.append((lap, "a lap without its road of kind ring (no parent, at 0, radius, street)"))
             continue
         pts = road["points"]
-        if len(pts) != 73 or pts[0] != pts[-1] or any(abs(math.hypot(x, z) - ring["radius"]) > 2e-3 for x, z in pts) \
+        if len(pts) != chord_points(ring["radius"]) or pts[0] != pts[-1] or any(abs(math.hypot(x, z) - ring["radius"]) > 2e-3 for x, z in pts) \
                 or abs(road["length"] - 2 * math.pi * ring["radius"]) > 2e-3 or pts[0] != [0.0, -ring["radius"]]:
             bad.append((lap, "its road is not a closed circle of its radius from north"))
     if sorted(r for r, rec in roads.items() if rec["kind"] == "ring") != sorted(f"road:{lap}" for lap in laps):
