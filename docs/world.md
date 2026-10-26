@@ -283,6 +283,11 @@ text has the header, then one item and one event to a line, and a file that is r
 
 Reading a file appends every event in turn under the rules of `Journal.append`, and names the first problem with its place (`world.events[14] (file): there is no road 'x'`).
 
+**Its shape** is `schema/world.schema.json` (JSON Schema, 2020-12). A file that the program writes satisfies it, and a file that does not is always refused. A file that does may still be
+refused: the schema cannot say what the program checks by reading the whole file (an id used once, events numbered in order, `min` no more than `max`, `items` equal to the items of the
+`add_item` events, a topic named twice by one item, text of white space only, and every refusal of the world). A reader of another language can start from the schema and keep to the
+program for the rest. `tests/test_world_schema.py` holds the schema to the program, to the files it writes and to the examples of this page.
+
 **A SQLite file** (standard library `sqlite3`) holds the same content in three tables: `world` (one row: format, version, the starting rule as JSON text), `event` (`seq`, `at`, `kind`,
 `payload` as JSON text) and `item` (`seq`, `id`, `json`: the item of each `add_item` event). The log is append-only: the file refuses an update or a delete of a row. Importing a world file and
 exporting it again gives the same bytes, and so does exporting a store and importing the file.
@@ -324,6 +329,7 @@ suggest_road(journal.state, None)
 | suggestions, `crowded`, the rule `auto`, the sample | `tests/test_suggest.py` |
 | the ids and params of every refusal, and a scenario for each | `tests/test_refusals.py`, `tests/refusal_cases.py` |
 | the world file, the SQLite file, the home folder | `tests/test_world_file.py` |
+| the schema of the world file (`schema/world.schema.json`) | `tests/test_world_schema.py` |
 | the command `world` | `tests/test_world_cli.py` |
 | the number form and the pinned hashes | `tests/test_canonical.py`, `tests/test_world_file.py` |
 | this page: its examples load through the readers and its numbers are the program's | `tests/test_world_page.py` |

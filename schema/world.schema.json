@@ -1,0 +1,209 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Bibliopolis world file",
+  "description": "A world built by hand, as docs/world.md describes it: the rule it started with, the items that became houses, and the append-only log of events that the city is the fold of. This schema says the shape of the file. What it cannot say the program checks when it reads the file: an id used once among the events that count, events numbered 1, 2, 3, ... in order, min no more than max, an `items` list equal to the items of the add_item events, a topic not named twice by one item, whitespace-only text, and every refusal of the world (a house that is not there, a road that exists, a node that another road stands for, the 13 directions of the first ring, an undo that a later event depends on). A file that satisfies the schema may still be refused; a file that does not is always refused.",
+  "type": "object",
+  "required": ["format", "version", "rule", "items", "events"],
+  "additionalProperties": false,
+  "properties": {
+    "format": {"const": "bibliopolis.world"},
+    "version": {"const": 1},
+    "rule": {"$ref": "#/$defs/rule", "description": "The rule the world started with; a set_rule event changes it from its place in the log on."},
+    "items": {"type": "array", "items": {"$ref": "#/$defs/item"}, "description": "The item of every add_item event, in log order (an undone one too): written from the events for a reader that does not fold."},
+    "events": {"type": "array", "items": {"$ref": "#/$defs/event"}, "description": "The log, in order. seq runs 1, 2, 3, ..."}
+  },
+  "$defs": {
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "not": {"pattern": "[\\u0000-\\u001f\\u007f]"},
+      "description": "Text without control characters: an id, or a name that is written into a place id."
+    },
+    "count": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000000000000,
+      "description": "A whole number, 1 or more (the program reads none above 10**12)."
+    },
+    "rule": {
+      "type": "object",
+      "required": ["max", "min", "auto"],
+      "additionalProperties": false,
+      "properties": {
+        "max": {"$ref": "#/$defs/limit", "description": "How many houses a road is meant to hold."},
+        "min": {"$ref": "#/$defs/limit", "description": "The least a new road takes. No more than max."},
+        "auto": {"type": "boolean", "description": "Whether the rule acts by itself after each arrival."}
+      }
+    },
+    "limit": {"type": "integer", "minimum": 1, "maximum": 100000},
+    "node": {
+      "type": "object",
+      "required": ["id", "name"],
+      "additionalProperties": false,
+      "properties": {"id": {"$ref": "#/$defs/text"}, "name": {"$ref": "#/$defs/text"}}
+    },
+    "openalex_topic": {
+      "type": "object",
+      "required": ["domain", "field", "subfield", "topic"],
+      "additionalProperties": false,
+      "properties": {
+        "domain": {"$ref": "#/$defs/node"},
+        "field": {"$ref": "#/$defs/node"},
+        "subfield": {"$ref": "#/$defs/node"},
+        "topic": {"$ref": "#/$defs/node"}
+      },
+      "description": "An OpenAlex topic with all four levels, the widest first."
+    },
+    "item": {
+      "type": "object",
+      "required": ["id", "title", "authors", "year", "type"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/text", "description": "Unique among the houses; the id of the house."},
+        "title": {"type": "string", "description": "May be empty."},
+        "authors": {"type": "array", "items": {"type": "string"}},
+        "year": {"type": ["integer", "null"], "minimum": -1000000, "maximum": 1000000, "description": "The year of publication, or null."},
+        "doi": {"type": ["string", "null"], "minLength": 1, "description": "Optional; null when there is none."},
+        "type": {"type": "string", "minLength": 1, "description": "The kind of document, e.g. article, review, editorial."},
+        "openalex": {"type": "array", "maxItems": 3, "items": {"$ref": "#/$defs/openalex_topic"}, "description": "Optional; the primary topic first, then up to two more. Empty or left out: no topic is known."}
+      }
+    },
+    "road_node": {
+      "type": ["object", "null"],
+      "required": ["id", "level", "name"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/text", "description": "The id of the OpenAlex node."},
+        "level": {"enum": ["domain", "field", "subfield", "topic"]},
+        "name": {"$ref": "#/$defs/text"}
+      },
+      "description": "The OpenAlex node a road stands for, or null for a category the player named. Two roads never stand for one node."
+    },
+    "moment": {"type": "string", "minLength": 1, "description": "ISO 8601: a date, or a date and time with or without an offset. The fold writes it into the chronicle and never reads the clock."},
+    "event": {
+      "oneOf": [
+        {"$ref": "#/$defs/add_item"},
+        {"$ref": "#/$defs/open_road"},
+        {"$ref": "#/$defs/file"},
+        {"$ref": "#/$defs/rename_road"},
+        {"$ref": "#/$defs/move_road"},
+        {"$ref": "#/$defs/undo"},
+        {"$ref": "#/$defs/set_rule"}
+      ]
+    },
+    "add_item": {
+      "type": "object",
+      "required": ["seq", "at", "kind", "payload"],
+      "additionalProperties": false,
+      "properties": {
+        "seq": {"$ref": "#/$defs/count"},
+        "at": {"$ref": "#/$defs/moment"},
+        "kind": {"const": "add_item"},
+        "payload": {
+          "type": "object",
+          "required": ["item"],
+          "additionalProperties": false,
+          "properties": {"item": {"$ref": "#/$defs/item"}},
+          "description": "The item becomes a house in the root zone, under the town hall."
+        }
+      }
+    },
+    "open_road": {
+      "type": "object",
+      "required": ["seq", "at", "kind", "payload"],
+      "additionalProperties": false,
+      "properties": {
+        "seq": {"$ref": "#/$defs/count"},
+        "at": {"$ref": "#/$defs/moment"},
+        "kind": {"const": "open_road"},
+        "payload": {
+          "type": "object",
+          "required": ["road", "name", "parent", "houses"],
+          "additionalProperties": false,
+          "properties": {
+            "road": {"$ref": "#/$defs/text", "not": {"pattern": "^(lane:.*:[0-9]+$|auto:)"}, "description": "The id of the new road: not of the form lane:<id>:<n>, not starting with auto:."},
+            "name": {"$ref": "#/$defs/text"},
+            "parent": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/text"}], "description": "The road to open below, or null for the root zone."},
+            "houses": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/text"}, "description": "The houses that move onto the road; they stand directly on the place it opens from."},
+            "topic": {"$ref": "#/$defs/road_node", "description": "Optional; null when left out."}
+          }
+        }
+      }
+    },
+    "file": {
+      "type": "object",
+      "required": ["seq", "at", "kind", "payload"],
+      "additionalProperties": false,
+      "properties": {
+        "seq": {"$ref": "#/$defs/count"},
+        "at": {"$ref": "#/$defs/moment"},
+        "kind": {"const": "file"},
+        "payload": {
+          "type": "object",
+          "required": ["house", "road"],
+          "additionalProperties": false,
+          "properties": {"house": {"$ref": "#/$defs/text"}, "road": {"$ref": "#/$defs/text"}}
+        }
+      }
+    },
+    "rename_road": {
+      "type": "object",
+      "required": ["seq", "at", "kind", "payload"],
+      "additionalProperties": false,
+      "properties": {
+        "seq": {"$ref": "#/$defs/count"},
+        "at": {"$ref": "#/$defs/moment"},
+        "kind": {"const": "rename_road"},
+        "payload": {
+          "type": "object",
+          "required": ["road", "name"],
+          "additionalProperties": false,
+          "properties": {"road": {"$ref": "#/$defs/text"}, "name": {"$ref": "#/$defs/text"}}
+        }
+      }
+    },
+    "move_road": {
+      "type": "object",
+      "required": ["seq", "at", "kind", "payload"],
+      "additionalProperties": false,
+      "properties": {
+        "seq": {"$ref": "#/$defs/count"},
+        "at": {"$ref": "#/$defs/moment"},
+        "kind": {"const": "move_road"},
+        "payload": {
+          "type": "object",
+          "required": ["road", "parent"],
+          "additionalProperties": false,
+          "properties": {"road": {"$ref": "#/$defs/text"}, "parent": {"$ref": "#/$defs/text", "description": "A road: a move never makes a ring-1 road."}}
+        }
+      }
+    },
+    "undo": {
+      "type": "object",
+      "required": ["seq", "at", "kind", "payload"],
+      "additionalProperties": false,
+      "properties": {
+        "seq": {"$ref": "#/$defs/count"},
+        "at": {"$ref": "#/$defs/moment"},
+        "kind": {"const": "undo"},
+        "payload": {
+          "type": "object",
+          "required": ["seq"],
+          "additionalProperties": false,
+          "properties": {"seq": {"$ref": "#/$defs/count", "description": "The number of an earlier event that counts."}}
+        }
+      }
+    },
+    "set_rule": {
+      "type": "object",
+      "required": ["seq", "at", "kind", "payload"],
+      "additionalProperties": false,
+      "properties": {
+        "seq": {"$ref": "#/$defs/count"},
+        "at": {"$ref": "#/$defs/moment"},
+        "kind": {"const": "set_rule"},
+        "payload": {"$ref": "#/$defs/rule"}
+      }
+    }
+  }
+}
