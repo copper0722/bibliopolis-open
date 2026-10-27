@@ -6,13 +6,17 @@ Not stated from the engine: the cells of the lane are counted here by `support.c
 
 import json
 import math
+import os
+import random
+import subprocess
+import sys
 import time
 import tracemalloc
 from pathlib import Path
 
 import pytest
-from hand_support import Hand, topic
-from support import T, capacity, cells_table, make_tree
+from hand_support import Hand, houses, play, topic
+from support import T, capacity, cells_table, coast_with_tuple_stack, make_tree, sea_with_tuple_stack
 
 from bibliopolis import cli, coast, hand, ring
 from bibliopolis import layout as lay
@@ -67,6 +71,7 @@ def test_the_pages_give_the_budget_and_the_range_of_the_rule_that_the_program_ha
     engine = " ".join((ROOT / "docs" / "engine.md").read_text(encoding="utf-8").split())
     assert f"the budget of **{COAST_GRID_BUDGET} cells** (a square of 2895 by 2895" in world and "at most 1441 cells from the town hall" in world
     assert f"whatever `max` is up to {RULE_LIMIT}, the most" in world and "needs 2161 by 2161 cells" in world and "a radius of 1073.5 cells" in world
+    assert "1.7 seconds and 57 MiB at the peak" in world and "took 487 MiB on that city" in world and "exhausted a limit of 384 MiB" in world and "an avenue of 2000 houses 1396 cells out (a grid of 7868025 cells)" in world
     assert f"to `limit` ({RULE_LIMIT}; {BRANCHES_LIMIT} for `branches`)" in world
     assert f"`1 <= min <= max <= {RULE_LIMIT}`" in engine
 
@@ -149,3 +154,85 @@ def test_a_grown_city_beyond_the_budget_is_refused_by_the_command_build_the_same
     assert cli.main(argv) == 2
     err = capsys.readouterr().err
     assert err.startswith("bibliopolis: the city is too large to draw its coast: the grid would hold") and "and the most is 500" in err and not out.exists()
+
+
+# ------------------------------------------------------------------------------------- the flood of the sea ----
+def random_land(size, density, rng):
+    """A bitmap of `size` by `size` cells of which a share `density` is land, with the corner (0, 0) sea; walls and blobs for the shapes that a flood meets."""
+    land = bytearray(1 if rng.random() < density else 0 for _ in range(size * size))
+    for _ in range(max(1, size // 6)):  # a wall, and the gap that lets the flood round it or not
+        x, z, length, horizontal = rng.randrange(size), rng.randrange(size), rng.randrange(1, size + 1), rng.random() < 0.5
+        for k in range(length):
+            xx, zz = (x + k, z) if horizontal else (x, z + k)
+            if xx < size and zz < size:
+                land[zz * size + xx] = 1
+    land[0] = 0
+    return land
+
+
+class Recording(list):
+    """A list that notes, in `order`, the cell index of everything that is taken from it: the stand-in for the array of the stack."""
+
+    order = []
+
+    def pop(self):
+        i = super().pop()
+        self.order.append(i)
+        return i
+
+
+@pytest.mark.parametrize("size, density", [(1, 0.0), (2, 0.3), (7, 0.0), (7, 0.35), (13, 0.5), (24, 0.45), (40, 0.3), (61, 0.55)])
+def test_the_stack_of_indices_floods_the_same_cells_in_the_same_order_as_the_stack_of_tuples(monkeypatch, size, density):
+    rng = random.Random(size * 1000 + int(density * 100))
+    for _ in range(12):
+        land = random_land(size, density, rng)
+        old_order = []
+        old = sea_with_tuple_stack(land, size, old_order)
+        recording = Recording()
+        Recording.order = recording.order = []
+        monkeypatch.setattr(coast, "array", lambda _typecode, start: Recording(start))  # the engine's stack, in plain sight
+        new = coast.sea_of(land, size)
+        assert new == old  # the same sea, to the byte
+        assert [divmod(i, size)[::-1] for i in Recording.order] == old_order  # and the cells taken in the same order: (x, z) of each index
+        assert len(Recording.order) == sum(new)  # every cell of the sea is put on the stack once, and taken once
+
+
+@pytest.mark.parametrize("name, build", [
+    ("a sparse city: one avenue of 600 houses far out", lambda: Hand({"max": 1200, "min": 1, "auto": False, "branches": 13})),
+    ("the ring road of radius 1000 and nothing else", None),
+    ("a world played at random", None),
+])
+def test_the_coast_of_a_city_is_the_same_to_the_byte_with_the_stack_of_indices_and_with_the_stack_of_tuples(name, build):
+    if name.startswith("a sparse"):
+        h = build()
+        h.add(600, topic(1, 1, 1, 1))
+        h.open("a", "A", None, houses(1, 600))
+        layout = h.state.city(with_coast=False)
+    elif name.startswith("the ring"):
+        layout = a_ring_road(1000.0)
+    else:
+        layout = play(5, steps=120, auto=True, rule={"max": 15, "min": 3, "auto": True, "branches": 5}).state.city(with_coast=False)
+    assert coast_of(layout) == coast_with_tuple_stack(layout) and coast_of(layout)["polygons"]
+
+
+# ----------------------------------------------------------------------------------- the memory of the flood ----
+CHILD = ROOT / "tests" / "coast_child.py"
+LIMIT_MIB = 300  # of address space: the engine needs 85 (measured on Python 3.14 and 3.11, the interpreter and the world included), the stack of tuples needs more than 450
+
+
+def in_a_child(mode, mib):
+    done = subprocess.run([sys.executable, str(CHILD), mode, str(mib)], cwd=ROOT, env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}, capture_output=True, text=True, timeout=300, check=False)
+    assert done.returncode == 0, done.stderr[-2000:]
+    return json.loads(done.stdout.strip().splitlines()[-1])
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="RLIMIT_AS limits the address space of a process on Linux only")
+def test_a_sparse_city_inside_the_budget_is_drawn_in_300_mib_and_the_stack_of_tuples_it_replaced_is_not():
+    """The city of the review: the rule max 2400, 2000 houses all on one road, the farthest point 1396 cells from the town hall, a grid of 7868025 cells (the budget is 8388608). The stack
+    of (x, z) tuples that the flood of the sea had took 487 MiB there and raised a MemoryError under 384 MiB; the stack of indices takes 4 bytes a cell at most and 57 MiB in all."""
+    engine = in_a_child("engine", LIMIT_MIB)
+    assert engine["outcome"] == "ok" and engine["polygons"] == 1
+    control = in_a_child("control", LIMIT_MIB)
+    assert control["outcome"] == "memory error"  # the limit bites: the old stack does not fit in it
+    roomy = in_a_child("control", 900)
+    assert roomy["outcome"] == "ok" and roomy["digest"] == engine["digest"]  # and with room it draws the very same coast, to the byte

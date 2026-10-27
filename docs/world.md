@@ -269,10 +269,11 @@ that is read passes the refusal of an event on as a `WorldFileError` with the sa
 ### A city is too large to draw
 
 The coast of a city is drawn on a grid of one cell (`bibliopolis.coast`), so what it costs is the area of the city. `CityTooLarge` (a `ValueError` with the same `code`, `params` and
-`as_dict()`) is raised when the grid would hold more than the budget of **8388608 cells** (a square of 2895 by 2895: a city whose farthest lot or road is at most 1441 cells from the town hall; about 1.8 seconds and 120 MiB),
-before the grid is made. No valid rule asks for a city that is too large while it is empty: the widest ring road a rule can ask for (1000 branches, a radius of 1073.5 cells, whatever `max`
-is up to 10000, the most) needs 2161 by 2161 cells. A city that grows beyond the budget is refused when it is drawn (`State.city()`, `world fold`, `build`); `State.city(with_coast=False)`
-still gives its document without a coast.
+`as_dict()`) is raised when the grid would hold more than the budget of **8388608 cells** (a square of 2895 by 2895: a city whose farthest lot or road is at most 1441 cells from the town hall),
+before the grid is made. Measured on a sparse city near the budget, an avenue of 2000 houses 1396 cells out (a grid of 7868025 cells): 1.7 seconds and 57 MiB at the peak, the interpreter included.
+The flood that finds the sea keeps a stack of cell indices, 4 bytes a cell at most; the stack of tuples that it had before took 487 MiB on that city and exhausted a limit of 384 MiB. No valid rule asks
+for a city that is too large while it is empty: the widest ring road a rule can ask for (1000 branches, a radius of 1073.5 cells, whatever `max` is up to 10000, the most) needs 2161 by 2161 cells.
+A city that grows beyond the budget is refused when it is drawn (`State.city()`, `world fold`, `build`); `State.city(with_coast=False)` still gives its document without a coast.
 
 | id | params | when | message |
 |---|---|---|---|

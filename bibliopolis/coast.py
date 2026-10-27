@@ -6,12 +6,14 @@ The coast is a picture of the city: nothing is placed by it, and it is derived a
 
 The grid has a cell for every cell of the square that holds the city, so what it costs, in memory and in time, is the area of the city. COAST_GRID_BUDGET is the most cells it may
 have: a city that would need more is refused (`CityTooLarge`, the id `city_too_large`) before the grid is made. The largest city that a valid rule can ask for, with nothing in it but
-the ring road of 1000 directions (a radius of 1073.5 cells), needs 2161 by 2161 cells, a little over half of the budget; a grid of the budget takes about 1.8 seconds and 120 MiB.
+the ring road of 1000 directions (a radius of 1073.5 cells), needs 2161 by 2161 cells, a little over half of the budget. A grid of the budget takes under 2 seconds and about 60 MiB: measured on a sparse city near it, an avenue of 2000 houses 1396 cells out
+(a grid of 7868025 cells), 1.7 seconds and 57 MiB at the peak, the interpreter included, where the stack of tuples that the flood of the sea had before took 487 MiB (`sea_of`).
 """
 
 from __future__ import annotations
 
 import math
+from array import array
 
 from .coded import Coded
 
@@ -64,20 +66,41 @@ def coast_of(layout: dict, buffer: float = COAST_BUFFER, tolerance: float = COAS
             if x * x + z * z <= (plaza + buffer) ** 2:
                 for sx, sz in ((1, 1), (1, -1), (-1, 1), (-1, -1)):
                     land[(sz * z + reach) * size + sx * x + reach] = 1
-    # fill the holes: sea is what a flood from the border reaches
-    sea = bytearray(size * size)
-    stack = [(0, 0)]
-    sea[0] = 1
-    while stack:
-        cx, cz = stack.pop()
-        for nx, nz in ((cx + 1, cz), (cx - 1, cz), (cx, cz + 1), (cx, cz - 1)):
-            if 0 <= nx < size and 0 <= nz < size and not land[nz * size + nx] and not sea[nz * size + nx]:
-                sea[nz * size + nx] = 1
-                stack.append((nx, nz))
+    sea = sea_of(land, size)  # fill the holes: sea is what a flood from the border reaches
     solid = bytearray(0 if sea[i] else 1 for i in range(size * size))
     polygons = [simplify_ring(ring, tolerance) for ring in trace_outlines(solid, size)]
     polygons = [[[round(x - reach, 1), round(z - reach, 1)] for x, z in ring] for ring in polygons]
     return {"buffer": buffer, "tolerance": tolerance, "polygons": polygons}
+
+
+CELL_INDEX = "I" if array("I").itemsize >= 4 else "L"  # the array type of a cell index: at least 4 bytes (an unsigned int is 4 bytes on every system that Python 3.11 runs on)
+
+
+def sea_of(land: bytearray, size: int) -> bytearray:
+    """The sea of a grid of `size` by `size` cells in which `land` marks the land: the cells that a flood from the corner (0, 0) reaches without crossing land (a cell of the land that the
+    sea does not reach, a hole, is land again). The flood goes depth first, east, west, south, north (+x, -x, +z, -z), the cell last put on the stack taken first. The stack is an array of
+    cell indices z * size + x, 4 bytes a cell: a cell is marked as sea when it is put on the stack, so the stack never holds more cells than the grid has (at most 4 * size ** 2 bytes). A
+    stack of (x, z) tuples took over a hundred bytes a cell, and a sparse city inside the budget, a long avenue far out, needed more memory for it than for the grid."""
+    sea = bytearray(size * size)
+    stack = array(CELL_INDEX if size * size <= 2**32 else "Q", [0])  # 4 bytes a cell index (the budget is 2**23 cells; 8 only for a grid that 4 bytes cannot index)
+    sea[0] = 1
+    last = size - 1
+    while stack:
+        i = stack.pop()
+        z, x = divmod(i, size)
+        if x < last and not land[i + 1] and not sea[i + 1]:
+            sea[i + 1] = 1
+            stack.append(i + 1)
+        if x and not land[i - 1] and not sea[i - 1]:
+            sea[i - 1] = 1
+            stack.append(i - 1)
+        if z < last and not land[i + size] and not sea[i + size]:
+            sea[i + size] = 1
+            stack.append(i + size)
+        if z and not land[i - size] and not sea[i - size]:
+            sea[i - size] = 1
+            stack.append(i - size)
+    return sea
 
 
 def trace_outlines(solid: bytearray, size: int) -> list[list[tuple[int, int]]]:

@@ -14,6 +14,7 @@ from pathlib import Path
 
 import checks
 
+from bibliopolis import coast
 from bibliopolis import layout as lay
 from bibliopolis import plan as plan_mod
 from bibliopolis import world as zw
@@ -225,6 +226,58 @@ def radius_for(gates, max_houses, w_min=None):
     while not (capacity(8.5 + k, gates) >= max_houses and (w_min is None or (8.5 + k + 1.5) * math.radians(w_min) >= 3.0 - 1e-9)):
         k += 1
     return 8.5 + k
+
+
+def sea_with_tuple_stack(land, size, order=None):
+    """The flood of the sea of `bibliopolis.coast.sea_of` as it was until the stack held cell indices: the stack a list of (x, z) tuples. `order`, a list, collects the cells in the order they
+    are taken from the stack."""
+    sea = bytearray(size * size)
+    stack = [(0, 0)]
+    sea[0] = 1
+    while stack:
+        cx, cz = stack.pop()
+        if order is not None:
+            order.append((cx, cz))
+        for nx, nz in ((cx + 1, cz), (cx - 1, cz), (cx, cz + 1), (cx, cz - 1)):
+            if 0 <= nx < size and 0 <= nz < size and not land[nz * size + nx] and not sea[nz * size + nx]:
+                sea[nz * size + nx] = 1
+                stack.append((nx, nz))
+    return sea
+
+
+def coast_with_tuple_stack(layout, buffer=coast.COAST_BUFFER, tolerance=coast.COAST_TOLERANCE, budget=None):
+    """`bibliopolis.coast.coast_of` as it was until its flood of the sea went by a stack of indices: the same steps and the same budget, the stack of the flood a list of (x, z) tuples
+    (over a hundred bytes a cell, so that a sparse city inside the budget needed more memory than the grid). The control of the tests of the memory, and the reference for the equality
+    of the output."""
+    places, roads, plaza = layout["places"], layout["roads"], layout["centre"]["radius"]
+    lots = [(p["position"]["x"], p["position"]["z"]) for p in places.values() if p["kind"] in ("lot", "reserved")]
+    ends = [(x, z) for r in roads.values() if len(r["points"]) >= 2 for x, z in r["points"]]
+    farthest = max([math.hypot(x, z) for x, z in lots + ends] + [0.0, plaza])
+    reach = math.ceil(farthest + buffer + 2)
+    size = 2 * reach + 1
+    limit = coast.COAST_GRID_BUDGET if budget is None else budget
+    if size * size > limit:
+        raise coast.CityTooLarge(f"the city is too large to draw its coast: the grid would hold {size * size} cells ({size} by {size}) and the most is {limit}", "city_too_large",
+                                 cells=size * size, budget=limit)
+    pts = lots + list(coast.road_samples(roads))
+    pts.append((0.0, 0.0))
+    land = bytearray(size * size)
+    r = int(math.ceil(buffer))
+    disc = [(dx, dz) for dx in range(-r, r + 1) for dz in range(-r, r + 1) if dx * dx + dz * dz <= buffer * buffer]
+    for x, z in pts:
+        cx, cz = int(math.floor(x + 0.5)) + reach, int(math.floor(z + 0.5)) + reach
+        for dx, dz in disc:
+            land[(cz + dz) * size + cx + dx] = 1
+    for x in range(int(plaza + buffer) + 1):  # the plaza itself
+        for z in range(int(plaza + buffer) + 1):
+            if x * x + z * z <= (plaza + buffer) ** 2:
+                for sx, sz in ((1, 1), (1, -1), (-1, 1), (-1, -1)):
+                    land[(sz * z + reach) * size + sx * x + reach] = 1
+    sea = sea_with_tuple_stack(land, size)
+    solid = bytearray(0 if sea[i] else 1 for i in range(size * size))
+    polygons = [coast.simplify_ring(ring, tolerance) for ring in coast.trace_outlines(solid, size)]
+    polygons = [[[round(x - reach, 1), round(z - reach, 1)] for x, z in ring] for ring in polygons]
+    return {"buffer": buffer, "tolerance": tolerance, "polygons": polygons}
 
 
 def five_degree_arc(radius, a, b):
