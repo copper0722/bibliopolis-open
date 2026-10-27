@@ -216,14 +216,15 @@ def test_a_full_road_opens_a_continuation_rib_the_same_road_and_over_is_another_
     assert ribs_of(t.doc, a) == [zw.district_rib_size(6, 12)] == [10]  # the first rib is sized to the 6 houses of the road and headroom (4 lots), not to max
     t.send(own[6:10], event_id=2)  # 10 houses: the first rib is full
     assert ribs_of(t.doc, a) == [10] and "lanes" not in t.doc["places"][a]
-    t.send(own[10:12], event_id=3)  # the 11th: a continuation rib, sized on the count (11) but capped so that the ribs hold `max` = 12 lots in all
+    t.send(own[10:12], event_id=3)  # the 11th: a continuation rib of what the road needs (12 = max, for 11 houses) less the 10 lots its rib holds
     assert ribs_of(t.doc, a) == [10, 2] and t.count(a) == 12 and "over" not in t.doc["places"][a]
     cont, road = t.doc["places"]["place:lane:a:2"], t.doc["places"][a]
     assert cont["lane_of"] == a and cont["continued"] is True and cont["ordinal"] == 2 and cont["parent"] == a  # a record that says it continues the road
     assert (cont["label"], cont["level"], cont["class"], cont["address"]) == (road["address"][-1], road["level"], road["class"], road["address"])  # one road, named once
     assert "・" not in cont["label"] and cont["rib"]["slots"] == 2 and cont["lots"] == 2
-    t.send(own[12:13], event_id=4)  # the 13th house: a holds more than max and no group can open: over - and a continuation rib, sized on the count, uncapped
-    assert t.doc["places"][a]["over"] is True and ribs_of(t.doc, a) == [10, 2, 12] and t.doc["places"]["place:lane:a:3"]["continued"] is True
+    t.send(own[12:13], event_id=4)  # the 13th house: a holds more than max and no group can open: over - and a continuation rib of what the road needs less what it has
+    assert t.doc["places"][a]["over"] is True and ribs_of(t.doc, a) == [10, 2, zw.district_road_need(13, 12) - 12] == [10, 2, 8]  # (the need of 13 houses is 20: not `max` lots)
+    assert t.doc["places"]["place:lane:a:3"]["continued"] is True
     assert [e["over"] for e in t.doc["chronicle"] if "over" in e] == [a]  # `over` is independent of the continuation ribs: the 11th house made one, not an entry
     shown = t.shown()  # one road in the document: counted once, named once
     streets = shown["composition"]["streets"]
@@ -256,21 +257,20 @@ def test_a_road_over_max_with_no_group_of_min_is_over_and_a_group_of_min_lets_it
     assert (split["from"], split["to"], split["seq"]) == (ROOT, med, 13) and (over["over"], over["count"], over["seq"], over["n"]) == (med, 13, 13, 2)
     road = t.doc["places"][med]
     assert road["over"] is True and t.count(med) == 13 and "over" not in t.doc["places"][ROOT]
-    assert ribs_of(t.doc, med) == [12, 12] and road["lanes"] == ["place:lane:med:2"]  # (the first rib is sized to 13 houses: 12 = max; the 13th goes on)
+    assert ribs_of(t.doc, med) == [12, 8] and road["lanes"] == ["place:lane:med:2"]  # (the first rib is sized to 13 houses: 12 = max; the 13th goes on: 20 needed less 12 held)
     assert t.doc["places"]["place:lane:med:2"]["continued"] is True and t.doc["places"]["place:lane:med:2"]["lots"] == 1
     shown = t.shown()
     assert shown["places"][med]["over"] is True and "place:lane:med:2" in shown["places"]
     assert shown["world"]["chronicle"] == t.doc["chronicle"] and shown["world"]["districts"] == t.doc["districts"]
     assert "world.chronicle" in shown["world"]["notes"] and "street.over" in shown["world"]["notes"]
-    # the 14th, of a group of 4: the road splits and is not over any more; the continuation rib stands empty and is no part of the document
+    # the 14th, of a group of 4: the road splits and is not over any more; the continuation rib stands empty
     t.send(m1[3:4], event_id=3)
     third = t.doc["chronicle"][2]
     assert (third["from"], third["to"], third["seq"], third["count_before"], third["count_after"]) == (med, tag_street("m1"), 14, 14, 10)
     assert [e["n"] for e in t.doc["chronicle"]] == [1, 2, 3] and "over" not in t.doc["places"][med] and t.count(med) == 10
     assert t.doc["places"]["place:lane:med:2"]["lots"] == 0  # (the rib stays in the world: the ground it claimed is claimed)
-    again = t.shown()
-    assert "place:lane:med:2" not in again["places"] and "lanes" not in again["places"][med]
-    assert not [r for r in again["roads"] if "lane:med:2" in r]
+    again = t.shown()  # the road of m1 follows it on band 0, so its road stands in the document (a road that a road below hangs on), and its street with it
+    assert again["places"]["place:lane:med:2"]["lots"] == 0 and again["roads"]["road:place:tag:m1"]["parent"] == "road:place:lane:med:2"
 
 
 def test_the_ring_over_max_with_no_group_of_min_is_over_and_a_group_of_min_leaves():

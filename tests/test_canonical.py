@@ -23,8 +23,8 @@ TABLE = [(0, "0"), (-0.0, "0"), (1, "1"), (-1, "-1"), (40, "40"), (6.0, "6"), (1
          (2026, "2026"), (-189.97, "-189.97"), (0.30000000000000004, "0.30000000000000004")]
 
 # the sha256 of the text of the city that the sample makes (examples/tree.json + library.json); change them on purpose, with the engine
-PINS = {"grow": "5314439f15557b1a6d196ebf3c4168850e48b8156e91cf09ef9ba4bb79adc16b",
-        "mirror": "bf5ea2fe3ba67e0075560c9674ed06ad56901f53277a835993b2c8fe5b870626",
+PINS = {"grow": "6aaa961e71bd864844e0067a557308c0ac5f0dfab5a22d9b87102b3852ed911f",
+        "mirror": "0b17678f7de1ca3b0475686690f27d98a9bc00171de3c4b8cc9d7652af09612f",
         "grow, first 41": "9e994c40df727a62e449d457b472ce6f852a4df9b7b2a9f50ba754b1669059a7"}
 
 

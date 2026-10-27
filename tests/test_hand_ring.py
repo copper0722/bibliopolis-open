@@ -258,7 +258,9 @@ def test_a_max_that_the_first_lap_cannot_hold_lays_the_world_out_again_in_the_or
     assert expansion_violations(kept, state) == []
     assert order_along(state) == kept[0]  # no house passed another, on the ring or on any road
     lots = lot_snapshot(state)
-    assert {x for x in lots if lots[x] != before_lots[x]} == set(lots)  # every house stands on another lot: the radius moved the avenues and the cells
+    stayed = {x for x in lots if lots[x] == before_lots[x]}
+    assert stayed == {x for x in lots if state.road_of[x] == "a1"} and stayed  # every house stands on another lot but those of the road below the avenue a: the radius moved the avenues and the cells
+    assert before_lots["h0005"]["parent"] == lots["h0005"]["parent"] == "place:tag:a1"  # (a1 lies on the spoke beyond the ribs of a, which end 41 cells out before (13 + 15, then 12 more) and after (21 + 20))
     assert state.doc["roads"]["road:place:tag:a"]["s0"] == want + 0.5
     assert all(b["s"] >= want + 3.0 for line in state.doc["lines"].values() for b in line["bands"])
     first, second = state.city()["world"]["chronicle"][-2:]

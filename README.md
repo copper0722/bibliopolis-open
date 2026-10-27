@@ -59,7 +59,7 @@ Each one prints a line when it is done:
 
 ```
 wrote city.json: 600 houses on 23 roads, 15 on the ring road, 22 splits, 1 over (mode grow)
-wrote city.svg: 41435 bytes
+wrote city.svg: 41302 bytes
 ```
 
 **5. Look at it.** Open `city.svg` in a web browser: drag the file onto a browser window, or right-click it and choose "Open with". You see the town hall
@@ -230,7 +230,7 @@ python3 -m bibliopolis picture --city city.json --out city.svg
 
 ```
 wrote city.json: 600 houses on 23 roads, 15 on the ring road, 22 splits, 1 over (mode grow)
-wrote city.svg: 41435 bytes
+wrote city.svg: 41302 bytes
 ```
 
 **5. 看看成果。** 用瀏覽器打開 `city.svg`：把檔案拖進瀏覽器視窗，或對檔案按右鍵，選「開啟方式」。你會看到市政廳在中央，路從它往外延伸，每篇文獻是一棟上了色的房子。

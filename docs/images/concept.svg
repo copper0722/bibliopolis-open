@@ -1,23 +1,24 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1050 585.58" width="1050" height="585.58" font-family="'Noto Sans CJK TC','Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1050 554.33" width="1050" height="554.33" font-family="'Noto Sans CJK TC','Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif">
 <rect width="100%" height="100%" fill="#ffffff"/>
 <text x="18" y="32" font-size="24" fill="#202028">Bibliopolis 文獻城邦</text>
 <text x="18" y="58" font-size="16" fill="#4a4a55">A collection of articles becomes a city-state. 把收藏的文獻蓋成一座城邦。</text>
-<svg x="300" y="78" width="500" height="489.58" viewBox="-24 -25 48 47">
-<rect x="-24" y="-25" width="48" height="47" fill="#e9f1f5"/>
-<path d="M-17,0L-13,-10L-10,-13L-6,-13L-4,-15L-2,-14L-2,-16L1,-18L9,-18L13,-14L10,-7L12,-6L13,0L16,1L17,5L15,10L11,14L5,15L3,13L0,14L-6,11L-12,11L-15,7Z" fill="#f4efe2" stroke="#b9ad8c" stroke-width="0.6" stroke-linejoin="round"/>
+<svg x="300" y="78" width="500" height="458.33" viewBox="-24 -23 48 44">
+<rect x="-24" y="-23" width="48" height="44" fill="#e9f1f5"/>
+<path d="M-17,0L-12,-10L0,-12L1,-15L5,-16L10,-14L13,-10L13,-5L17,0L17,5L12,13L8,14L5,12L0,14L-6,11L-12,11L-15,7Z" fill="#f4efe2" stroke="#b9ad8c" stroke-width="0.6" stroke-linejoin="round"/>
 <path d="M0,-7L0,-8L0.9,-7.9L0.8,-7ZM0.3,9L0.3,10L-0.9,10L-0.8,9ZM7,-0.2L8,-0.2L8,0.7L7,0.6ZM-8.8,1.7L-9.8,1.9L-10,0.7L-9,0.6ZM5.2,-4.7L5.9,-5.4L6.5,-4.6L5.7,-4.1Z" fill="#f1e3b8" stroke="#8a6d1f" stroke-width="0.08"/>
-<path d="M-9.9,1.3L-10.9,1.4L-11,0.5L-10,0.4ZM-11.9,1.6L-12.9,1.7L-13,0.6L-12,0.5ZM-9.8,2.2L-10.7,2.4L-10.9,1.4L-9.9,1.3ZM-11.7,2.6L-12.7,2.8L-12.9,1.7L-11.9,1.6ZM-9.5,3L-10.5,3.3L-10.7,2.4L-9.8,2.2ZM-11.4,3.6L-12.4,3.9L-12.7,2.8L-11.7,2.6ZM-10,-0.4L-11,-0.5L-10.9,-1.4L-9.9,-1.3ZM-12,-0.5L-13,-0.6L-12.9,-1.7L-11.9,-1.6ZM-9.9,-1.3L-10.9,-1.4L-10.7,-2.4L-9.8,-2.2ZM-11.9,-1.6L-12.9,-1.7L-12.7,-2.8L-11.7,-2.6ZM-9.8,-2.2L-10.7,-2.4L-10.5,-3.3L-9.5,-3ZM-11.7,-2.6L-12.7,-2.8L-12.4,-3.9L-11.4,-3.6ZM-8.9,4.6L-9.8,5.1L-10.2,4.2L-9.2,3.8ZM-10.7,5.5L-11.5,6L-12,5L-11.1,4.6ZM-8.4,5.4L-9.3,5.9L-9.8,5.1L-8.9,4.6ZM-10.1,6.4L-11,7L-11.5,6L-10.7,5.5ZM-7.9,6.1L-8.7,6.7L-9.3,5.9L-8.4,5.4ZM-9.5,7.3L-10.3,7.9L-11,7L-10.1,6.4ZM-7.9,-6.1L-8.7,-6.7L-8.1,-7.4L-7.4,-6.7ZM-9.5,-7.3L-10.3,-7.9L-9.6,-8.8L-8.9,-8.1ZM-7.4,-6.7L-8.1,-7.4L-7.5,-8.1L-6.8,-7.4ZM-8.9,-8.1L-9.6,-8.8L-8.8,-9.6L-8.1,-8.8ZM-6.8,-7.4L-7.5,-8.1L-6.7,-8.7L-6.1,-7.9ZM-8.1,-8.8L-8.8,-9.6L-7.9,-10.3L-7.3,-9.5Z" fill="hsl(205,45%,72%)" stroke="hsl(205,40%,45%)" stroke-width="0.08"/>
-<path d="M4,-9.2L4.4,-10.1L5.2,-9.7L4.8,-8.8ZM4.8,-11L5.2,-11.9L6.2,-11.4L5.7,-10.6ZM3.2,-9.5L3.5,-10.4L4.4,-10.1L4,-9.2ZM3.8,-11.4L4.1,-12.3L5.2,-11.9L4.8,-11ZM2.3,-9.7L2.6,-10.7L3.5,-10.4L3.2,-9.5ZM2.8,-11.7L3,-12.6L4.1,-12.3L3.8,-11.4ZM5.5,-11.8L5.9,-12.7L6.8,-12.2L6.3,-11.4ZM6.3,-13.6L6.8,-14.5L7.7,-14L7.3,-13.1Z" fill="hsl(28,45%,72%)" stroke="hsl(28,40%,45%)" stroke-width="0.08"/>
-<path d="M9.2,4L10.1,4.4L9.7,5.2L8.8,4.8ZM11,4.8L11.9,5.2L11.4,6.2L10.6,5.7ZM9.5,3.2L10.4,3.5L10.1,4.4L9.2,4ZM11.4,3.8L12.3,4.1L11.9,5.2L11,4.8ZM9.7,2.3L10.7,2.6L10.4,3.5L9.5,3.2ZM11.7,2.8L12.6,3L12.3,4.1L11.4,3.8ZM8.3,5.5L9.2,6.1L8.6,6.8L7.8,6.2ZM10,6.6L10.8,7.2L10.2,8.1L9.4,7.5ZM7.8,6.2L8.6,6.8L8,7.6L7.3,6.9ZM9.4,7.5L10.2,8.1L9.4,8.9L8.7,8.2ZM7.3,6.9L8,7.6L7.3,8.2L6.6,7.5ZM8.7,8.2L9.4,8.9L8.6,9.7L8,9ZM6.6,7.5L7.3,8.2L6.6,8.8L6,8ZM8,9L8.6,9.7L7.8,10.4L7.2,9.6ZM6,8L6.6,8.8L5.8,9.4L5.2,8.5ZM7.2,9.6L7.8,10.4L6.8,11.1L6.3,10.2Z" fill="hsl(145,45%,72%)" stroke="hsl(145,40%,45%)" stroke-width="0.08"/>
-<path d="M-9.7,-6.2L-9.1,-7L-8.5,-7.7L-7.8,-8.5L-7,-9.1L-6.2,-9.7L-5.3,-10.2L-4.4,-10.6" fill="none" stroke="#55556a" stroke-width="0.286" stroke-linecap="round"/>
+<path d="M-9.9,1.3L-10.9,1.4L-11,0.5L-10,0.4ZM-11.9,1.6L-12.9,1.7L-13,0.6L-12,0.5ZM-9.8,2.2L-10.7,2.4L-10.9,1.4L-9.9,1.3ZM-11.7,2.6L-12.7,2.8L-12.9,1.7L-11.9,1.6ZM-9.5,3L-10.5,3.3L-10.7,2.4L-9.8,2.2ZM-11.4,3.6L-12.4,3.9L-12.7,2.8L-11.7,2.6ZM-10,-0.4L-11,-0.5L-10.9,-1.4L-9.9,-1.3ZM-12,-0.5L-13,-0.6L-12.9,-1.7L-11.9,-1.6ZM-9.9,-1.3L-10.9,-1.4L-10.7,-2.4L-9.8,-2.2ZM-11.9,-1.6L-12.9,-1.7L-12.7,-2.8L-11.7,-2.6ZM-9.8,-2.2L-10.7,-2.4L-10.5,-3.3L-9.5,-3ZM-11.7,-2.6L-12.7,-2.8L-12.4,-3.9L-11.4,-3.6ZM-8.9,4.6L-9.8,5.1L-10.2,4.2L-9.2,3.8ZM-10.7,5.5L-11.5,6L-12,5L-11.1,4.6ZM-8.4,5.4L-9.3,5.9L-9.8,5.1L-8.9,4.6ZM-10.1,6.4L-11,7L-11.5,6L-10.7,5.5ZM-7.9,6.1L-8.7,6.7L-9.3,5.9L-8.4,5.4ZM-9.5,7.3L-10.3,7.9L-11,7L-10.1,6.4ZM-9.2,-3.8L-10.2,-4.2L-9.8,-5.1L-8.9,-4.6ZM-11.1,-4.6L-12,-5L-11.5,-6L-10.7,-5.5ZM-8.9,-4.6L-9.8,-5.1L-9.3,-5.9L-8.4,-5.4ZM-10.7,-5.5L-11.5,-6L-11,-7L-10.1,-6.4ZM-8.4,-5.4L-9.3,-5.9L-8.7,-6.7L-7.9,-6.1ZM-10.1,-6.4L-11,-7L-10.3,-7.9L-9.5,-7.3Z" fill="hsl(205,45%,72%)" stroke="hsl(205,40%,45%)" stroke-width="0.08"/>
+<path d="M4,-9.2L4.4,-10.1L5.2,-9.7L4.8,-8.8ZM4.8,-11L5.2,-11.9L6.2,-11.4L5.7,-10.6ZM3.2,-9.5L3.5,-10.4L4.4,-10.1L4,-9.2ZM3.8,-11.4L4.1,-12.3L5.2,-11.9L4.8,-11ZM2.3,-9.7L2.6,-10.7L3.5,-10.4L3.2,-9.5ZM2.8,-11.7L3,-12.6L4.1,-12.3L3.8,-11.4ZM5.5,-8.3L6.1,-9.2L6.8,-8.6L6.2,-7.8ZM6.6,-10L7.2,-10.8L8.1,-10.2L7.5,-9.4Z" fill="hsl(28,45%,72%)" stroke="hsl(28,40%,45%)" stroke-width="0.08"/>
+<path d="M9.2,4L10.1,4.4L9.7,5.2L8.8,4.8ZM11,4.8L11.9,5.2L11.4,6.2L10.6,5.7ZM9.5,3.2L10.4,3.5L10.1,4.4L9.2,4ZM11.4,3.8L12.3,4.1L11.9,5.2L11,4.8ZM9.7,2.3L10.7,2.6L10.4,3.5L9.5,3.2ZM11.7,2.8L12.6,3L12.3,4.1L11.4,3.8ZM8.3,5.5L9.2,6.1L8.6,6.8L7.8,6.2ZM10,6.6L10.8,7.2L10.2,8.1L9.4,7.5ZM7.8,6.2L8.6,6.8L8,7.6L7.3,6.9ZM9.4,7.5L10.2,8.1L9.4,8.9L8.7,8.2ZM7.3,6.9L8,7.6L7.3,8.2L6.6,7.5ZM8.7,8.2L9.4,8.9L8.6,9.7L8,9ZM10,0.6L11,0.7L10.9,1.6L9.9,1.5ZM12,0.7L13,0.8L12.9,1.9L11.9,1.8ZM10,-0.3L11,-0.3L11,0.7L10,0.6ZM12,-0.3L13,-0.3L13,0.8L12,0.7Z" fill="hsl(145,45%,72%)" stroke="hsl(145,40%,45%)" stroke-width="0.08"/>
+<path d="M-11,-3.4L-10.6,-4.4L-10.2,-5.3L-9.7,-6.2L-9.1,-7" fill="none" stroke="#55556a" stroke-width="0.286" stroke-linecap="round"/>
 <path d="M-11,3.4L-10.6,4.4L-10.2,5.3L-9.7,6.2L-9.1,7" fill="none" stroke="#55556a" stroke-width="0.286" stroke-linecap="round"/>
-<path d="M-11.5,0L-11.5,-0.9L-11.3,-1.8L-11.2,-2.8L-10.9,-3.6L-10.6,-4.5L-10.2,-5.4L-9.7,-6.2" fill="none" stroke="#3b3b45" stroke-width="0.437" stroke-linecap="round"/>
-<path d="M7.5,-12.4L6.5,-13L5.5,-13.4L4.5,-13.8L3.5,-14.1L2.4,-14.3L1.3,-14.4" fill="none" stroke="#3b3b45" stroke-width="0.437" stroke-linecap="round"/>
-<path d="M9.9,5.9L9.4,6.7L8.8,7.4L8.2,8.1L7.5,8.7L6.7,9.3L6,9.8L5.2,10.3" fill="none" stroke="#3b3b45" stroke-width="0.437" stroke-linecap="round"/>
+<path d="M-11.5,0L-11.5,-0.9L-11.4,-1.7L-11.2,-2.6L-11,-3.4" fill="none" stroke="#3b3b45" stroke-width="0.437" stroke-linecap="round"/>
+<path d="M5.9,-9.9L6.6,-9.4L7.3,-8.9L8,-8.3L8.6,-7.6" fill="none" stroke="#3b3b45" stroke-width="0.437" stroke-linecap="round"/>
+<path d="M9.9,5.9L9.4,6.6L8.9,7.3L8.3,8L7.6,8.6" fill="none" stroke="#3b3b45" stroke-width="0.437" stroke-linecap="round"/>
+<path d="M11.2,2.7L11.4,1.7L11.5,0.7L11.5,-0.3L11.4,-1.3L11.3,-2.3" fill="none" stroke="#3b3b45" stroke-width="0.437" stroke-linecap="round"/>
 <path d="M0,-8.5L0.7,-8.5L1.5,-8.4L2.2,-8.2L2.9,-8L3.6,-7.7L4.2,-7.4L4.9,-7L5.5,-6.5L6,-6L6.5,-5.5L7,-4.9L7.4,-4.2L7.7,-3.6L8,-2.9L8.2,-2.2L8.4,-1.5L8.5,-0.7L8.5,0L8.5,0.7L8.4,1.5L8.2,2.2L8,2.9L7.7,3.6L7.4,4.2L7,4.9L6.5,5.5L6,6L5.5,6.5L4.9,7L4.2,7.4L3.6,7.7L2.9,8L2.2,8.2L1.5,8.4L0.7,8.5L0,8.5L-0.7,8.5L-1.5,8.4L-2.2,8.2L-2.9,8L-3.6,7.7L-4.2,7.4L-4.9,7L-5.5,6.5L-6,6L-6.5,5.5L-7,4.9L-7.4,4.2L-7.7,3.6L-8,2.9L-8.2,2.2L-8.4,1.5L-8.5,0.7L-8.5,0L-8.5,-0.7L-8.4,-1.5L-8.2,-2.2L-8,-2.9L-7.7,-3.6L-7.4,-4.2L-7,-4.9L-6.5,-5.5L-6,-6L-5.5,-6.5L-4.9,-7L-4.2,-7.4L-3.6,-7.7L-2.9,-8L-2.2,-8.2L-1.5,-8.4L-0.7,-8.5L0,-8.5" fill="none" stroke="#3b3b45" stroke-width="0.437" stroke-linecap="round"/>
 <path d="M-9,0L-13,0" fill="none" stroke="#3b3b45" stroke-width="0.437" stroke-linecap="round"/>
 <path d="M-11.5,0L-11.5,0.9L-11.4,1.7L-11.2,2.6L-11,3.4" fill="none" stroke="#3b3b45" stroke-width="0.437" stroke-linecap="round"/>
-<path d="M4.6,-7.7L8.2,-13.7" fill="none" stroke="#3b3b45" stroke-width="0.437" stroke-linecap="round"/>
+<path d="M4.6,-7.7L6.7,-11.2" fill="none" stroke="#3b3b45" stroke-width="0.437" stroke-linecap="round"/>
 <path d="M5.9,-9.9L5.1,-10.3L4.3,-10.6L3.5,-10.9L2.7,-11.2" fill="none" stroke="#3b3b45" stroke-width="0.437" stroke-linecap="round"/>
 <path d="M7.7,4.6L11.2,6.7" fill="none" stroke="#3b3b45" stroke-width="0.437" stroke-linecap="round"/>
 <path d="M9.9,5.9L10.3,5.1L10.6,4.3L10.9,3.5L11.2,2.7" fill="none" stroke="#3b3b45" stroke-width="0.437" stroke-linecap="round"/>
@@ -25,34 +26,34 @@
 <text x="0" y="0.6" font-size="1.63" text-anchor="middle" fill="#6b4f0f" paint-order="stroke" stroke="#ffffff" stroke-width="0.2" stroke-linejoin="round">市政廳</text>
 <text x="0" y="-10.3" font-size="1.63" text-anchor="middle" fill="#6b4f0f" paint-order="stroke" stroke="#ffffff" stroke-width="0.2" stroke-linejoin="round">Knowledge</text>
 <text x="-16.6" y="0.4" font-size="1.44" text-anchor="middle" fill="#202028" paint-order="stroke" stroke="#ffffff" stroke-width="0.2" stroke-linejoin="round">Computing</text>
-<text x="9.3" y="-15.1" font-size="1.44" text-anchor="middle" fill="#202028" paint-order="stroke" stroke="#ffffff" stroke-width="0.2" stroke-linejoin="round">History</text>
+<text x="7.8" y="-12.6" font-size="1.44" text-anchor="middle" fill="#202028" paint-order="stroke" stroke="#ffffff" stroke-width="0.2" stroke-linejoin="round">History</text>
 <text x="15.4" y="9.6" font-size="1.44" text-anchor="middle" fill="#202028" paint-order="stroke" stroke="#ffffff" stroke-width="0.2" stroke-linejoin="round">Life sciences</text>
-<text x="-9" y="-1.2" font-size="1.15" text-anchor="middle" fill="#202028" paint-order="stroke" stroke="#ffffff" stroke-width="0.2" stroke-linejoin="round">Networks</text>
+<text x="-9.9" y="0" font-size="1.15" text-anchor="middle" fill="#202028" paint-order="stroke" stroke="#ffffff" stroke-width="0.2" stroke-linejoin="round">Networks</text>
 </svg>
-<path d="M292,226.04L308,226.04L497.1,231.04" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M292,226.04L308,226.04L497.1,231.04" fill="none" stroke="#202028" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
-<circle cx="497.1" cy="231.04" r="4.5" fill="#ffffff" stroke="#202028" stroke-width="1.6"/>
-<text x="284" y="221.04" font-size="16" text-anchor="end" fill="#202028" font-weight="600">a sub-topic = a branch road</text>
-<text x="284" y="242.04" font-size="15" text-anchor="end" fill="#4a4a55">子主題＝岔路</text>
-<path d="M292,288.42L308,288.42L505,293.42" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M292,288.42L308,288.42L505,293.42" fill="none" stroke="#202028" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
-<circle cx="505" cy="293.42" r="4.5" fill="#ffffff" stroke="#202028" stroke-width="1.6"/>
-<text x="284" y="283.42" font-size="16" text-anchor="end" fill="#202028" font-weight="600">the town hall = the root</text>
-<text x="284" y="304.42" font-size="15" text-anchor="end" fill="#4a4a55">市政廳＝根</text>
-<path d="M292,421.96L308,421.96L550,426.96" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M292,421.96L308,421.96L550,426.96" fill="none" stroke="#202028" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
-<circle cx="550" cy="426.96" r="4.5" fill="#ffffff" stroke="#202028" stroke-width="1.6"/>
-<text x="284" y="406.96" font-size="16" text-anchor="end" fill="#202028" font-weight="600">the ring road</text>
-<text x="284" y="427.96" font-size="15" text-anchor="end" fill="#4a4a55">articles with no topic yet</text>
-<text x="284" y="448.96" font-size="15" text-anchor="end" fill="#4a4a55">環形大道：還沒有主題的文獻</text>
-<path d="M808,224.87L792,224.87L615.07,229.87" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M808,224.87L792,224.87L615.07,229.87" fill="none" stroke="#202028" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
-<circle cx="615.07" cy="229.87" r="4.5" fill="#ffffff" stroke="#202028" stroke-width="1.6"/>
-<text x="816" y="219.87" font-size="16" text-anchor="start" fill="#202028" font-weight="600">a topic = a road</text>
-<text x="816" y="240.87" font-size="15" text-anchor="start" fill="#4a4a55">主題＝路</text>
-<path d="M808,369.29L792,369.29L675.17,374.29" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M808,369.29L792,369.29L675.17,374.29" fill="none" stroke="#202028" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
-<circle cx="675.17" cy="374.29" r="4.5" fill="#ffffff" stroke="#202028" stroke-width="1.6"/>
-<text x="816" y="364.29" font-size="16" text-anchor="start" fill="#202028" font-weight="600">an article = a house</text>
-<text x="816" y="385.29" font-size="15" text-anchor="start" fill="#4a4a55">一篇文獻＝一棟房子</text>
+<path d="M292,243.29L308,243.29L452.41,248.29" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M292,243.29L308,243.29L452.41,248.29" fill="none" stroke="#202028" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="452.41" cy="248.29" r="4.5" fill="#ffffff" stroke="#202028" stroke-width="1.6"/>
+<text x="284" y="238.29" font-size="16" text-anchor="end" fill="#202028" font-weight="600">a sub-topic = a branch road</text>
+<text x="284" y="259.29" font-size="15" text-anchor="end" fill="#4a4a55">子主題＝岔路</text>
+<path d="M292,293.29L308,293.29L505,272.58" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M292,293.29L308,293.29L505,272.58" fill="none" stroke="#202028" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="505" cy="272.58" r="4.5" fill="#ffffff" stroke="#202028" stroke-width="1.6"/>
+<text x="284" y="288.29" font-size="16" text-anchor="end" fill="#202028" font-weight="600">the town hall = the root</text>
+<text x="284" y="309.29" font-size="15" text-anchor="end" fill="#4a4a55">市政廳＝根</text>
+<path d="M292,401.12L308,401.12L550,406.12" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M292,401.12L308,401.12L550,406.12" fill="none" stroke="#202028" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="550" cy="406.12" r="4.5" fill="#ffffff" stroke="#202028" stroke-width="1.6"/>
+<text x="284" y="386.12" font-size="16" text-anchor="end" fill="#202028" font-weight="600">the ring road</text>
+<text x="284" y="407.12" font-size="15" text-anchor="end" fill="#4a4a55">articles with no topic yet</text>
+<text x="284" y="428.12" font-size="15" text-anchor="end" fill="#4a4a55">環形大道：還沒有主題的文獻</text>
+<path d="M808,216.09L792,216.09L607.84,221.09" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M808,216.09L792,216.09L607.84,221.09" fill="none" stroke="#202028" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="607.84" cy="221.09" r="4.5" fill="#ffffff" stroke="#202028" stroke-width="1.6"/>
+<text x="816" y="211.09" font-size="16" text-anchor="start" fill="#202028" font-weight="600">a topic = a road</text>
+<text x="816" y="232.09" font-size="15" text-anchor="start" fill="#4a4a55">主題＝路</text>
+<path d="M808,314.96L792,314.96L680.19,319.96" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M808,314.96L792,314.96L680.19,319.96" fill="none" stroke="#202028" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="680.19" cy="319.96" r="4.5" fill="#ffffff" stroke="#202028" stroke-width="1.6"/>
+<text x="816" y="309.96" font-size="16" text-anchor="start" fill="#202028" font-weight="600">an article = a house</text>
+<text x="816" y="330.96" font-size="15" text-anchor="start" fill="#4a4a55">一篇文獻＝一棟房子</text>
 </svg>

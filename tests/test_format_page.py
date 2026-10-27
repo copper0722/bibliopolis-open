@@ -84,14 +84,14 @@ def test_a_whole_road_is_its_record_plus_its_continuation_lanes_and_not_the_road
     assert sum(direct.values()) == doc["world"]["houses"] == 600
 
 
-def test_ecology_of_the_sample_is_eighteen_in_its_record_and_seventeen_in_its_continuation(sample):
+def test_ecology_of_the_sample_is_eighteen_in_its_record_and_twelve_and_five_in_its_continuations(sample):
     tree, library = sample
     doc = bibliopolis.build_city(library, tree, mode="grow")
     road = doc["places"]["place:tag:ecology"]
-    (lane_id,) = road["lanes"]
-    lane = doc["places"][lane_id]
-    assert (road["lots"], lane["lots"], road["lots"] + lane["lots"]) == (18, 17, 35)
-    assert lane["continued"] is True and lane["lane_of"] == "place:tag:ecology" and lane["label"] == road["address"][-1] == "Ecology"
+    lanes = [doc["places"][lane_id] for lane_id in road["lanes"]]
+    assert (road["lots"], [lane["lots"] for lane in lanes], road["lots"] + sum(lane["lots"] for lane in lanes)) == (18, [12, 5], 35)
+    assert [lane["rib"]["slots"] for lane in lanes] == [12, 10]  # the second rib holds what the road needs (30 lots for 19 houses) less its 18; the third, 40 less 30, at the 31st house
+    assert all(lane["continued"] is True and lane["lane_of"] == "place:tag:ecology" and lane["label"] == road["address"][-1] == "Ecology" for lane in lanes)
 
 
 def test_the_houses_of_the_roads_below_a_road_are_not_its_own(sample):

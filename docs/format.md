@@ -158,8 +158,8 @@ Every place has a `kind`.
 
   **`lots` and `reserved` count one segment**: the houses that stand in, and the empty lots that are left in, the rib that this record carries. A road with
   continuation ribs is several records, each with its own counts. **The houses standing on a whole road are the `lots` of its record plus the `lots` of every
-  record in its `lanes`, and not the houses of the roads below it.** In the sample, Ecology is a record with `lots: 18` and one continuation with `lots: 17`: 35
-  houses. `reserved` is read the same way. (A continuation that a split left empty is not in the document, nor in `lanes`.)
+  record in its `lanes`, and not the houses of the roads below it.** In the sample, Ecology is a record with `lots: 18` and two continuations with `lots: 12` and `lots: 5`: 35
+  houses. `reserved` is read the same way. (A continuation that a split left empty is not in the document, nor in `lanes`, unless a road hangs on it: then it stands there with `lots: 0`.)
 
   **A road with no lots of its own** has `lots: 0`, `reserved: 0` and no `rib`. In `grow` mode it is a road whose houses have all moved to the roads below it, and none has arrived since. In
   `mirror` mode it is also a topic that has roads below it and no house of its own, or a topic an item is filed under while that item's house stands elsewhere.

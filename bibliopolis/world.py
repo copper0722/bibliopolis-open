@@ -41,10 +41,11 @@ directions (the ring-1 wedges, the trunks and their sides); which topics are roa
              record says `over`. Ring 1 is the plan's: the ring road opens the plan's ring-1 street of a root topic (the wedges are pinned; its
              record's `parent` stays the plaza), and collapse works below it.
   rib        a rib is sized to the houses its road holds when it opens plus headroom, `min(max, even(n + max(4, ceil(n / 2))))`, n counting
-             the arrivals of the call (a split group, the survivors, or 1). A full road opens a CONTINUATION rib sized the same way on its
-             current count (while the road is not over its ribs hold at most `max` lots together): a lane record that adds `continued: true`
-             and has the road's own label, level and address: one road everywhere. `over` is independent of it. A house takes the lowest
-             free lot.
+             the arrivals of the call (a split group, the survivors, or 1). A full road opens a CONTINUATION rib that holds what the whole road
+             needs and its ribs do not hold yet, `district_road_need(n) - held` (the need of the road is its houses and the same headroom in
+             whole cells, at most `max` while the road is not over; the rib has at least 1 lot and, as every rib, at most `max`): a lane record
+             that adds `continued: true` and has the road's own label, level and address: one road everywhere. `over` is independent of it.
+             A house takes the lowest free lot.
   chronicle  every split and every road that became over is an entry of the document's `world.chronicle`, in the order it happened:
              `{n, event_id, seq, trigger, from, to, label, houses, count_before, count_after}` or `{n, event_id, seq, trigger, over, count}`.
   no merge   a road that falls under `min` (the survivors of a split) stays open.
@@ -96,6 +97,14 @@ EPS = 1e-9
 BRANCH_CLEAR = 1.0  # the branch circle of a member is drawn this far beyond the frontier, and keeps this clear of every lot
 SPOKE_MARGIN = 4.0  # a street goes along the spoke (lots on both sides of the axis) when that ends this many cells nearer than a band would
 HEADROOM_MIN, HEADROOM_DIV = 4, 2  # a rib is sized to the houses its road holds plus max(4, ceil(n / 2)) lots of headroom
+
+
+def district_road_need(n: int, max_houses: int) -> int:
+    """The lots a road of `n` houses needs in all its ribs: its houses and the headroom max(4, ceil(n / 2)), in whole cells (two lots to a cell), at most
+    `max` while the road is not over (n <= max). A road that is over needs its houses and the headroom, and no cap."""
+    want = n + max(HEADROOM_MIN, math.ceil(n / HEADROOM_DIV))
+    want += want % 2
+    return min(max_houses, want) if n <= max_houses else want
 
 
 def district_rib_size(n: int, max_houses: int) -> int:
@@ -901,18 +910,19 @@ class World:
         return spoke if spoke["x1"] + SPOKE_MARGIN < band["s"] + BAND / 2 else band
 
     def rib_slots(self, spec: StreetSpec, ordinal: int) -> int:
-        """The lots of rib `ordinal` of a road. A rib is sized to the houses the road holds when it opens, with the arrivals of the call (`hold`: a
-        split group, the survivors, or 1), plus headroom. A continuation rib (`ordinal` >= 2) is sized the same way on the road's current count, and
-        while the road is not over (it holds `max` or fewer) the ribs of the road hold at most `max` lots together."""
+        """The lots of rib `ordinal` of a road. The first rib is sized to the houses the road holds when it opens, with the arrivals of the call (`hold`: a
+        split group, the survivors, or 1), plus headroom (`district_rib_size`). A continuation rib (`ordinal` >= 2) holds what the whole road needs and its
+        ribs do not hold yet, `district_road_need(n) - held`: at least 1 lot and, as every rib, at most `max` (a road that needs more opens the next one when
+        this one is full). When one opens for a road of `max` houses or fewer, the ribs hold `max` lots together at most. (The clause before sized it
+        on the road's whole count: a road reached `max` lots at its second rib, and took `max` more for its first house over `max`.)"""
         n = self.hold.get(spec.place)
         if n is None:  # (no batch is being put on the road: the next house)
             n = len(self.lots_on(spec.place)) + 1
-        size = district_rib_size(n, self.max)
-        if ordinal > 1 and n <= self.max:
-            rec = self.places.get(spec.place)
-            held = sum(self.places.get(c)["rib"]["slots"] for c in ([spec.place] if "rib" in rec else []) + list(rec.get("lanes", [])))
-            size = min(size, max(self.max - held, 1))
-        return size
+        if ordinal == 1:
+            return district_rib_size(n, self.max)
+        rec = self.places.get(spec.place)
+        held = sum(self.places.get(c)["rib"]["slots"] for c in ([spec.place] if "rib" in rec else []) + list(rec.get("lanes", [])))
+        return min(self.max, max(district_road_need(n, self.max) - held, 1))
 
     def open_rib(self, spec: StreetSpec, ordinal: int) -> str:
         """Give a road its first rib (ordinal 1) or its next one: a stretch of a band of the line of its carrier, or of its spoke.

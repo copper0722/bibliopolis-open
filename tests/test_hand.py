@@ -288,6 +288,23 @@ def test_more_houses_than_max_may_be_chosen_the_road_opens_continuation_ribs_and
     assert [state.doc["places"][lane]["address"] for lane in street["lanes"]] == [["A"]] * len(street["lanes"])
 
 
+def test_a_continuation_rib_of_a_road_built_by_hand_holds_what_the_road_needs_less_its_ribs_and_has_no_cap_once_the_road_passes_max():
+    def ribs(h):
+        street = the_street(h, "a")
+        return [street["rib"]["slots"]] + [h.state.doc["places"][lane]["rib"]["slots"] for lane in street["lanes"]]
+
+    h = town(70, {"max": 20, "min": 5, "auto": False})
+    h.open("a", "A", None, houses(1, 22))
+    sound(h)
+    assert ribs(h) == [20, 14]  # 22 houses need 34 lots (a road built by hand is never over, so there is no cap): the first rib is max lots, the second the rest
+    h = town(70, {"max": 20, "min": 5, "auto": False})
+    h.open("a", "A", None, houses(1, 6))
+    for k in range(7, 30):  # one house at a time
+        h.file(hid(k), "a")
+    sound(h)
+    assert ribs(h) == [10, 8, 2, 12]  # the need of 6 houses is 10 lots, of 11 houses 18, of 19 houses 30 but at most max = 20 (2 more), of 21 houses 32 with no cap (12 more)
+
+
 def test_the_fourteenth_road_of_the_first_ring_is_refused_and_a_road_below_a_road_still_opens():
     h = town(10)
     for k in range(13):

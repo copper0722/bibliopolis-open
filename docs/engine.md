@@ -35,7 +35,7 @@ full city, because it would open at the frontier of its trunk before the houses 
 
 What keeps its place, in both modes: the bearing of every road, and the point where each spoke starts. What does not: a spoke grows longer as houses arrive, and
 a later split re-packs the houses of the road that split (not those of the ring road, whose houses stay), so a lot can stand elsewhere in the full city. A continuation rib that a later split empties is in the
-earlier document and not in the later one.
+earlier document and not in the later one, unless a road hangs on it (a road that opened after it on the same side of its band).
 
 ## The plan
 
@@ -97,9 +97,12 @@ checked before the next, because the road of a house depends on the splits the h
    goes when the road holds `max` or fewer houses again (a later split took some away).
 7. **No merge back.** A road that holds fewer than `min` houses (the survivors of a split) stays open.
 8. **Ribs.** A road's first rib is sized to the houses the road holds when it opens plus headroom: `min(max, even(n + max(4, ceil(n / 2))))`, `n` counting the
-   arrivals of the call (the group that moved, the survivors, or 1). A road that has no empty lot opens a *continuation* rib, sized the same way on its
-   current count (while the road is not over, its ribs hold at most `max` lots together). A continuation is the same road: the same label, level, class and
-   address, and the street counts count the road once. A house takes the lowest empty lot of the first rib that has one.
+   arrivals of the call (the group that moved, the survivors, or 1). A road that has no empty lot opens a *continuation* rib that holds what the whole road needs and
+   its ribs do not hold yet. The *need* of a road of `n` houses is its houses and the same headroom in whole cells, `even(n + max(4, ceil(n / 2)))` lots, at most `max`
+   while the road is not over (`n <= max`) and uncapped once it is; the continuation rib has `min(max, max(need - held, 1))` lots, `held` the lots of the ribs the road has:
+   at least 1 and, as every rib, at most `max`. So the ribs of a road that has never been over hold at most `max` lots together, and a road over `max` takes ribs of at most
+   `max` lots, one when the one before is full. A continuation is the same road: the same label, level, class and address, and the street counts count the road once. A house
+   takes the lowest empty lot of the first rib that has one.
 9. **The chronicle.** Every split and every road that became over is an entry of `world.chronicle`, in order, with the arrival that caused it (see
    [format.md](format.md)).
 
