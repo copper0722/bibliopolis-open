@@ -111,7 +111,7 @@ geometry is `bibliopolis.ring` (pure functions of numbers; the order of the oper
 
 - **Gates.** Every direction an avenue can take leaves the ring through a gap, so that a later avenue never moves a house of the ring. G1 is the axes of the plan's
   ring-1 trunks (each the middle of its wedge, mod 360, to three decimals, sorted, without repeats; a plan that names the spoke axes of all its directions, `params.ring.axes`, has
-  those instead); G2 is G1 and the axes of the side trunks (a lap beyond the first can lie across the spoke of a side line). A gate is cut in both rows: outward it is where the avenue leaves, inward it is how the town hall reaches the ring.
+  those instead, and no ring-1 trunk adds to them: one that a road left behind is no gate); G2 is G1 and the axes of the side trunks (a lap beyond the first can lie across the spoke of a side line). A gate is cut in both rows: outward it is where the avenue leaves, inward it is how the town hall reaches the ring.
 - **Cells and slots.** The lane is cut into cells one long, from north clockwise, each starting where the one before ended, skipping a stretch of one round every
   gate. A cell holds two lots: slot `s` is in cell `s // 2`, the inner lot (radius `R - 1`, facing out) when `s` is even, the outer lot (radius `R + 1`, facing
   in) when it is odd. So the slots of a lap are listed by angle from north clockwise, the two rows of one cell sharing an angle, the inner lot first. There are no

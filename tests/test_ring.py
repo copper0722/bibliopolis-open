@@ -250,7 +250,7 @@ def test_the_ring_road_stands_from_day_one_with_its_road_and_no_house():
     assert streets == {"total": 1, "containers": 0, "leaves": 0, "trunks": 0, "groups": 0, "spokes": 0, "lanes": 0, "continuations": 0, "ring": 1}
     assert (m["lots"], m["ring_lots"], m["max_radius"], m["walk_longest"], m["roads"], m["streets_by_class"]["大道"], m["max_ring"]) == (0, 0, 0.0, 0.0, 1, 1, 1)
     assert "underground_lots" not in m and shown["world"]["chronicle"] == [] and shown["coast"]["polygons"]  # the land is the plaza's and the ring's
-    assert checks.all_problems(doc) == {} and checks.ring_problems(shown) == [] and ring_root_problems(doc["places"], zw.PlanView(plan)) == []
+    assert checks.all_problems(doc) == {} and checks.ring_problems(shown) == [] and ring_root_problems(doc["places"], plan) == []
 
 
 def test_the_notes_of_a_ring_city_say_ring_and_never_underground():

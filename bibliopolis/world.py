@@ -156,10 +156,12 @@ class PlanView:
 
     def gates(self, sides: bool = False) -> tuple[float, ...]:
         """The gate bearings of the ring road: G1 (`sides` False), or G2 (`sides` True), see `bibliopolis.ring.gates_of`. A plan that names its sectors and axes
-        (`params.ring`: a world built by hand) has the spoke axes of all of them from day one, whichever of its roads are open."""
+        (`params.ring`: a world built by hand) has the spoke axes of all of them from day one, whichever of its roads are open, and G2 adds to them the axes of its
+        `side` trunks only: a ring-1 trunk that a road left behind (it moved below another road, or the branches fell) is no direction any more."""
         if sides not in self._gates:
             if "sectors" in self.ring:
-                self._gates[sides] = tuple(sorted({*ring_mod.axis_gates(ring_mod.axes_units(self.ring)), *(ring_mod.gates_of(self.trunks, True) if sides else ())}))
+                side_trunks = {key: rec for key, rec in self.trunks.items() if rec["role"] == "side"}
+                self._gates[sides] = tuple(sorted({*ring_mod.axis_gates(ring_mod.axes_units(self.ring)), *(ring_mod.gates_of(side_trunks, True) if sides else ())}))
             else:
                 self._gates[sides] = ring_mod.gates_of(self.trunks, sides)
         return self._gates[sides]

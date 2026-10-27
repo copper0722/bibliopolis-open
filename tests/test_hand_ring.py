@@ -419,6 +419,24 @@ def test_lowering_the_branches_widens_the_sectors_and_lays_the_world_out_again()
     assert expansion_violations(kept, state) == [] and state.rule["branches"] == 13
 
 
+def test_a_lap_beyond_the_first_has_the_gates_of_the_directions_the_rule_holds_after_the_branches_were_lowered():
+    h = Hand({"max": 40, "min": 1, "auto": False, "branches": 3})
+    h.add(6, topic(1, 1, 1, 1))
+    for k, key in enumerate("abc"):
+        h.open(key, key.upper(), None, [hid(k + 1)])  # three avenues, in the directions 0, 1 and 2
+    h.move("c", "a")  # the avenue of the direction 2 stands below the first one: its direction is free, and the plan keeps the trunk it left behind
+    assert sorted(h.state.held) == [0, 1] and {r["role"] for r in h.state.plan["trunks"].values()} == {"ring1"} and len(h.state.plan["trunks"]) == 3
+    h.rule(40, 1, False, 2)  # two directions now: 0 and 1
+    state = sound(h)
+    assert state.plan["params"]["ring"]["axes"] == [0.0, 137.51] and capacity(8.5, [0.0, 137.51]) == 102 == state.doc["places"][ROOT]["ring"]["slots"]
+    h.add(100, topic(2, 2, 2, 2))  # the ring holds 3 houses and 99 more fill its 102 slots: the 100th opens lap 2
+    state = sound(h)
+    lap = state.doc["places"]["place:root:lap:2"]["ring"]
+    assert laps_of(state.doc) == [ROOT, "place:root:lap:2"]
+    assert lap["gaps"] == [0.0, 137.51]  # not 275.02, the axis of the direction that the avenue left
+    assert lap["slots"] == capacity(lap["radius"], [0.0, 137.51]) == 194  # (192 with the gate of the direction that was given up)
+
+
 def test_the_branches_cannot_fall_below_a_direction_number_that_an_avenue_holds_nor_below_the_roads_a_road_holds():
     h = Hand({"max": 40, "min": 3, "auto": False})
     h.add(60)

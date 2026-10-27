@@ -305,18 +305,19 @@ class Town:
 
 
 # --------------------------------------------------------------------------------- the rule, as a checker ----
-def ring_root_problems(places, pv):
-    """The root of a world on a plan with the ring road: it stands from day one, with the plan's label, the plan's radius for lap 1 and the gates G1 (G2 beyond)."""
+def ring_root_problems(places, plan):
+    """The root of a world on a plan with the ring road: it stands from day one, with the plan's label, the plan's radius for lap 1 and the gates G1 (G2 beyond), the gates read from the
+    plan file by `gates_of` and not asked of the engine."""
     root = zw.ROOT_PLACE
     rec = places.get(root)
     if rec is None:
         return [(root, "a world with the ring road has the ring from day one")]
-    want = {"kind": "street", "shape": "ring", "label": pv.ring["label"], "address": [pv.ring["label"]], "parent": lay.PLAZA_PLACE, "level": 1, "class": "大道",
-            "road": f"road:{root}"}
+    ring = plan["params"]["ring"]
+    want = {"kind": "street", "shape": "ring", "label": ring["label"], "address": [ring["label"]], "parent": lay.PLAZA_PLACE, "level": 1, "class": "大道", "road": f"road:{root}"}
     bad = [(root, f"{k} is {rec.get(k)!r}") for k, v in want.items() if rec.get(k) != v]
-    if rec["ring"]["radius"] != pv.ring["radius"] or rec["ring"]["gaps"] != list(pv.gates()) or rec["ring"]["lap"] != 1:
+    if rec["ring"]["radius"] != ring["radius"] or rec["ring"]["gaps"] != gates_of(plan) or rec["ring"]["lap"] != 1:
         bad.append((root, "lap 1 is not the plan's radius with the gates G1"))
-    if any(places[lap]["ring"]["gaps"] != list(pv.gates(sides=True)) for lap in rec.get("lanes", [])):
+    if any(places[lap]["ring"]["gaps"] != gates_of(plan, sides=True) for lap in rec.get("lanes", [])):
         bad.append((root, "a lap beyond the first does not have the gates G2"))
     return bad
 
@@ -347,7 +348,7 @@ def district_problems(doc, plan, tree):
             bad.append((pid, "stands in a rib that is not of its road"))
         if "underground" in p:
             bad.append((pid, "a house of a world with the ring road is not underground"))
-    bad += ring_root_problems(places, pv)
+    bad += ring_root_problems(places, plan)
     # no street of any other kind, and the topics a road holds are held once
     held = Counter()
     for pid, r in roads.items():

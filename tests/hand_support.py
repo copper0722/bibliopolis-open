@@ -423,6 +423,10 @@ def hand_problems(state: State, *, coast: bool = False) -> list:
         bad.append((ROOT, "the ring road is not the one the rule asks for: its gates are the spoke axes of all the directions and its radius R(N) for the rule"))
     if ring["ring"]["slots"] != capacity(ring["ring"]["radius"], gates):
         bad.append((ROOT, "the ring road holds another number of houses than its cells say"))
+    g2 = gates_of(state.plan, sides=True)  # a lap beyond the first: the gates of all the directions the rule holds and of the side roads, never a trunk that a road left behind
+    for lap in laps_of(state.doc)[1:]:
+        if places[lap]["ring"]["gaps"] != g2 or places[lap]["ring"]["slots"] != capacity(places[lap]["ring"]["radius"], g2):
+            bad.append((lap, "a lap beyond the first has not the gates G2 of the plan, or holds another number of houses than its cells say"))
     # the roads: every road the player opened is a node; a record, when there is one, follows the tree
     held = Counter(state.road_of.values())
     for key, node in state.nodes.items():
