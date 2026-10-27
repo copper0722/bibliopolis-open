@@ -17,8 +17,8 @@ import random
 
 import checks
 import pytest
-from support import (ROOT, T, Town, art, by_tag, capacity, fill_order_of, first_free, gates_of, laps_of, make_tree, on_ring, radius_for, ring_root_problems, simulate_districts,
-                     slot_cell, tag_street, world_of)
+from support import (ROOT, T, Town, art, by_tag, capacity, fill_order_of, first_free, gates_of, land_waste, laps_of, make_tree, on_ring, radius_for, ring_root_problems,
+                     simulate_districts, slot_cell, tag_street, world_of)
 
 import bibliopolis
 from bibliopolis import document
@@ -537,6 +537,40 @@ def test_laps_open_one_after_the_other_each_beyond_the_one_before_and_only_when_
     assert [t.doc["places"][lap]["lots"] for lap in laps] == [capacity(8.5, g1), capacity(11.5, g2), 10]  # a lap opens only when the laps before it are full
     assert t.doc["places"][ROOT]["lanes"] == laps[1:] and sorted(r for r, rec in t.doc["roads"].items() if rec["kind"] == "ring") == sorted(f"road:{lap}" for lap in laps)
     t.check()
+
+
+def test_the_measure_of_waste_lets_a_lap_open_when_the_laps_before_it_are_full_and_finds_one_opened_over_free_slots():
+    """The measure of waste (`support.land_waste`), its laps: a lap opens only when the houses the step put on the ring filled every free slot of the laps that stood.
+    The engine opens lap 2 with the house after the last free slot of lap 1: no waste. The control: the same step read against a lap 1 with two more slots than it
+    has (two of them free) is a lap opened over free slots."""
+    t = Town(LAP_SPEC)
+    c1 = capacity(8.5, gates_of(t.plan))
+    filler = untagged(c1 + 1)
+    t.one_by_one(filler[:c1], check=False)
+    before = t.doc
+    t.send(filler[c1:])
+    assert laps_of(t.doc) == [ROOT, "place:root:lap:2"] and land_waste(before, t.doc, 40) == []
+    wide = copy.deepcopy(before)
+    wide["places"][ROOT]["ring"]["slots"] += 2  # (lap 1 as if it had two free slots when lap 2 opened)
+    assert land_waste(wide, t.doc, 40) == [("lap", "place:root:lap:2", "opened with 2 free slots on the laps before it, 1 house(s) came to the ring")]
+
+
+def test_the_measure_of_waste_counts_the_houses_that_came_to_the_ring_and_left_it_again_in_the_same_call():
+    """A call that needs lap 2 and then splits from the ring. The ring holds 100 houses with no topic (lap 1 is full); then the ten houses of a come in one call: nine of them
+    fill the ring over lap 1 and open lap 2, the tenth makes the group of `min` and all ten leave for road a. At the end of the call lap 2 is empty and no house of the call stands
+    on the ring, but ten came to it: the lap was not opened early. The control: against a lap 1 with twelve more slots than it has (twelve of them free), ten houses are too few."""
+    t = Town({"a": T(10), "b": T(1)})
+    c1 = capacity(8.5, gates_of(t.plan))
+    assert c1 == 100
+    t.one_by_one(untagged(c1), check=False)
+    before = t.doc
+    t.send(t.tagged("a"))
+    assert laps_of(t.doc) == [ROOT, "place:root:lap:2"] and t.doc["places"]["place:root:lap:2"]["lots"] == 0 and t.count(tag_street("a")) == 10
+    assert [(e["from"], e["to"], len(e["houses"])) for e in t.doc["chronicle"][len(before["chronicle"]):]] == [(ROOT, tag_street("a"), 10)]
+    assert land_waste(before, t.doc, 40) == []
+    wide = copy.deepcopy(before)
+    wide["places"][ROOT]["ring"]["slots"] += 12  # (lap 1 as if it had twelve free slots when lap 2 opened)
+    assert land_waste(wide, t.doc, 40) == [("lap", "place:root:lap:2", "opened with 12 free slots on the laps before it, 10 house(s) came to the ring")]
 
 
 # -------------------------------------------------------------------------------------------------- walks ----

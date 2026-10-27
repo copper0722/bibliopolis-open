@@ -196,8 +196,8 @@ them again and compares them with the committed files byte for byte.
 
 | rule | test file |
 |---|---|
-| the 41st house, packing, a split in the middle of a call, again at once, ribs, continuation, over, no merge back, chains, ring 1 | `tests/test_districts.py` |
-| the ring road: the radius, the gates, the cells of a lap, the fill order and its spread, day one, the first forty houses, the survivors of a split, the avenues, the laps, the walks | `tests/test_ring.py` |
+| the 41st house, packing, a split in the middle of a call, again at once, ribs, continuation, the measure of waste (land laid beyond need, read step by step), over, no merge back, chains, ring 1 | `tests/test_districts.py` |
+| the ring road: the radius, the gates, the cells of a lap, the fill order and its spread, day one, the first forty houses, the survivors of a split, the avenues, the laps (and the measure of waste for a lap), the walks | `tests/test_ring.py` |
 | mirror, items filed under several topics, `complete` | `tests/test_mirror.py` |
 | the cut and the plan: leaf and container streets, chains, the sectors of ring 1, the heavy path and the sides | `tests/test_plan.py` |
 | angles, geometry, records, measures, the stable text, the coast | `tests/test_layout.py` |

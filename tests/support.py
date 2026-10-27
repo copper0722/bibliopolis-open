@@ -1,5 +1,5 @@
-"""Worlds for the tests: small synthetic topic trees with items, a world with districts that checks itself after every step, and the invariants
-of the rule (`district_problems`) with random simulations of a world.
+"""Worlds for the tests: small synthetic topic trees with items, a world with districts that checks itself after every step, the invariants
+of the rule (`district_problems`) and the measure of waste (`land_waste`, land laid beyond need) with random simulations of a world.
 
 Not collected by pytest (the name has no test_ prefix)."""
 
@@ -469,6 +469,97 @@ def district_problems(doc, plan, tree):
     return bad
 
 
+# ------------------------------------------------------------------------------------------ the measure of waste ----
+# Land is laid for the houses that need it. A snapshot cannot tell a rib laid too long from the lots that a split freed afterwards (the houses that stay are
+# packed onto the first lots and the rib keeps its length), so these checks are read one step at a time, at the moment the land is laid.
+def rib_need(n, max_houses):
+    """The lots a road of `n` houses needs, stated apart from the engine: its houses and the headroom (4 lots, or half the houses rounded up if that is more), in
+    whole cells (an even number of lots), at most `max_houses` while the road is not over (n <= max)."""
+    want = n + max(4, -(-n // 2))
+    want += want % 2
+    return min(max_houses, want) if n <= max_houses else want
+
+
+def frontage(doc, road):
+    """The ribs of a road in order: its own rib (when it has one), then its continuation ribs by ordinal."""
+    rec = doc["places"][road]
+    return ([road] if "rib" in rec else []) + sorted(rec.get("lanes", []), key=lambda r: doc["places"][r].get("ordinal", 0))
+
+
+def on_the_ring(doc):
+    """The ids of the houses that stand on a lap of the ring road."""
+    return {p["article"] for p in doc["places"].values() if p["kind"] == "lot" and doc["places"].get(p["parent"], {}).get("shape") == "ring"}
+
+
+def land_waste(before, after, max_houses):
+    """The land that one step of a world laid beyond need, as a list of (what, place, detail): empty when there is none. `before` and `after` are the world on either
+    side of one call.
+      rib  a rib laid in this step (a street record with a rib that is new, or whose lots changed) leaves its road holding more lots than rib_need(n). n is the houses of
+           the road after the step. A call of one arrival is read exactly: the arrival is the last thing that happens to its road, so a rib that it lays (also for the
+           survivors of a split, or for the group of a split that splits again at once) is laid for the houses the road holds after the step. A call of several arrivals
+           is read leniently, since a rib may have been laid before a split of the same call: n then counts the houses that a split of this step took from the road too;
+      lap  a lap of the ring opened in this step although the laps that stood had free slots that the houses this step put on the ring did not fill: the step put fewer
+           houses on the ring than the free slots plus the one that opened the lap. The houses that came to the ring and left it again in a split of the same call count;
+      lot  a house placed in this step (it came, or a split put it on another lot) stands farther along its road than a lot the step left free: farther than its
+           road's houses need (a house takes the lowest free lot, and a split packs the houses that stay onto the first lots). The ring road keeps its own fill order
+           and is no such road;
+      cont a continuation rib that is new in this step while the ribs before it, which its road had before the step, still have free lots after it (a road continues
+           only when it is full), unless a split of this step took houses from the road (in a call of several arrivals)."""
+    bad = []
+    places, prev = after["places"], before["places"]
+    new = after["chronicle"][len(before["chronicle"]):]  # what happened in this step
+    left = Counter()
+    for e in new:
+        if "from" in e:
+            left[e["from"]] += len(e["houses"])
+    held = Counter(p["street"] for p in places.values() if p["kind"] == "lot")
+    arrivals = sum(held.values()) - sum(1 for p in prev.values() if p["kind"] == "lot")
+    laid = {}  # road -> the ribs laid for it in this step
+    for pid, rec in places.items():
+        if rec["kind"] == "street" and "rib" in rec:
+            old = prev.get(pid)
+            if old is None or "rib" not in old or old["rib"]["slots"] != rec["rib"]["slots"]:
+                laid.setdefault(rec.get("lane_of", pid), []).append(pid)
+    on_rib = Counter(p["parent"] for p in places.values() if p["kind"] == "lot")
+    for road, ribs in laid.items():
+        lots = sum(places[r]["rib"]["slots"] for r in frontage(after, road))
+        n = held[road] + (left[road] if arrivals > 1 else 0)
+        if lots > rib_need(n, max_houses):
+            bad.append(("rib", road, f"{lots} lots for {n} houses, need {rib_need(n, max_houses)} (laid: {', '.join(sorted(ribs))})"))
+        if arrivals == 1 or not left[road]:
+            order = frontage(after, road)
+            for lane in (r for r in order if r in ribs and "lane_of" in places[r] and r not in prev):  # a continuation rib that is new
+                free = sum(places[r]["rib"]["slots"] - on_rib[r] for r in order[:order.index(lane)] if r in prev)  # on the ribs before it
+                if free:
+                    bad.append(("cont", road, f"{lane} opened while the ribs before it had {free} free lot(s)"))
+    if ROOT in prev and prev[ROOT].get("shape") == "ring":
+        laps = [ROOT, *prev[ROOT].get("lanes", [])]
+        opened = [k for k in places[ROOT].get("lanes", []) if k not in laps]
+        if opened:
+            free = sum(prev[k]["ring"]["slots"] - prev[k]["lots"] for k in laps)
+            gone = {h for e in new if e.get("from") == ROOT for h in e["houses"]}  # came to the ring in this call and left it again in a split
+            came = len((on_the_ring(after) | gone) - on_the_ring(before))
+            if came < free + 1:
+                bad += [("lap", k, f"opened with {free} free slots on the laps before it, {came} house(s) came to the ring") for k in opened]
+    was = {p["article"]: (p["parent"], p["slot"]) for p in prev.values() if p["kind"] == "lot"}
+    placed, taken = {}, {}
+    for p in places.values():
+        if p["kind"] == "lot":
+            taken.setdefault(p["street"], set()).add((p["parent"], p["slot"]))
+            if was.get(p["article"]) != (p["parent"], p["slot"]):
+                placed.setdefault(p["street"], set()).add((p["parent"], p["slot"]))
+    for road, now in placed.items():
+        rec = places.get(road, {})
+        if rec.get("shape") == "ring" or not ("rib" in rec or rec.get("lanes")):
+            continue
+        order = [(r, s) for r in frontage(after, road) for s in range(places[r]["rib"]["slots"])]
+        first_free = next((i for i, lot in enumerate(order) if lot not in taken[road]), len(order))
+        beyond = sorted(i for i, lot in enumerate(order) if lot in now and i > first_free)
+        if beyond:
+            bad.append(("lot", road, f"{len(beyond)} house(s) placed beyond lot {first_free}, which the step left free"))
+    return bad
+
+
 def simulate_districts(seed, *, max_houses=12, min_houses=4, trunk_min=40, batch_max=15, order="shuffle", check_every=1, mode="grow"):
     """A random world on a plan with districts: its items in random batches (a batch is one call), every invariant checked after every step.
     Returns (problems, the final world, the number of steps, the plan, the tree view).
@@ -503,9 +594,10 @@ def simulate_districts(seed, *, max_houses=12, min_houses=4, trunk_min=40, batch
         i += len(batch)
         step += 1
         event += 1
-        before, chron0 = zw.houses(doc), len(doc["chronicle"])
+        before, chron0, world_before = zw.houses(doc), len(doc["chronicle"]), doc
         res = zw.assign(plan, tv, doc, batch, event_id=event)
         doc = zw.apply_delta(doc, res["delta"])
+        problems += [(seed, step, "land laid beyond need", w) for w in land_waste(world_before, doc, max_houses)]
         placed += len(batch)
         after = zw.houses(doc)
         splitting = {e["from"] for e in doc["chronicle"][chron0:] if "from" in e}  # the houses of a road that split may change lot

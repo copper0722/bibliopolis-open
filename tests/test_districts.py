@@ -7,13 +7,14 @@ the road (on the ring road they keep their lots); no group of `min`: the road is
 road opens a continuation rib, the same road, over or not. The ring itself is tests/test_ring.py.
 """
 
+import copy
 import json
 import math
 
 import checks
 import pytest
-from support import (ROOT, T, Town, art, as_text, by_tag, capacity, count, direct_counts, fill_order_of, gates_of, lot_of, make_tree, on_ring, ribs_of, road_of, roads_of,
-                     send, simulate_districts, slot_cell, tag_street, world_of)
+from support import (ROOT, T, Town, art, as_text, by_tag, capacity, count, direct_counts, fill_order_of, gates_of, land_waste, lot_of, make_tree, on_ring, rib_need, ribs_of,
+                     road_of, roads_of, send, simulate_districts, slot_cell, tag_street, world_of)
 
 from bibliopolis import layout as lay
 from bibliopolis import plan as plan_mod
@@ -206,6 +207,14 @@ def test_the_size_of_a_rib_is_the_houses_of_the_road_and_headroom_in_whole_cells
     assert all(zw.district_rib_size(n, 40) >= min(n + 4, 40) for n in range(1, 120))  # the houses and at least four lots more, until max
 
 
+def test_the_need_of_a_road_is_its_houses_and_headroom_in_whole_cells_capped_at_max_until_the_road_is_over():
+    assert [zw.district_road_need(n, 40) for n in (1, 2, 4, 8, 10, 11, 16, 20, 26, 27, 40, 41, 61, 100)] == [6, 6, 8, 12, 16, 18, 24, 30, 40, 40, 40, 62, 92, 150]
+    assert [zw.district_road_need(n, 12) for n in (1, 5, 6, 7, 12, 13, 14, 20)] == [6, 10, 10, 12, 12, 20, 22, 30]
+    assert all(zw.district_road_need(n, m) == zw.district_rib_size(n, m) for m in (8, 12, 40) for n in range(1, m + 1))  # the first rib of a road is as large as the road's need, until max
+    assert all(zw.district_road_need(n, m) == rib_need(n, m) for m in (1, 2, 8, 12, 40, 41) for n in range(1, 200))  # ... and the independent statement of the tests gives the same need
+    assert all(zw.district_road_need(n, m) > m and zw.district_road_need(n, m) % 2 == 0 for m in (8, 12, 40) for n in range(m + 1, 200))  # over max: no cap, whole cells
+
+
 def test_a_full_road_opens_a_continuation_rib_the_same_road_and_over_is_another_matter():
     t = Town({"a": T(14), "b": T(3), "c": T(3), "d": T(1)}, **SMALL)
     a = tag_street("a")
@@ -243,6 +252,152 @@ def test_a_road_that_never_was_over_holds_max_lots_in_its_ribs_at_most_and_no_ro
             assert road in ever_over or sum(ribs_of(doc, road)) <= 12
         assert not [p for p in doc["places"].values() if p["kind"] == "street" and "lane_of" in p and not p.get("continued")]
         assert not [p for p in doc["places"].values() if p["kind"] == "street" and p.get("label", "").endswith(tuple(f"・{n}" for n in range(2, 30)))]
+
+
+# ------------------------------------------------------------------------------------ the measure of waste ----
+def old_rib_slots(self, spec, ordinal):
+    """A planted fault: the clause before v0.2.1, a continuation rib sized on the whole count of the road (`max` lots once the road is over)."""
+    n = self.hold.get(spec.place)
+    if n is None:
+        n = len(self.lots_on(spec.place)) + 1
+    size = zw.district_rib_size(n, self.max)
+    if ordinal > 1 and n <= self.max:
+        rec = self.places.get(spec.place)
+        held = sum(self.places.get(c)["rib"]["slots"] for c in ([spec.place] if "rib" in rec else []) + list(rec.get("lanes", [])))
+        size = min(size, max(self.max - held, 1))
+    return size
+
+
+def test_the_measure_of_waste_passes_ribs_sized_by_the_rule_and_finds_the_old_cap_and_the_ribs_of_max_lots(monkeypatch):
+    """The measure of waste (`support.land_waste`): a rib that is laid leaves its road with at most rib_need(n) lots, its houses and max(4, ceil(n / 2)) of headroom
+    in whole cells, at most `max` while the road is not over. A road that opens with 6 houses gets 10 lots (6 and 4 of headroom); a continuation rib holds what the
+    whole road needs less what its ribs hold: 2 more lots at its 11th and 12th houses (need 12 = max), then 8 for its 13th house, over max (need 20). No waste.
+    Planted, the old cap (a continuation rib sized on the road's whole count, `max` lots once it is over) lays 12 lots for the 13th house: 24 for 13, need 20.
+    The first sizing of ribs, every rib `max` lots, is waste at its first rib: 12 lots for 6 houses."""
+    spec = {"a": T(14), "b": T(3), "c": T(3), "d": T(1)}
+    a = tag_street("a")
+
+    def steps(t, batches):
+        out = []
+        for event, batch in enumerate(batches, 1):
+            before = t.doc
+            t.send(batch, event_id=event)
+            out.append(land_waste(before, t.doc, 12))
+        return out
+
+    def town():
+        t = Town(spec, **SMALL)
+        own = t.tagged("a")
+        return t, [own[:6] + t.tagged("b", "c", "d"), own[6:10], own[10:12], own[12:13]]
+
+    t, batches = town()
+    assert steps(t, batches) == [[], [], [], []] and ribs_of(t.doc, a) == [10, 2, 8]
+    assert (rib_need(6, 12), rib_need(12, 12), rib_need(13, 12)) == (10, 12, 20)
+    monkeypatch.setattr(zw.World, "rib_slots", old_rib_slots)
+    t, batches = town()
+    assert steps(t, batches) == [[], [], [], [("rib", a, "24 lots for 13 houses, need 20 (laid: place:lane:a:3)")]] and ribs_of(t.doc, a) == [10, 2, 12]
+    monkeypatch.undo()
+    monkeypatch.setattr(zw, "district_rib_size", lambda n, max_houses: max_houses)  # every rib `max` lots
+    t, batches = town()
+    assert steps(t, batches[:1]) == [[("rib", a, "12 lots for 6 houses, need 10 (laid: place:tag:a)")]]
+
+
+def test_the_measure_of_waste_finds_a_continuation_rib_that_opens_while_the_ribs_before_it_have_free_lots():
+    """A road continues only when it is full. The step that opens the second rib of road a (its first rib of 10 lots is full when the 11th house comes) is no waste.
+    The control: the same step with a house of the first rib gone from the world after it, so that the rib has a free lot beside the new one, is a continuation that
+    opened over a free lot. (A step in which a split took houses from the road is excused: the lots they left were free when the rib was laid.)"""
+    t = Town({"a": T(14), "b": T(3), "c": T(3), "d": T(1)}, **SMALL)
+    a, own = tag_street("a"), t.tagged("a")
+    t.send(own[:6] + t.tagged("b", "c", "d"), event_id=1)
+    t.send(own[6:10], event_id=2)
+    before = t.doc
+    t.send(own[10:11], event_id=3)
+    assert ribs_of(t.doc, a) == [10, 2] and land_waste(before, t.doc, 12) == []
+    gap = copy.deepcopy(t.doc)
+    lot = gap["places"].pop(lay.article_place(own[3]["id"]))  # a house of a leaves its lot, which stays free
+    gap["places"][a]["lots"] -= 1
+    gap["places"][lay.reserved_place(gap["places"][a]["rib"]["block"], lot["slot"])] = {"kind": "reserved", "parent": a, "slot": lot["slot"]}
+    assert land_waste(before, gap, 12) == [("cont", a, "place:lane:a:2 opened while the ribs before it had 1 free lot(s)"),
+                                           ("lot", a, "1 house(s) placed beyond lot 3, which the step left free")]  # (the 11th house stands beyond the free lot too)
+
+
+def test_the_measure_of_waste_finds_a_house_placed_beyond_a_lot_its_road_left_free():
+    """The measure of waste, its lots: a house placed in a step stands on the lowest free lot of its road. The 7th house of a stands on lot 6 of its rib: no waste.
+    The control: the same house on lot 9, with lots 6 to 8 free, is a house farther along its road than its road needs."""
+    t = Town({"a": T(14), "b": T(3), "c": T(3), "d": T(1)}, **SMALL)
+    a, own = tag_street("a"), t.tagged("a")
+    t.send(own[:6] + t.tagged("b", "c", "d"), event_id=1)
+    before = t.doc
+    t.send(own[6:7], event_id=2)
+    lot = lot_of(t.doc, own[6])
+    assert (lot["parent"], lot["slot"]) == (a, 6) and land_waste(before, t.doc, 12) == []
+    far = copy.deepcopy(t.doc)
+    far["places"][lay.article_place(own[6]["id"])]["slot"] = 9
+    assert land_waste(before, far, 12) == [("lot", a, "1 house(s) placed beyond lot 6, which the step left free")]
+
+
+def test_the_measure_of_waste_is_exact_for_a_call_of_one_arrival_and_finds_a_first_rib_of_max_lots_for_the_survivors_of_a_road_that_splits_again_at_once(monkeypatch):
+    """Timing. The 13th house makes the ring over max (12); the 13 houses of y open road y, which is over max, so y splits again at once: the 8 houses of z leave, the 5 of w stay,
+    and their first rib is laid after the split, for 5 houses (10 lots). Planted, a first rib of `max` lots is 12 lots for 5 houses: found when the call is one arrival. The same
+    world made in one call of 13 arrivals is read leniently, since a rib may have been laid before a split of the same call (5 + 8 houses, need 20): it finds nothing."""
+    spec, y = {"y": T(0, z=T(8), w=T(5)), "x": T(2)}, tag_street("y")
+
+    def world(planted, one_call):
+        t = Town(spec, **SMALL)
+        houses = t.tagged("z", "w")
+        if not one_call:
+            t.send(houses[:12], event_id=1)  # twelve houses on the ring: nothing has happened
+        before = t.doc
+        t.send(houses if one_call else houses[12:], event_id=2)
+        assert [(e["from"], e["to"], e["count_before"], e["count_after"]) for e in t.doc["chronicle"][len(before["chronicle"]):]] == [(ROOT, y, 13, 0), (y, tag_street("z"), 13, 5)]
+        return land_waste(before, t.doc, 12), ribs_of(t.doc, y), ribs_of(t.doc, tag_street("z"))
+
+    assert world(False, False) == ([], [10], [12]) and world(False, True) == ([], [10], [12])
+    monkeypatch.setattr(zw, "district_rib_size", lambda n, max_houses: max_houses)  # every rib `max` lots
+    assert world(True, False) == ([("rib", y, "12 lots for 5 houses, need 10 (laid: place:tag:y)")], [12], [12])
+    assert world(True, True) == ([], [12], [12])  # (hidden: the call of 13 arrivals cannot tell when the rib was laid)
+
+
+def test_the_measure_of_waste_finds_an_old_sizing_error_in_the_middle_of_a_call_only_when_the_arrivals_come_one_at_a_time(monkeypatch):
+    """Timing, the other way. The old cap planted: the 13th house of road a lays a continuation rib of 12 lots (24 lots for 13 houses, need 20). The 11th to the 16th house in one call
+    end with 16 houses, whose need is 24, so the rib looks justified; one house at a time, the 13th is read as it is."""
+    spec = {"a": T(18), "b": T(3), "c": T(3), "d": T(1)}
+    a = tag_street("a")
+
+    def world(one_at_a_time):
+        t = Town(spec, **SMALL)
+        own = t.tagged("a")
+        calls = [own[:6] + t.tagged("b", "c", "d"), own[6:10], *([[h] for h in own[10:16]] if one_at_a_time else [own[10:16]])]
+        found = []
+        for event, call in enumerate(calls, 1):
+            before = t.doc
+            t.send(call, event_id=event)
+            found.append(land_waste(before, t.doc, 12))
+        return found, ribs_of(t.doc, a)
+
+    assert world(False) == ([[], [], []], [10, 2, 8]) and world(True) == ([[]] * 8, [10, 2, 8])
+    monkeypatch.setattr(zw.World, "rib_slots", old_rib_slots)
+    assert world(False) == ([[], [], []], [10, 2, 12])  # (hidden)
+    found, ribs = world(True)
+    assert ribs == [10, 2, 12] and found == [[], [], [], [], [("rib", a, "24 lots for 13 houses, need 20 (laid: place:lane:a:3)")], [], [], []]
+
+
+@pytest.mark.parametrize("mode", ["grow", "mirror"])
+def test_the_measure_of_waste_finds_nothing_in_random_worlds_whose_arrivals_come_one_at_a_time(mode):
+    for seed in (0, 3):
+        problems, doc, steps, _plan, _tv = simulate_districts(seed, batch_max=1, check_every=100, mode=mode)
+        assert problems == [] and steps == len(zw.houses(doc))  # a call for every house, every rib read when it was laid
+
+
+@pytest.mark.parametrize("fault", ["old cap", "every rib max lots"])
+def test_the_measure_of_waste_finds_a_planted_sizing_fault_in_a_random_world_whose_arrivals_come_one_at_a_time(monkeypatch, fault):
+    if fault == "old cap":
+        monkeypatch.setattr(zw.World, "rib_slots", old_rib_slots)
+    else:
+        monkeypatch.setattr(zw, "district_rib_size", lambda n, max_houses: max_houses)
+    problems, _doc, _steps, _plan, _tv = simulate_districts(0, batch_max=1, check_every=100)
+    found = [p for p in problems if p[2] == "land laid beyond need"]
+    assert len(found) > 10 and {p[3][0] for p in found} == {"rib"} and len(found) == len(problems)
 
 
 # ------------------------------------------------------------------------------ over, no merge back ----
