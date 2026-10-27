@@ -45,3 +45,10 @@ split as they grow).
   README are made here, from the sample. A change to any of these says so in its commit.
 - No third-party code or data is copied in. Two textbook algorithms (largest-remainder apportionment, Douglas-Peucker simplification) are
   implemented here, and the sample is generated from invented word lists.
+
+## Open for v0.2.1
+
+- `ring_radius_for` (`hand.ring_radius` of a world built by hand) walks one radius at a time from the lower bound that the houses give, and every step costs the cells of the lap times its gates:
+  N = 500 branches with a `max` of 10000 takes about 20 seconds, N = 89 about one. The capacity of a lap and the arc term are both monotone in the radius, so a bisection between the lower bound and the
+  first radius that holds gives the same answer. The function is copied number for number from the private engine, so it moves with it.
+- The sizing of the continuation ribs of a road is changing in the private engine; this engine follows in the same release, so that both move together and the parity holds.
