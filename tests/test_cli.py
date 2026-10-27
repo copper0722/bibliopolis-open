@@ -86,18 +86,18 @@ def test_a_rule_that_cannot_be_is_refused(files, tmp_path, capsys):
 
 
 @pytest.mark.parametrize("mode", ["grow", "mirror"])
-@pytest.mark.parametrize("huge", [str(10**400), "100001"])
+@pytest.mark.parametrize("huge", [str(10**400), "10001"])
 def test_a_maximum_beyond_the_range_of_the_rule_is_a_refusal_with_a_message_and_not_a_traceback(files, tmp_path, capsys, mode, huge):
     t, lib, *_ = files
     out = tmp_path / "c.json"
     code, err = run_main(capsys, "build", "--library", str(lib), "--tree", str(t), "--mode", mode, "--out", str(out), "--max-houses", huge, "--min-houses", "4")
-    assert code == 2 and err.startswith("bibliopolis: ") and "1 <= min <= max <= 100000" in err and "Traceback" not in err and not out.exists()
+    assert code == 2 and err.startswith("bibliopolis: ") and "1 <= min <= max <= 10000" in err and "Traceback" not in err and not out.exists()
 
 
 def test_a_world_with_a_maximum_beyond_the_range_of_the_rule_is_refused_by_the_same_range(tmp_path, capsys):
-    for huge in (str(10**400), "100001"):
+    for huge in (str(10**400), "10001"):
         code, err = run_main(capsys, "world", "new", "--world", str(tmp_path / "w.db"), "--max-houses", huge)
-        assert code == 2 and "must be a whole number from 1 to 100000" in err and not (tmp_path / "w.db").exists()
+        assert code == 2 and "must be a whole number from 1 to 10000" in err and not (tmp_path / "w.db").exists()
 
 
 def test_a_missing_or_unwritable_file_is_an_error_and_leaves_no_temporary_file(files, tmp_path, capsys):

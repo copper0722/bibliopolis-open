@@ -16,7 +16,7 @@ SOURCES = sorted((ROOT / "bibliopolis").glob("*.py"))
 
 
 def test_the_package_has_its_modules():
-    assert {p.stem for p in SOURCES} >= {"__init__", "__main__", "_version", "city", "cli", "coast", "cut", "document", "inputs", "layout", "picture", "plan", "tree",
+    assert {p.stem for p in SOURCES} >= {"__init__", "__main__", "_version", "city", "cli", "coast", "coded", "cut", "document", "inputs", "layout", "picture", "plan", "tree",
                                          "world"}
 
 

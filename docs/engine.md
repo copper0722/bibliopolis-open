@@ -63,7 +63,7 @@ on the lighter side (the left on a tie), the heaviest outermost. A side wedge is
 wedge of a trunk is too narrow for them, both minimums are scaled down together by the same factor. Every other street hangs on the bands of the nearest trunk
 above it (its *carrier*).
 
-**The rule.** `max` (40) and `min` (10), two whole numbers with `1 <= min <= max <= 100000` (the range of a world built by hand too: a larger number is refused before the radius of the ring road is computed).
+**The rule.** `max` (40) and `min` (10), two whole numbers with `1 <= min <= max <= 10000` (the range of a world built by hand too: a larger number is refused before the radius of the ring road is computed, and no valid rule asks for a city too large to draw its coast).
 
 **The ring.** `params.ring` = `{label, radius}`: the name of the ring road (`Knowledge`) and the lane radius `R` of its first lap. `R` is the least `8.5 + k`
 (a whole `k >= 0`, 8.5 being the plaza radius, one bare cell and half a band) such that two things hold: the first lap holds `max` houses between its gates, and
@@ -198,6 +198,7 @@ them again and compares them with the committed files byte for byte.
 | mirror, items filed under several topics, `complete` | `tests/test_mirror.py` |
 | the cut and the plan: leaf and container streets, chains, the sectors of ring 1, the heavy path and the sides | `tests/test_plan.py` |
 | angles, geometry, records, measures, the stable text, the coast | `tests/test_layout.py` |
+| the budget of the grid of the coast, the range of the rule that keeps a valid rule drawable, a city too large to draw | `tests/test_budget.py` |
 | the two input files and their checks | `tests/test_inputs.py`, `tests/test_schema.py` |
 | reading a city file: what is accepted, what is refused and where, and that no single wrong field gets past the reader to crash or loop `picture` or `chronicle` | `tests/test_cityfile.py`, `tests/test_cli.py` |
 | the pipeline, its summary (the streets that are over now), the basics of the replay with `first`, the chronicle as sentences | `tests/test_city.py` |

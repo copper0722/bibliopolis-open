@@ -15,6 +15,7 @@ from unittest import mock
 from hand_support import Hand, hid, item, stamp, topic
 
 from bibliopolis import events as ev
+from bibliopolis.coast import CityTooLarge, coast_of
 from bibliopolis.events import Problems, Refusal
 from bibliopolis.journal import Journal, WorldFileError, dumps_world, read_world, world_document
 from bibliopolis.store import Store, check_output, check_replace, publish_text
@@ -25,10 +26,10 @@ DOMAIN_1 = {"id": "ex:d1", "level": "domain", "name": "Domain 1"}
 
 
 def raised(act):
-    """Run `act`: the refusal or the file error it raises."""
+    """Run `act`: the refusal, the file error or the city too large to draw that it raises."""
     try:
         act()
-    except (Refusal, WorldFileError) as exc:
+    except (Refusal, WorldFileError, CityTooLarge) as exc:
         return exc
     raise AssertionError("nothing was refused")
 
@@ -298,6 +299,12 @@ def output_is_a_world_file(tmp):
 
 def output_is_an_input(tmp):
     return raised(lambda: check_replace(tmp / "library.json", [tmp / "tree.json", tmp / "library.json"]))
+
+
+def city_too_large(tmp):
+    """A lot 60 cells from the town hall, and a budget of 10000 cells for the grid of the coast: the grid it needs is 133 by 133."""
+    layout = {"places": {"p": {"kind": "lot", "position": {"x": 60.0, "z": 0.0}}}, "roads": {}, "centre": {"radius": 6.0}}
+    return raised(lambda: coast_of(layout, budget=10_000))
 
 
 def invalid(tmp):

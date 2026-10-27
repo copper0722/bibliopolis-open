@@ -94,7 +94,7 @@ writes from a world built by hand is the same document, with `world.mode` `hand`
 | `counts` | places by kind |
 | `world` | the rule, the mode and the chronicle: see below |
 | `roads` | the road network, by road id |
-| `coast` | `{buffer, tolerance, polygons}`: the outline of the land. Each polygon is a list of `[x, z]` corners. |
+| `coast` | `{buffer, tolerance, polygons}`: the outline of the land. Each polygon is a list of `[x, z]` corners. It is drawn on a grid of one cell, and a city whose grid would hold more than 8388608 cells (its farthest lot or road more than 1441 cells from the town hall) has none: it is refused with the id `city_too_large` ([world.md](world.md), "A city is too large to draw"). |
 | `places` | every place, by place id |
 
 ### `composition`

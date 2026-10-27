@@ -30,6 +30,7 @@ that a page can translate it into any language without reading the English text.
 
 from __future__ import annotations
 
+from .coded import Coded
 from .inputs import _CONTROL, _LANE_LIKE, MAX_DEPTH, MAX_PROBLEMS, _Problems, _shown, _whole, parse_added_at
 from .plan import MAX_HOUSES, MIN_HOUSES, RULE_LIMIT
 
@@ -42,7 +43,7 @@ START_OPTIONAL = ("branches",)  # a rule a world starts with may leave these out
 BRANCHES_DEFAULT = 13
 DEFAULT_RULE = {"max": MAX_HOUSES, "min": MIN_HOUSES, "auto": False, "branches": BRANCHES_DEFAULT}
 BRANCHES_LEAST = 2  # the fewest `branches` a rule has: a full road must be able to merge two of its roads (MERGE_LEAST)
-BRANCHES_LIMIT = 1000  # the most: with that many directions a sector is a third of a degree and the ring road is some five hundred cells round
+BRANCHES_LIMIT = 1000  # the most: with that many directions the narrowest land is 0.16 degrees and the ring road, the widest a rule can ask for, has a radius of 1073.5 cells
 AUTO_PREFIX = "auto:"  # the ids of the roads that the rule opens by itself; a player's road id never starts with it
 ITEM_KEYS = ("id", "title", "authors", "year", "doi", "type", "openalex")
 ITEM_REQUIRED = ("id", "title", "authors", "year", "type")
@@ -93,6 +94,8 @@ CODES = {
     "no_hard_links": ("path", "folder", "reason"),
     "output_is_a_world_file": ("path",),
     "output_is_an_input": ("path", "input"),
+    # ---- a city is too large to be drawn (CityTooLarge)
+    "city_too_large": ("cells", "budget"),
     # ---- the shape of an event, a rule or a world file is wrong: `invalid` holds the problems, each `{where, code, params}` with one of the codes that follow
     "invalid": ("problems", "more"),
     "keys_missing": ("keys",),
@@ -140,23 +143,6 @@ CODES = {
     "cell_wrong_type": ("path", "table", "column", "row", "expected", "got"),
     "item_table_differs": ("path",),
 }
-
-
-class Coded:
-    """What a refusal and an error of a world file share: the message (English text) and, for a page that translates it, an id and the values the message is made of.
-
-    `code` is the id (one of `CODES`) and `params` its values, in the names `CODES` gives, all of them plain JSON values. `event` is `{seq, kind}` when the reason is about an event
-    of a log that was replayed or folded, and `where` the file, or the place in a file, when it is about one. `as_dict()` is all of it as a JSON object."""
-
-    def __init__(self, message: str, code: str, **params):
-        super().__init__(message)
-        self.code = code
-        self.params = params
-        self.event: dict | None = None
-        self.where: str | None = None
-
-    def as_dict(self) -> dict:
-        return {"code": self.code, "params": self.params, "event": self.event, "where": self.where, "message": str(self)}
 
 
 class Refusal(Coded, ValueError):

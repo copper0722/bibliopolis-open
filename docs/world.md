@@ -202,8 +202,8 @@ the same bytes as the picture of the city.
 
 ## Refusals
 
-A world that does not take an event raises `Refusal` (a `ValueError`) and is as it was. A world file or a store that is not a world raises `WorldFileError`. Both carry the English message
-and, for a page that translates it, **an id and params**:
+A world that does not take an event raises `Refusal` (a `ValueError`) and is as it was. A world file or a store that is not a world raises `WorldFileError`, and a city that is too large
+to draw its coast raises `CityTooLarge` (below). All three carry the English message and, for a page that translates it, **an id and params**:
 
 - `code`: one of the ids of `bibliopolis.events.CODES`, the one list of them;
 - `params`: the values the message is made of, in the names that the list gives, all plain JSON values (a place is a road id, or null for the ring road);
@@ -266,6 +266,18 @@ that is read passes the refusal of an event on as a `WorldFileError` with the sa
 | `output_is_a_world_file` | `path` | `build` or `picture` asked to replace a world file: a JSON object whose `format` is `bibliopolis.world` (they replace a city or a picture, never a world) | <folder>/world.json is a world file; a world file is not replaced by a city or a picture (choose another file, or move that one away) |
 | `output_is_an_input` | `path`, `input` | `build` or `picture` asked to replace a file that the command reads (the library, the tree or the city), under any name for it: it would be replaced by what is made from it | <folder>/library.json is read to make it (<folder>/library.json); a file is not replaced by what is made from it (choose another file) |
 
+### A city is too large to draw
+
+The coast of a city is drawn on a grid of one cell (`bibliopolis.coast`), so what it costs is the area of the city. `CityTooLarge` (a `ValueError` with the same `code`, `params` and
+`as_dict()`) is raised when the grid would hold more than the budget of **8388608 cells** (a square of 2895 by 2895: a city whose farthest lot or road is at most 1441 cells from the town hall; about 1.8 seconds and 120 MiB),
+before the grid is made. No valid rule asks for a city that is too large while it is empty: the widest ring road a rule can ask for (1000 branches, a radius of 1073.5 cells, whatever `max`
+is up to 10000, the most) needs 2161 by 2161 cells. A city that grows beyond the budget is refused when it is drawn (`State.city()`, `world fold`, `build`); `State.city(with_coast=False)`
+still gives its document without a coast.
+
+| id | params | when | message |
+|---|---|---|---|
+| `city_too_large` | `cells`, `budget` | the coast of a city is drawn and its grid would hold more than `budget` cells (`cells`) | the city is too large to draw its coast: the grid would hold 17689 cells (133 by 133) and the most is 10000 |
+
 ### The shape of an event, a rule or a world file is wrong
 
 | id | params | when | message |
@@ -287,7 +299,7 @@ that is read passes the refusal of an event on as a `WorldFileError` with the sa
 | `level_not_an_object` | none | a level of a topic (domain, field, subfield, topic) is not an object `{id, name}` | event.payload.item.openalex[0].domain: must be an object {id, name} |
 | `topic_twice` | `topic`, `first` | an item carries the same topic twice (`first` is the place of the first) | event.payload.item.openalex[2].topic.id: 'ex:d1.f1.s1.t1' is the topic of event.payload.item.openalex[0] already |
 | `rule_not_an_object` | `got` | a rule is not an object | world.rule: must be an object {max, min, auto, branches}, got list |
-| `rule_number_bad` | `name`, `least`, `limit`, `got` | `max`, `min` or `branches` of a rule is not a whole number from `least` (1; 2 for `branches`) to `limit` (100000; 1000 for `branches`); `name` says which | world.rule.max: must be a whole number from 1 to 100000, got 0 |
+| `rule_number_bad` | `name`, `least`, `limit`, `got` | `max`, `min` or `branches` of a rule is not a whole number from `least` (1; 2 for `branches`) to `limit` (10000; 1000 for `branches`); `name` says which | world.rule.max: must be a whole number from 1 to 10000, got 0 |
 | `not_a_boolean` | `got` | `auto` of a rule is not true or false | world.rule.auto: must be true or false, got 'yes' |
 | `rule_min_over_max` | `min`, `max` | a rule whose `min` is more than its `max` | world.rule: min (9) is more than max (5) |
 | `road_id_lane_like` | `road` | a new road id of the form `lane:<id>:<n>` | event.payload.road: 'lane:x:2' looks like the block key of a continuation rib (lane:<id>:<n>); use another id |

@@ -22,7 +22,7 @@ from .city import build_city, chronicle_lines, summary
 from .events import BRANCHES_DEFAULT, BRANCHES_LEAST, BRANCHES_LIMIT
 from .journal import dumps_world, load_world_file, world_document
 from .layout import render
-from .plan import GROW, MAX_HOUSES, MIN_HOUSES, MODES
+from .plan import GROW, MAX_HOUSES, MIN_HOUSES, MODES, RULE_LIMIT
 
 MIN_PICTURE = 100  # pixels: smaller than this is a mistake, not a picture
 
@@ -38,9 +38,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="grow: the roads open from the ring road by the district rule as the houses arrive; mirror: every topic that holds a "
                         "house is a road from the start (default: %(default)s)")
     b.add_argument("--out", required=True, metavar="city.json", help="where to write the city")
-    b.add_argument("--max-houses", type=int, default=MAX_HOUSES, metavar="N", help="a road holds this many houses directly (default: %(default)s)")
+    b.add_argument("--max-houses", type=int, default=MAX_HOUSES, metavar="N", help=f"a road holds this many houses directly: 1 to {RULE_LIMIT} (default: %(default)s)")
     b.add_argument("--min-houses", type=int, default=MIN_HOUSES, metavar="N",
-                   help="the least size of a group of houses that opens a road of its own (grow mode; default: %(default)s)")
+                   help="the least size of a group of houses that opens a road of its own: 1 to the most (grow mode; default: %(default)s)")
     b.add_argument("--first", type=int, default=None, metavar="N",
                    help="a replay: place only the first N items in arrival order. The plan still reads the whole library, so this is the same city at an "
                         "earlier moment")
@@ -57,8 +57,9 @@ def build_parser() -> argparse.ArgumentParser:
     where = f"the SQLite file of the world (default: {store.WORLD_NAME} in the home folder, $BIBLIOPOLIS_HOME or ~/Bibliopolis, made on first use)"
     n = ws.add_parser("new", help="make a new, empty world")
     n.add_argument("--world", metavar="PATH", help=where)
-    n.add_argument("--max-houses", type=int, default=MAX_HOUSES, metavar="N", help="the most a road is meant to hold; `crowded` lists what holds more (default: %(default)s)")
-    n.add_argument("--min-houses", type=int, default=MIN_HOUSES, metavar="N", help="the least a new road takes (default: %(default)s)")
+    n.add_argument("--max-houses", type=int, default=MAX_HOUSES, metavar="N",
+                   help=f"the most a road is meant to hold, 1 to {RULE_LIMIT}; `crowded` lists what holds more (default: %(default)s)")
+    n.add_argument("--min-houses", type=int, default=MIN_HOUSES, metavar="N", help="the least a new road takes, 1 to the most (default: %(default)s)")
     n.add_argument("--branches", type=int, default=BRANCHES_DEFAULT, metavar="N",
                    help=f"how many roads a road holds directly, and how many avenues leave the ring road: {BRANCHES_LEAST} to {BRANCHES_LIMIT} (default: %(default)s)")
     n.add_argument("--auto", action="store_true",

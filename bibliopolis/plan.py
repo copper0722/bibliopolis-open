@@ -38,7 +38,9 @@ GROW, MIRROR = "grow", "mirror"
 MODES = (GROW, MIRROR)  # the modes `build` knows
 HAND = "hand"  # the mode of a world built by hand (bibliopolis.hand): no library to plan from, so it is not one of the modes of `build`
 MAX_HOUSES, MIN_HOUSES = 40, 10  # a road holds 10 to 40 houses
-RULE_LIMIT = 100_000  # the largest `max` (and `min`) of a rule, in a grown city as in a world built by hand: far beyond any road, and a number that every language writes the same
+RULE_LIMIT = 10_000  # the largest `max` (and `min`) of a rule, in a grown city as in a world built by hand: far beyond any road, a number that every language writes the same, and
+# small enough that a valid rule always gives a city that can be drawn: the ring road of 1000 branches, the widest a rule can ask for, has the radius 1073.5 whatever `max` is up to
+# 10686 (its first lap then holds that many houses), and the grid of the coast for that is 2161 by 2161 cells, a little over half of bibliopolis.coast.COAST_GRID_BUDGET
 DISTRICT_EXTRACT, DISTRICT_COUNT = "largest", "direct"  # the only rules the engine knows: the largest group is opened, the houses on the road itself are counted
 
 

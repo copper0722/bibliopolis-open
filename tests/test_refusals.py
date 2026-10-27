@@ -10,6 +10,7 @@ import refusal_cases as rc
 from hand_support import Hand, hid, stamp
 
 from bibliopolis import events as ev
+from bibliopolis.coast import CityTooLarge
 from bibliopolis.events import Refusal
 from bibliopolis.hand import fold
 from bibliopolis.journal import Journal, WorldFileError, dumps_world, read_world, world_document
@@ -17,14 +18,14 @@ from bibliopolis.store import Store
 from bibliopolis.suggest import suggest_file, suggest_road
 
 ROOT = Path(__file__).resolve().parents[1]
-MODULES = ("events", "journal", "hand", "suggest", "store")
-ERRORS = ("Refusal", "WorldFileError")
+MODULES = ("events", "journal", "hand", "suggest", "store", "coast")
+ERRORS = ("Refusal", "WorldFileError", "CityTooLarge")
 BUILDERS = ("branches_full", "too_deep", "output_taken", "database_taken")  # functions of the modules that build a `Refusal` (with a literal id and its params) for a raise statement
 
 
 # --------------------------------------------------------------------------------- the list and its scenarios ----
 def test_the_list_of_ids_is_one_list_of_names_each_with_the_names_of_its_params():
-    assert len(ev.CODES) == 77 and all(code.isidentifier() and code == code.lower() for code in ev.CODES)
+    assert len(ev.CODES) == 78 and all(code.isidentifier() and code == code.lower() for code in ev.CODES)
     for code, params in ev.CODES.items():
         assert isinstance(params, tuple) and len(set(params)) == len(params) and all(isinstance(p, str) and p.isidentifier() for p in params), code
 
@@ -41,21 +42,21 @@ def test_a_scenario_makes_its_id_with_the_params_of_the_list_and_only_plain_json
         assert made["where"] and made["text"].startswith(made["where"] + ": ")
     else:
         shown, found, params = type(made).__name__, made.code, made.params
-        assert isinstance(made, (Refusal, WorldFileError)) and json.loads(json.dumps(made.as_dict())) == made.as_dict()
+        assert isinstance(made, (Refusal, WorldFileError, CityTooLarge)) and json.loads(json.dumps(made.as_dict())) == made.as_dict()
         assert made.as_dict()["message"] == str(made) and (made.event is None or set(made.event) == {"seq", "kind"})
     assert found == code, (shown, found)
     assert set(params) == set(ev.CODES[code]) and json.loads(json.dumps(params)) == params, code
 
 
-def test_each_id_is_made_as_a_refusal_a_file_error_or_a_problem_of_shape_and_the_kinds_are_these_many(tmp_path):
-    kinds = {"Refusal": set(), "WorldFileError": set(), "problem": set()}
+def test_each_id_is_made_as_a_refusal_a_file_error_a_city_too_large_or_a_problem_of_shape_and_the_kinds_are_these_many(tmp_path):
+    kinds = {"Refusal": set(), "WorldFileError": set(), "CityTooLarge": set(), "problem": set()}
     for code, case in rc.CASES.items():
         folder = tmp_path / code
         folder.mkdir()
         made = case(folder)
         kinds["problem" if isinstance(made, dict) else type(made).__name__].add(code)
-    assert kinds["Refusal"] | kinds["WorldFileError"] | kinds["problem"] == set(ev.CODES)
-    assert (len(kinds["Refusal"]), len(kinds["WorldFileError"]), len(kinds["problem"])) == (34, 12, 31)
+    assert kinds["Refusal"] | kinds["WorldFileError"] | kinds["CityTooLarge"] | kinds["problem"] == set(ev.CODES)
+    assert (len(kinds["Refusal"]), len(kinds["WorldFileError"]), len(kinds["CityTooLarge"]), len(kinds["problem"])) == (34, 12, 1, 31)
 
 
 def test_the_problems_of_an_invalid_refusal_have_each_an_id_of_the_list_and_a_place():

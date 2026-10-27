@@ -3,14 +3,25 @@
 The land is a buffer of COAST_BUFFER cells around every surface lot, empty lot and road, with the holes filled. It is rasterised on a
 grid of one cell, traced and simplified in pure Python (no geometry library), so the same city gives the same polygons on any machine.
 The coast is a picture of the city: nothing is placed by it, and it is derived again whenever the city changes.
+
+The grid has a cell for every cell of the square that holds the city, so what it costs, in memory and in time, is the area of the city. COAST_GRID_BUDGET is the most cells it may
+have: a city that would need more is refused (`CityTooLarge`, the id `city_too_large`) before the grid is made. The largest city that a valid rule can ask for, with nothing in it but
+the ring road of 1000 directions (a radius of 1073.5 cells), needs 2161 by 2161 cells, a little over half of the budget; a grid of the budget takes about 1.8 seconds and 120 MiB.
 """
 
 from __future__ import annotations
 
 import math
 
+from .coded import Coded
+
 COAST_BUFFER = 4.0  # the land reaches this far beyond the nearest lot or road
 COAST_TOLERANCE = 1.0  # the simplified outline stays within this many cells of the traced one
+COAST_GRID_BUDGET = 2**23  # the most cells of the grid of the coast: 8388608, a square of 2895 by 2895 cells (a city whose farthest lot or road is at most 1441 cells from the town hall)
+
+
+class CityTooLarge(Coded, ValueError):
+    """The grid of the coast would hold more cells than the budget: the city is too large to draw its coast. Raised before the grid is made, so that nothing has been allocated."""
 
 
 def road_samples(roads: dict[str, dict], step: float = 1.0):
@@ -23,17 +34,24 @@ def road_samples(roads: dict[str, dict], step: float = 1.0):
                 yield ax + (bx - ax) * k / n, az + (bz - az) * k / n
 
 
-def coast_of(layout: dict, buffer: float = COAST_BUFFER, tolerance: float = COAST_TOLERANCE) -> dict:
+def coast_of(layout: dict, buffer: float = COAST_BUFFER, tolerance: float = COAST_TOLERANCE, budget: int | None = None) -> dict:
     """The coast: the outline of the land, a buffer of `buffer` cells around every lot and road, holes filled, simplified.
 
     Rasterised on a grid of 1 cell, so the result is deterministic and needs no geometry library: `polygons` are lists of
-    [x, z] corners of the outer boundary of each piece of land (counter-clockwise on screen, z south). The houses of the ring road count like any."""
+    [x, z] corners of the outer boundary of each piece of land (counter-clockwise on screen, z south). The houses of the ring road count like any.
+    `CityTooLarge` when the grid would hold more than `budget` cells (None: COAST_GRID_BUDGET), before anything is allocated."""
     places, roads, plaza = layout["places"], layout["roads"], layout["centre"]["radius"]
-    pts = [(p["position"]["x"], p["position"]["z"]) for p in places.values() if p["kind"] in ("lot", "reserved")]
-    pts += list(road_samples(roads))
-    pts.append((0.0, 0.0))
-    reach = math.ceil(max(max(math.hypot(x, z) for x, z in pts), plaza) + buffer + 2)  # a city of day one has the plaza and nothing else
+    lots = [(p["position"]["x"], p["position"]["z"]) for p in places.values() if p["kind"] in ("lot", "reserved")]
+    ends = [(x, z) for r in roads.values() if len(r["points"]) >= 2 for x, z in r["points"]]  # (a point between two ends is nearer the town hall than one of them)
+    farthest = max([math.hypot(x, z) for x, z in lots + ends] + [0.0, plaza])  # a city of day one has the plaza and nothing else
+    reach = math.ceil(farthest + buffer + 2)
     size = 2 * reach + 1
+    limit = COAST_GRID_BUDGET if budget is None else budget
+    if size * size > limit:
+        raise CityTooLarge(f"the city is too large to draw its coast: the grid would hold {size * size} cells ({size} by {size}) and the most is {limit}", "city_too_large",
+                           cells=size * size, budget=limit)
+    pts = lots + list(road_samples(roads))
+    pts.append((0.0, 0.0))
     land = bytearray(size * size)
     r = int(math.ceil(buffer))
     disc = [(dx, dz) for dx in range(-r, r + 1) for dz in range(-r, r + 1) if dx * dx + dz * dz <= buffer * buffer]
