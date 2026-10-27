@@ -104,7 +104,7 @@ PIN_NODES_CITY = "bcf9eee0e772d6cde66b420b9070d82bf8e79115338a32b5c3266d03762cd5
 PIN_MERGE_WORLD = "f8ef1194ff53f26e2d908c6e677f8b1fe62507ff89b0780a28028f04aded5274"  # ... and for the log in which the first ring fills and is merged (hand_support.scripted_merge)
 PIN_MERGE_CITY = "436c7e3276f229dd7ad47fa423476189984b7a0c319c9bb4125714a27d35b68c"
 PIN_BRANCHES_WORLD = "8bca726c6f6558d4b946f76c04a5de67540e528801c1fd600711e893886b5faf"  # ... and for the log of the branches (hand_support.scripted_branches): the rule merges a full ring itself, a merge below a road, the expansion
-PIN_BRANCHES_CITY = "1d46fb02cccb325502a49d293117d5b2fb72cbb2457ba27eda1b709b34471db6"
+PIN_BRANCHES_CITY = "1f7473d13459bebc4ee4643927c55d14a108b90cfe1fbb0d82be3b3baf34bdad"
 
 
 def test_the_scripted_world_and_its_city_are_pinned_by_their_sha256():

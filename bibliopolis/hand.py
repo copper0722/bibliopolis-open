@@ -86,12 +86,7 @@ def sector_table(n: int) -> tuple[tuple[int, int, int], ...]:
     return tuple(out)  # type: ignore[arg-type]
 
 
-def land_of(lo: int, hi: int, axis: int) -> tuple[int, int]:
-    """The wedge, in units of 1/100 degree, that an avenue of the sector `(lo, hi)` with its spoke on `axis` may build in. The engine lays lots the same distance either side
-    of a spoke, so the land is the part of the sector within the narrower side of the axis: `axis` plus and minus `min(axis - lo, hi - axis)`. The one place that decides how the
-    sector of a direction becomes the wedge of its trunk."""
-    side = min(axis - lo, hi - axis)
-    return axis - side, axis + side
+land_of = ring_mod.land_of  # the part of a sector an avenue builds in (the engine decides it, bibliopolis.ring: the radius of the ring gives the narrowest land its arc)
 
 
 def tenths(span: int) -> int:
@@ -102,15 +97,16 @@ def tenths(span: int) -> int:
 
 def ring_radius(rule: dict) -> float:
     """The lane radius of the first lap of the ring road for the rule: the least that holds `max` houses between the gates (the bearings of all `branches` directions, so
-    that an avenue that opens later never moves a house of the ring) and gives the narrowest sector the arc of an avenue at the ring's outer edge
-    (`bibliopolis.ring.ring_radius_for`). This is the one place the radius comes from: a change of rule that changes it lays the world out again."""
+    that an avenue that opens later never moves a house of the ring) and gives the narrowest LAND the arc of an avenue at the ring's outer edge
+    (`bibliopolis.ring.ring_radius_for`; the land of a direction is the part of its sector within the narrower side of its spoke, `land_of`). This is the one place the radius comes
+    from: a change of rule that changes it lays the world out again."""
     return _radius(rule["branches"], rule["max"])
 
 
 @functools.cache
 def _radius(branches: int, top: int) -> float:
     table = sector_table(branches)
-    return ring_mod.ring_radius_for(ring_mod.axis_gates([axis for _, _, axis in table]), top, ring_mod.sector_min([(lo, hi) for lo, hi, _ in table]))
+    return ring_mod.ring_radius_for(ring_mod.axis_gates([axis for _, _, axis in table]), top, ring_mod.sector_min([land_of(lo, hi, axis) for lo, hi, axis in table]))
 
 
 def ordinal(n: int) -> str:

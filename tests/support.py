@@ -183,7 +183,7 @@ def capacity(radius, gates):
 
 
 def radius_for(gates, max_houses, w_min=None):
-    """R(N) stated apart from the engine, with the independent cells: the least 8.5 + k such that lap 1 holds `max_houses` between the gates AND the narrowest sector
+    """R(N) stated apart from the engine, with the independent cells: the least 8.5 + k such that lap 1 holds `max_houses` between the gates AND the narrowest land
     holds an avenue at the ring's outer edge (`w_min` None: no sector, only the first)."""
     k = 0
     while not (capacity(8.5 + k, gates) >= max_houses and (w_min is None or (8.5 + k + 1.5) * math.radians(w_min) >= 3.0 - 1e-9)):

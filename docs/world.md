@@ -72,9 +72,9 @@ world **starts** with may leave `branches` out, and it is then 13, while a `set_
 "The ring road"). It is called `Knowledge` until `rename_road` with `road` null names it, and the world starts with it, empty. A house starts on it, on the lowest free slot of its first lap, and
 a full lap goes on as a lap outside it, as in a grown city. It is no road of the player's tree: it has no id, `parent` null names it in `open_road`, and a house on it stands on road `None`.
 Its **gates** are the spoke axes of all N directions of the table (below), so an avenue that opens later never moves a house of the ring. Its **radius** is the least `8.5 + k` (a whole `k`) such
-that the first lap holds `max` houses between the gates and the narrowest of the N sectors has at the ring's outer edge an arc of 3 cells, `(R + 1.5) * radians(w) >= 3` (`w` in degrees). With a
-`max` of 40 it is 8.5 for 5 and for 13 branches, 9.5 for 21, 16.5 for 34 and 43.5 for 89 (the narrowest sector is 40.00, 26.26, 16.23, 10.03 and 3.83 degrees); it never falls when the branches
-grow. The ring road keeps its name and its radius from event to event except where a rule asks for another ring (next).
+that the first lap holds `max` houses between the gates and the narrowest LAND of the N directions has at the ring's outer edge an arc of 3 cells, `(R + 1.5) * radians(w) >= 3` (`w` in degrees): the
+avenue builds in its land (below), so that is where its spoke lane and a lot on each side must fit. With a `max` of 40 it is 8.5 for 5 and for 13 branches, 12.5 for 21, 21.5 for 34 and 57.5 for
+89 (the narrowest land is 40.00, 20.06, 12.38, 7.66 and 2.92 degrees; it is also the narrowest gap between two bearings); it never falls when the branches grow. The ring road keeps its name and its radius from event to event except where a rule asks for another ring (next).
 
 **A new radius.** A `set_rule` after which the ring road of the plan is another one - another number of branches, which adds gates and narrows the sectors (or takes gates and widens them), or
 a `max` that the first lap cannot hold or no longer needs - lays the whole world out again: a fresh world (the ring road of the plan, no road, no line, no rib), and every house put again, the ring
@@ -428,7 +428,7 @@ The TypeScript engine must give the same bytes as this one. What is easy to get 
   sector, the widths in whole tenths of a degree rounded half up (`(span + 5) // 10` for a span in units of 1/100 degree, so 26.26 and 26.27 are both 263 and 32.46 and 32.47 both 325); an
   avenue that moves below a road, and the members of a merge, give their numbers up.
 - **The ring and its radius.** The gates are the spoke axes `r3((axis / 100) % 360)` of the N directions; the cells and slots are those of [engine.md](engine.md), "The ring road". The radius is
-  `8.5 + k` for the least whole `k` with `capacity(R) >= max` and `(R + 1.5) * radians(w) >= 3 - 1e-9` (`w` the narrowest sector in degrees); the walk may start at the lower bound the houses give. A
+  `8.5 + k` for the least whole `k` with `capacity(R) >= max` and `(R + 1.5) * radians(w) >= 3 - 1e-9` (`w` the narrowest land in degrees: twice `min(axis - lo, hi - axis)` of the direction with the least); the walk may start at the lower bound the houses give. A
   new radius or a new `branches` lays the world out again in the order along the streets (above): the same log must give the same houses on the same lots in every engine.
 - **Road ids.** The engine names a new road `road:<place>`, and when that is in use `road:<place>@1`, `@2`, and so on: the first that is not in use now. When an avenue gives up its direction
   (merged, or moved below a road) its line, its spoke, its arcs and the roads of the ribs on it are taken away, so those ids are free again and the next road of that name takes them. The

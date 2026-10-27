@@ -12,8 +12,9 @@ for, where a slot stands and the two records of a lap. `bibliopolis.world` puts 
   cells     from north clockwise, each cell starting where the one before ended, skipping the open interval (centre - TRUNK_LANE, centre + TRUNK_LANE) round every
             gate (`ring_cells`): a cell never stands within TRUNK_LANE of a gate axis, as the first lot of a band never stands within it of its trunk.
   radius    R(N) = RING_MIN + k for the least whole k >= 0 such that BOTH hold (`ring_radius_for`): lap 1 holds `districts.max` houses between the gates, and the
-            narrowest of the plan's N ring-1 sectors has at the ring's outer edge an arc, (R + BAND / 2) * radians(w_min), of at least RING_AVENUE_ARC (an
-            avenue's spoke lane and one lot on each side). RING_MIN = PLAZA_RADIUS + LEAD + BAND / 2: the lane lies where the first band of a ring-1 trunk
+            narrowest LAND of the plan's N ring-1 sectors has at the ring's outer edge an arc, (R + BAND / 2) * radians(w_min), of at least RING_AVENUE_ARC (an
+            avenue's spoke lane and one lot on each side). An avenue builds in its land: for a grown city the whole wedge of its trunk (the spoke is its middle),
+            for a world built by hand the part of its sector within the narrower side of its spoke (`land_of`). RING_MIN = PLAZA_RADIUS + LEAD + BAND / 2: the lane lies where the first band of a ring-1 trunk
             lay in a city with no ring, one bare cell between the plaza rim and the inner row. A plan may pin a larger radius; a smaller one is refused.
   laps      a ring that is full goes on as a concentric lap outside the first, the same road: street `place:root:lap:<k>` (lane_of the root, `continued`), road
             `road:place:root:lap:<k>`. `bibliopolis.world` decides where a lap lies.
@@ -84,8 +85,24 @@ def axis_gates(axes: tuple[int, ...] | list[int]) -> tuple[float, ...]:
 
 
 def sector_min(sectors: tuple[tuple[int, int], ...] | list[tuple[int, int]]) -> float | None:
-    """w_min: the width of the narrowest sector in degrees; None when there is no sector (N = 0)."""
+    """w_min: the width of the narrowest wedge in degrees; None when there is no wedge (N = 0). For the wedges of the ring-1 trunks of a grown city, whose spoke is the middle of
+    the wedge and whose land is the whole wedge, this is the narrowest land."""
     return min(hi - lo for lo, hi in sectors) / lay.UNIT if sectors else None
+
+
+def land_of(lo: int, hi: int, axis: int) -> tuple[int, int]:
+    """The wedge, in units of 1/100 degree, that an avenue of the sector `(lo, hi)` with its spoke on `axis` may build in. The engine lays lots the same distance either side
+    of a spoke, so the land is the part of the sector within the narrower side of the axis: `axis` plus and minus `min(axis - lo, hi - axis)`. The one place that decides how the
+    sector of a direction becomes the wedge of its trunk, and the width of the narrowest land (twice the narrower side) is what the radius of the ring must give an arc to."""
+    side = min(axis - lo, hi - axis)
+    return axis - side, axis + side
+
+
+def land_min(ring: dict) -> float | None:
+    """w_min of a plan that names its sectors and spoke axes (`params.ring.sectors`, `axes`: wedges in degrees and bearings in degrees, one for each direction): the width in degrees of
+    the narrowest land, `2 * min(axis - lo, hi - axis)` of the direction with the least of it; None when there is no direction."""
+    sectors, axes = sectors_in_order(ring), axes_units(ring)
+    return min(hi - lo for lo, hi in (land_of(lo, hi, axis) for (lo, hi), axis in zip(sectors, axes))) / lay.UNIT if sectors else None
 
 
 # ----------------------------------------------------------------------------------------------- the lane ----
@@ -130,14 +147,14 @@ def ring_sector_arc(radius: float, w_min: float) -> float:
 
 
 def ring_radius_for(gates: tuple[float, ...] | list[float], max_houses: int, w_min: float | None = None) -> float:
-    """R(N): RING_MIN + k for the least whole k >= 0 such that lap 1 (gates G1) holds at least `max_houses` AND the narrowest of the N ring-1 sectors, `w_min`
+    """R(N): RING_MIN + k for the least whole k >= 0 such that lap 1 (gates G1) holds at least `max_houses` AND the narrowest land of the N ring-1 sectors, `w_min`
     degrees wide, has at the ring's outer edge the arc one avenue needs: (R + BAND / 2) * radians(w_min) >= RING_AVENUE_ARC - EPS. `w_min` None: there is no
     sector (N = 0), only the first condition applies. Pure.
 
     The walk from RING_MIN upward starts where it can: a lap holds at most two lots to each of floor(2 * pi * R) cells, and the sector's arc grows with R, so no radius
     below the least that satisfies either bound satisfies both. The answer is the one the walk from RING_MIN gives; a `max` of thousands is not a loop of thousands."""
     if w_min is not None and not (isinstance(w_min, (int, float)) and not isinstance(w_min, bool) and w_min > 0 and math.isfinite(w_min)):
-        raise ValueError(f"the narrowest sector must be a number of degrees above 0, got {w_min!r}")
+        raise ValueError(f"the narrowest land must be a number of degrees above 0, got {w_min!r}")
     cells = math.ceil(max_houses / 2)  # two lots to a cell: at least this many cells are needed, so 2 * pi * R + EPS >= cells
     k = max(0, math.ceil((cells - EPS) / (2 * math.pi) - RING_MIN) - 1)
     if w_min is not None:
@@ -192,7 +209,12 @@ def ring_road_record(k: int, radius: float) -> dict:
 
 def sectors_units(ring: dict) -> tuple[tuple[int, int], ...]:
     """The sectors that a plan names outright in `params.ring.sectors` (wedges [lo, hi] in degrees, as the plan writes a wedge), in whole units of 1/100 degree, sorted."""
-    return tuple(sorted((round(lo * lay.UNIT), round(hi * lay.UNIT)) for lo, hi in ring["sectors"]))
+    return tuple(sorted(sectors_in_order(ring)))
+
+
+def sectors_in_order(ring: dict) -> tuple[tuple[int, int], ...]:
+    """The same sectors in the order of the direction numbers (the order of `params.ring.axes`), in whole units of 1/100 degree."""
+    return tuple((round(lo * lay.UNIT), round(hi * lay.UNIT)) for lo, hi in ring["sectors"])
 
 
 def axes_units(ring: dict) -> tuple[int, ...]:
@@ -202,7 +224,7 @@ def axes_units(ring: dict) -> tuple[int, ...]:
 
 def check_ring(ring: object, districts: dict, gates: tuple[float, ...], w_min: float | None = None) -> None:
     """ValueError unless `params.ring` is a ring the engine can build: a non-empty label, a lane radius of RING_MIN or more, a lap 1 (gates G1) that holds
-    `districts.max` houses, and (`w_min`, the narrowest ring-1 sector in degrees; None: no sector) an arc of that sector at the ring's outer edge of at least
+    `districts.max` houses, and (`w_min`, the narrowest land of the ring-1 sectors in degrees; None: no sector) an arc of that land at the ring's outer edge of at least
     RING_AVENUE_ARC (with the EPS of `ring_radius_for`). A radius larger than the formula gives is allowed: the plan is the authority."""
     if not isinstance(ring, dict):
         raise ValueError("params.ring must be an object {label, radius}")
@@ -224,5 +246,5 @@ def check_ring(ring: object, districts: dict, gates: tuple[float, ...], w_min: f
     if ring_capacity(radius, gates) < districts["max"]:
         raise ValueError(f"params.ring.radius {radius} gives a lap that holds {ring_capacity(radius, gates)} houses, fewer than districts.max = {districts['max']}")
     if w_min is not None and ring_sector_arc(radius, w_min) < RING_AVENUE_ARC - EPS:
-        raise ValueError(f"params.ring.radius {radius} gives the narrowest sector ({w_min} degrees) an arc of {ring_sector_arc(radius, w_min):.3f} at the ring's outer "
+        raise ValueError(f"params.ring.radius {radius} gives the narrowest land ({w_min} degrees) an arc of {ring_sector_arc(radius, w_min):.3f} at the ring's outer "
                          f"edge, less than the {RING_AVENUE_ARC} one avenue needs")

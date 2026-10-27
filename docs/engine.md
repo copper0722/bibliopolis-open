@@ -67,11 +67,11 @@ above it (its *carrier*).
 
 **The ring.** `params.ring` = `{label, radius}`: the name of the ring road (`Knowledge`) and the lane radius `R` of its first lap. `R` is the least `8.5 + k`
 (a whole `k >= 0`, 8.5 being the plaza radius, one bare cell and half a band) such that two things hold: the first lap holds `max` houses between its gates, and
-the narrowest of the `N` ring-1 sectors, `w` degrees wide, has at the ring's outer edge an arc of at least 3 cells, `(R + 1.5) * radians(w) >= 3`: one avenue's spoke
+the narrowest land of the `N` ring-1 sectors (a grown city: the whole wedge of a trunk, its spoke being its middle), `w` degrees wide, has at the ring's outer edge an arc of at least 3 cells, `(R + 1.5) * radians(w) >= 3`: one avenue's spoke
 lane and a lot on each side. The gates are the axes of the ring-1 trunks: see "The ring road" below. A plan may pin a larger radius; a smaller one is refused when the
 plan is read. A plan for a world built by hand ([world.md](world.md)) has no trunk at first, since the avenues open one at a time; it adds `sectors` (the `N` wedges `[lo, hi]` in degrees,
 the sector of each direction) and `axes` (the bearing of each spoke, inside its sector, which need not be the middle of it): the gates are then the axes of all `N` directions from day
-one, and `w` is the narrowest of the sectors.
+one, and `w` is the narrowest of the lands: twice the narrower side of a spoke inside its sector (`ring.land_of`).
 
 ## The world: grow
 

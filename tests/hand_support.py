@@ -418,8 +418,8 @@ def hand_problems(state: State, *, coast: bool = False) -> list:
         bad.append((ROOT, f"the plan does not hold the sectors and the spoke axes of the table of {n} directions"))
     if gates != sorted(set(gates)) or len(gates) != n:
         bad.append((ROOT, "the gates are not as many as the directions, or not distinct"))
-    if ring["ring"]["gaps"] != gates or ring["ring"]["radius"] != plan_ring["radius"] or plan_ring["radius"] != radius_for(
-            gates, state.rule["max"], min(hi - lo for lo, hi, _ in table) / 100):
+    land = min(2 * min(axis - lo, hi - axis) for lo, hi, axis in table) / 100  # the narrowest LAND: an avenue builds within the narrower side of its spoke
+    if ring["ring"]["gaps"] != gates or ring["ring"]["radius"] != plan_ring["radius"] or plan_ring["radius"] != radius_for(gates, state.rule["max"], land):
         bad.append((ROOT, "the ring road is not the one the rule asks for: its gates are the spoke axes of all the directions and its radius R(N) for the rule"))
     if ring["ring"]["slots"] != capacity(ring["ring"]["radius"], gates):
         bad.append((ROOT, "the ring road holds another number of houses than its cells say"))

@@ -170,8 +170,10 @@ class PlanView:
         return self._sectors
 
     def sector_min(self) -> float | None:
-        """w_min: the width of the narrowest sector in degrees; None when the plan has no sector (N = 0)."""
-        return ring_mod.sector_min(self.sectors())
+        """w_min: the width in degrees of the narrowest LAND of the ring-1 sectors; None when the plan has no sector (N = 0). An avenue builds in its land: the wedge of a ring-1 trunk of
+        a grown city (its spoke is the middle), and for a plan that names its sectors and spoke axes (a world built by hand) the part of each sector within the narrower side of its
+        spoke (`bibliopolis.ring.land_of`)."""
+        return ring_mod.land_min(self.ring) if "sectors" in self.ring else ring_mod.sector_min(self.sectors())
 
 
 class Overlay:

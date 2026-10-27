@@ -64,10 +64,10 @@ def test_the_sector_table_is_the_table_of_the_program():
 
 def test_the_radii_the_page_gives_are_the_radii_of_the_program():
     page = " ".join(PAGE.split())
-    assert "With a `max` of 40 it is 8.5 for 5 and for 13 branches, 9.5 for 21, 16.5 for 34 and 43.5 for 89 (the narrowest sector is 40.00, 26.26, 16.23, 10.03 and 3.83 degrees)" in page
-    for n, radius, narrowest in ((5, 8.5, 40.0), (13, 8.5, 26.26), (21, 9.5, 16.23), (34, 16.5, 10.03), (89, 43.5, 3.83)):
+    assert "With a `max` of 40 it is 8.5 for 5 and for 13 branches, 12.5 for 21, 21.5 for 34 and 57.5 for 89 (the narrowest land is 40.00, 20.06, 12.38, 7.66 and 2.92 degrees" in page
+    for n, radius, land in ((5, 8.5, 40.0), (13, 8.5, 20.06), (21, 12.5, 12.38), (34, 21.5, 7.66), (89, 57.5, 2.92)):
         assert hand.ring_radius({"max": 40, "branches": n}) == radius
-        assert min(hi - lo for lo, hi, _ in hand.sector_table(n)) / 100 == narrowest
+        assert min(2 * min(axis - lo, hi - axis) for lo, hi, axis in cells_table(n)) / 100 == land  # (the land is found from the independent table)
 
 
 def test_the_tables_of_refusal_ids_are_the_ids_the_params_and_the_messages_of_the_program(tmp_path):

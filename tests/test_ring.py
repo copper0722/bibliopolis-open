@@ -114,7 +114,7 @@ def test_the_numbers_of_six_gates_and_the_ladder_of_the_narrowest_sector():
     exact = math.degrees(ring.RING_AVENUE_ARC / 13.0)  # (11.5 + 1.5) * radians(w) is 3 up to rounding: the bound is `>= 3 - EPS`
     assert ring.ring_radius_for(G6, 40, exact) == 11.5 and ring.ring_radius_for(G6, 40, exact - 1e-6) == 12.5
     for bad in (0, -14.0, float("nan"), float("inf"), True, "14"):
-        with pytest.raises(ValueError, match="narrowest sector"):
+        with pytest.raises(ValueError, match="narrowest land"):
             ring.ring_radius_for(G6, 40, bad)
 
 
@@ -149,7 +149,7 @@ def test_a_radius_too_small_for_the_narrowest_sector_is_refused_and_a_larger_one
     _tree, _items, plan, _doc = world_of(NARROW)
     assert plan["params"]["ring"]["radius"] == 11.5
     plan["params"]["ring"]["radius"] = 10.5  # holds the houses, not an avenue in the narrowest sector: (10.5 + 1.5) * radians(14) = 2.93
-    with pytest.raises(ValueError, match="narrowest sector"):
+    with pytest.raises(ValueError, match="narrowest land"):
         zw.PlanView(plan)
     plan["params"]["ring"]["radius"] = 12.5  # the plan is the authority: a larger radius is a plan
     assert zw.PlanView(plan).ring["radius"] == 12.5 and zw.new_world(plan)["places"][ROOT]["ring"]["radius"] == 12.5

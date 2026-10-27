@@ -28,6 +28,7 @@ from support import capacity, cells_table, gates_of, radius_for, slot_cell
 
 from bibliopolis import hand
 from bibliopolis import layout as lay
+from bibliopolis import world as zw
 from bibliopolis.city import chronicle_lines
 from bibliopolis.events import Problems, Refusal, check_event
 from bibliopolis.journal import Journal, read_world, world_document
@@ -35,7 +36,7 @@ from bibliopolis.journal import Journal, read_world, world_document
 ROOT = "place:root"
 TABLE13 = cells_table(13)
 GATES = sorted({round((axis / 100) % 360, 3) for _, _, axis in TABLE13})  # the 13 spoke axes, stated apart from the engine
-W_MIN = min(hi - lo for lo, hi, _ in TABLE13) / 100  # 26.26
+W_MIN = min(2 * min(axis - lo, hi - axis) for lo, hi, axis in TABLE13) / 100  # 20.06: the narrowest LAND, twice the narrower side of a spoke
 
 
 def houses(first, last):
@@ -70,7 +71,7 @@ def test_the_radius_is_the_one_the_rule_asks_for_stated_apart_from_the_engine():
     assert radius_for(GATES, 40, W_MIN) == 8.5 == hand.ring_radius({"max": 40, "min": 10, "auto": False, "branches": 13})
     for top in (1, 8, 12, 40, 58, 59, 110, 150, 200, 300, 1000):
         assert hand.ring_radius({"max": top, "branches": 13}) == radius_for(GATES, top, W_MIN), top
-    # up to 58 houses the cells decide (8.5: the narrowest sector, 26.26 degrees, has an arc of 4.6 there); beyond it the houses decide
+    # up to 58 houses the cells decide (8.5: the narrowest land, 20.06 degrees, has an arc of 3.5 there); beyond it the houses decide
     assert hand.ring_radius({"max": 58, "branches": 13}) == 8.5 and hand.ring_radius({"max": 59, "branches": 13}) > 8.5
     assert (8.5 + 1.5) * math.radians(W_MIN) >= 3.0
 
@@ -81,26 +82,38 @@ def test_a_world_that_starts_with_a_big_max_or_other_branches_starts_with_a_big_
     assert hand_problems(j.state) == []
     k = Journal({"max": 40, "min": 10, "auto": False, "branches": 34})
     ring = k.state.plan["params"]["ring"]
-    assert len(ring["axes"]) == len(ring["sectors"]) == 34 and ring["radius"] == 16.5 and len(k.state.doc["places"][ROOT]["ring"]["gaps"]) == 34 and hand_problems(k.state) == []
+    assert len(ring["axes"]) == len(ring["sectors"]) == 34 and ring["radius"] == 21.5 and len(k.state.doc["places"][ROOT]["ring"]["gaps"]) == 34 and hand_problems(k.state) == []
 
 
 # ----------------------------------------------------------------- the table of N: widths and radii as reported ----
-@pytest.mark.parametrize("n, narrowest, widest, gap, cell_radius, gap_radius", [
-    (5, 40.00, 40.00, 40.00, 8.5, 8.5),
-    (13, 26.26, 32.47, 20.06, 8.5, 8.5),
-    (21, 16.23, 20.07, 12.38, 9.5, 12.5),
-    (34, 10.03, 12.40, 7.66, 16.5, 21.5),
-    (89, 3.83, 4.74, 2.92, 43.5, 57.5),
+@pytest.mark.parametrize("n, narrowest, widest, land, radius", [
+    (5, 40.00, 40.00, 40.00, 8.5),
+    (13, 26.26, 32.47, 20.06, 8.5),
+    (21, 16.23, 20.07, 12.38, 12.5),
+    (34, 10.03, 12.40, 7.66, 21.5),
+    (89, 3.83, 4.74, 2.92, 57.5),
 ])
-def test_the_widths_of_the_sectors_and_the_radius_for_the_numbers_of_branches_that_were_reported(n, narrowest, widest, gap, cell_radius, gap_radius):
+def test_the_widths_of_the_sectors_and_of_the_land_and_the_radius_for_the_numbers_of_branches_that_were_reported(n, narrowest, widest, land, radius):
     table = cells_table(n)
     widths = [(hi - lo) / 100 for lo, hi, _ in table]
     assert (min(widths), max(widths)) == (narrowest, widest)
-    # the narrowest gap between two bearings is twice the narrow side of the cell that has it
-    assert min(2 * min(axis - lo, hi - axis) for lo, hi, axis in table) / 100 == gap
+    # the land of an avenue is the part of its sector within the narrower side of its spoke: its width is twice that side, and the narrowest land is the narrowest gap between bearings
+    assert min(2 * min(axis - lo, hi - axis) for lo, hi, axis in table) / 100 == land
     gates = sorted({round((axis / 100) % 360, 3) for _, _, axis in table})
-    assert radius_for(gates, 40, narrowest) == hand.ring_radius({"max": 40, "branches": n}) == cell_radius  # the radius of the rule: the narrowest SECTOR
-    assert radius_for(gates, 40, gap) == gap_radius  # ... and what it would be if the narrow side of the narrowest sector were what counted
+    assert radius_for(gates, 40, land) == hand.ring_radius({"max": 40, "branches": n}) == radius  # the radius of the rule: the narrowest LAND must hold the arc of an avenue
+    assert radius_for(gates, 40, narrowest) <= radius  # (the narrowest sector would give a ring too small for the narrow side of its spoke: 8.5, 8.5, 9.5, 16.5, 43.5)
+
+
+def test_a_plan_whose_radius_suits_the_sectors_but_not_the_lands_is_refused():
+    plan = hand.new_plan({"max": 40, "min": 10, "auto": False, "branches": 21})
+    assert plan["params"]["ring"]["radius"] == 12.5
+    plan["params"]["ring"]["radius"] = 9.5  # the narrowest sector (16.23 degrees) has its arc of 3 cells there; the narrowest land (12.38) has 2.4
+    with pytest.raises(ValueError, match="narrowest land"):
+        zw.PlanView(plan)
+    plan["params"]["ring"]["radius"] = 12.5
+    assert zw.PlanView(plan).sector_min() == 12.38
+    plan["params"]["ring"]["radius"] = 13.5  # the plan is the authority: a larger radius is a plan
+    assert zw.PlanView(plan).ring["radius"] == 13.5
 
 
 def test_the_radius_never_falls_when_the_branches_grow():
@@ -325,13 +338,13 @@ def test_raising_the_branches_lays_the_world_out_again_every_bearing_stays_every
     h.rule(30, 5, False, 21)
     state = sound(h)
     assert state.rule["branches"] == 21 and expansion_violations(kept, state) == []
-    assert len(state.plan["params"]["ring"]["axes"]) == 21 and radius_of(state) == hand.ring_radius({"max": 30, "branches": 21}) == 9.5
+    assert len(state.plan["params"]["ring"]["axes"]) == 21 and radius_of(state) == hand.ring_radius({"max": 30, "branches": 21}) == 12.5
     rows = {r["place"]: r for r in state.city()["composition"]["ring1"]}
     for key, (lo, hi, axis) in zip(("a", "b"), (cells_table(21)[0], cells_table(21)[1])):
         assert (rows[f"place:tag:{key}"]["from"], rows[f"place:tag:{key}"]["to"], rows[f"place:tag:{key}"]["axis"]) == (lo / 100, hi / 100, axis / 100)
     first, second = state.city()["world"]["chronicle"][-2:]
-    assert first["rule"]["branches"] == 21 and (second["resized"], second["was_branches"], second["branches"], second["was_radius"], second["radius"]) == (ROOT, 13, 21, 8.5, 9.5)
-    assert chronicle_lines(state.city())[-1].split(": ", 1)[1] == f"the ring road Knowledge grows from radius 8.5 to 9.5 as the branches go from 13 to 21; {len(state.items)} houses are put again, in the order they stood."
+    assert first["rule"]["branches"] == 21 and (second["resized"], second["was_branches"], second["branches"], second["was_radius"], second["radius"]) == (ROOT, 13, 21, 8.5, 12.5)
+    assert chronicle_lines(state.city())[-1].split(": ", 1)[1] == f"the ring road Knowledge grows from radius 8.5 to 12.5 as the branches go from 13 to 21; {len(state.items)} houses are put again, in the order they stood."
 
 
 def test_raising_the_branches_without_a_new_radius_still_lays_the_world_out_again_for_the_gates_are_more():
