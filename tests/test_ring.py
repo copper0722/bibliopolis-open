@@ -18,10 +18,10 @@ import random
 import checks
 import pytest
 from support import (ROOT, T, Town, art, by_tag, capacity, fill_order_of, first_free, gates_of, land_waste, laps_of, make_tree, on_ring, radius_for, ring_root_problems,
-                     simulate_districts, slot_cell, tag_street, world_of)
+                     simulate_districts, slot_cell, tag_street, walk_radius_for, world_of)
 
 import bibliopolis
-from bibliopolis import document
+from bibliopolis import document, hand
 from bibliopolis import layout as lay
 from bibliopolis import plan as plan_mod
 from bibliopolis import ring
@@ -119,6 +119,63 @@ def test_the_numbers_of_six_gates_and_the_ladder_of_the_narrowest_sector():
     for bad in (0, -14.0, float("nan"), float("inf"), True, "14"):
         with pytest.raises(ValueError, match="narrowest land"):
             ring.ring_radius_for(G6, 40, bad)
+
+
+def hand_gates(n):
+    """The gates and the narrowest land of the `n` directions of a world built by hand, as `hand.ring_radius` takes them to the radius."""
+    table = hand.sector_table(n)
+    return ring.axis_gates([axis for _, _, axis in table]), ring.sector_min([hand.land_of(lo, hi, axis) for lo, hi, axis in table])
+
+
+def random_gates(seed):
+    """A set of gates for a plan: 2 to 30 bearings to a thousandth of a degree, with some at north, some just before it and some a hundredth of a degree apart."""
+    rng = random.Random(seed)
+    out = {round(rng.uniform(0, 360), 3) for _ in range(rng.randrange(2, 31))}
+    return tuple(sorted(out | {0.0, 359.999, 0.004, 90.0, 90.005} if seed % 2 else out))
+
+
+@pytest.mark.parametrize("gates", [G6, (), (0.0,), (359.999,), (0.0, 0.004, 359.998), (180.0, 180.01), *(random_gates(seed) for seed in range(8)),
+                                   *(hand_gates(n)[0] for n in (5, 13, 34, 89))], ids=lambda g: f"{len(g)}gates")
+def test_a_lap_never_holds_fewer_houses_at_a_larger_radius(gates):
+    """The premise of the bisection: the cells of a lap are the stretches of the lane between the blocked intervals of the gates, and every stretch grows with the radius."""
+    held = [ring.ring_capacity(ring.RING_MIN + k, gates) for k in range(0, 70)]
+    assert held == sorted(held) and held[-1] > held[0]
+
+
+@pytest.mark.parametrize("n", [1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 200])
+def test_the_bisection_gives_the_radius_the_walk_gives_for_every_max_of_a_grid(n):
+    gates, w_min = hand_gates(n)
+    grid = [*range(1, 121), 150, 199, 200, 250, 333, 500, 1000, 2000, *([5000, 10000] if n <= 55 else [])]
+    got = {m: ring.ring_radius_for(gates, m, w_min) for m in grid}
+    assert {m: r for m, r in got.items() if r != walk_radius_for(gates, m, w_min)} == {}
+    assert [got[m] for m in grid] == sorted(got[m] for m in grid)  # (a larger max never asks for a smaller ring)
+    assert all(hand.ring_radius({"max": m, "branches": n}) == got[m] for m in (1, 40, 41, 120, 2000))  # (the radius of a world built by hand goes through the same function)
+
+
+@pytest.mark.parametrize("seed", range(8))
+def test_the_bisection_gives_the_radius_the_walk_gives_for_the_gates_and_the_sector_of_a_plan(seed):
+    gates = random_gates(seed)
+    for w_min in (None, 180.0, 14.0, 5.0, 1.7):
+        for want in (1, 39, 40, 41, 90, 91, 122, 123, 400, 1000):
+            assert ring.ring_radius_for(gates, want, w_min) == walk_radius_for(gates, want, w_min), (seed, w_min, want)
+
+
+def test_the_bisection_gives_the_radius_the_independent_walk_gives():
+    for n in (1, 5, 13, 21):
+        gates, w_min = hand_gates(n)
+        for want in (1, 2, 40, 41, 58, 59, 60, 123, 400):
+            assert ring.ring_radius_for(gates, want, w_min) == radius_for(gates, want, w_min), (n, want)  # (from 8.5 upward, with the cells re-derived apart from the engine)
+
+
+def test_the_search_for_the_radius_tries_a_few_laps_where_the_walk_tries_one_for_every_radius(monkeypatch):
+    gates, w_min = hand_gates(200)  # 200 directions: the gates block 400 cells of the lane, so the lower bound that 2000 houses give is 47 radii short of the answer
+    real, tried = ring.ring_capacity, []
+    monkeypatch.setattr(ring, "ring_capacity", lambda radius, g: tried.append(radius) or real(radius, g))
+    walked = walk_radius_for(gates, 2000, w_min)
+    steps, tried[:] = len(tried), []
+    assert ring.ring_radius_for(gates, 2000, w_min) == walked == 205.5 and steps == 48
+    assert len(tried) <= 2 * math.ceil(math.log2(steps)) + 2 and len(tried) < steps / 2  # a doubling step and a halving span: the logarithm of the walk
+    assert len(set(tried)) == len(tried)  # no lap is tried twice
 
 
 @pytest.mark.parametrize("edit, text", [

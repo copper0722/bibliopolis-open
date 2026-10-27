@@ -43,11 +43,7 @@ split as they grow).
   the branches and the merges at every level, undo, the suggestions, the world file and the SQLite store; its tests pin the sha256 of a scripted world and of the sample cities). `picture` is a
   rewrite of the private SVG renderer (the plan view of a layout v4 document), not an extraction, and it is not under parity either; the pictures of the
   README are made here, from the sample. A change to any of these says so in its commit.
+- `ring.ring_radius_for` differs from the private engine's in method, not in answer: it bisects from a lower bound where the private function walks up from 8.5. The walk of v0.2.0, which
+  also starts at the lower bound, is kept in `tests/support.py` as `walk_radius_for`, and `tests/test_ring.py` compares it with the bisection.
 - No third-party code or data is copied in. Two textbook algorithms (largest-remainder apportionment, Douglas-Peucker simplification) are
   implemented here, and the sample is generated from invented word lists.
-
-## Open for v0.2.1
-
-- `ring_radius_for` (`hand.ring_radius` of a world built by hand) walks one radius at a time from the lower bound that the houses give, and every step costs the cells of the lap times its gates:
-  N = 500 branches with a `max` of 10000 takes about 20 seconds, N = 89 about one. The capacity of a lap and the arc term are both monotone in the radius, so a bisection between the lower bound and the
-  first radius that holds gives the same answer. The function is copied number for number from the private engine, so it moves with it.

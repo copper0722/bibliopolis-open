@@ -72,6 +72,9 @@ lane and a lot on each side. The gates are the axes of the ring-1 trunks: see "T
 plan is read. A plan for a world built by hand ([world.md](world.md)) has no trunk at first, since the avenues open one at a time; it adds `sectors` (the `N` wedges `[lo, hi]` in degrees,
 the sector of each direction) and `axes` (the bearing of each spoke, inside its sector, which need not be the middle of it): the gates are then the axes of all `N` directions from day
 one, and `w` is the narrowest of the lands: twice the narrower side of a spoke inside its sector (`ring.land_of`).
+Each condition, once met at some radius, is met at every larger one (the arc rises with the radius, and a lap never holds fewer houses at the next radius), so the least `k` is found by a bisection: from the lower
+bound that the houses and the sector give, the step doubles until a radius holds, and the span between that radius and the last that fails is halved. It gives the radius that a walk upward from 8.5
+gives (`tests/test_ring.py` compares them), in a few laps and not one for every radius.
 
 ## The world: grow
 
@@ -187,7 +190,8 @@ them again and compares them with the committed files byte for byte.
   address is the root stands on the ring road. The sector stays empty. (The engine of the private project this one was extracted from does the same.)
 - **Time.** The work per house is small, except on the ring road and on a road that stays over: each arrival there looks at all the houses of the road.
   9,000 houses that all stay on the ring road (1,000 topics of 9) take about 12 seconds; a library whose topics open roads takes a fraction of a second
-  per 1,000 items.
+  per 1,000 items. The radius of the ring road of a world with 500 directions and a `max` of 10000 takes about 2 seconds (14 laps are tried; a walk up from the lower bound
+  tried 119 and took about 19).
 - **Depth.** A tree deeper than 64 levels is refused.
 - **Words in the document.** The label of the plaza (`市政廳`, the town hall) and the road classes (`大道`, `路`, `巷`, `弄`) are zh-TW names that a viewer reads
   as constants; `format.md` gives their meaning. (The ring road is named `Knowledge`, a name of the plan.)

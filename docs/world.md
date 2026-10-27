@@ -445,13 +445,14 @@ The TypeScript engine must give the same bytes as this one. What is easy to get 
   sector, the widths in whole tenths of a degree rounded half up (`(span + 5) // 10` for a span in units of 1/100 degree, so 26.26 and 26.27 are both 263 and 32.46 and 32.47 both 325); an
   avenue that moves below a road, and the members of a merge, give their numbers up.
 - **The ring and its radius.** The gates are the spoke axes `r3((axis / 100) % 360)` of the N directions; the cells and slots are those of [engine.md](engine.md), "The ring road". The radius is
-  `8.5 + k` for the least whole `k` with `capacity(R) >= max` and `(R + 1.5) * radians(w) >= 3 - 1e-9` (`w` the narrowest land in degrees: twice `min(axis - lo, hi - axis)` of the direction with the least); the walk may start at the lower bound the houses give. The
+  `8.5 + k` for the least whole `k` with `capacity(R) >= max` and `(R + 1.5) * radians(w) >= 3 - 1e-9` (`w` the narrowest land in degrees: twice `min(axis - lo, hi - axis)` of the direction with the least). Each condition, once met at some radius, is met at every larger one (the arc rises with the radius, and a lap never holds
+  fewer houses at the next radius), so a port may walk up from the lower bound that the houses and the sector give, or bisect: the engine doubles a step from that bound until a radius holds and halves the span, and gives the radius the walk gives. The
   slots of a lap fill in the order of the scaled radical inverse of [engine.md](engine.md), "Fill order" (`bibliopolis.ring.ring_fill_order`): a house takes the first free slot of it. A
   new radius or a new `branches` lays the world out again in the order along the streets (above), the houses of the ring by rank onto the first slots of the new fill orders: the same log must give the same houses on the same lots in every engine.
 - **Road ids.** The engine names a new road `road:<place>`, and when that is in use `road:<place>@1`, `@2`, and so on: the first that is not in use now. When an avenue gives up its direction
   (merged, or moved below a road) its line, its spoke, its arcs and the roads of the ribs on it are taken away, so those ids are free again and the next road of that name takes them. The
   layout document carries the road ids, so a port must reuse them in the same way.
-- **Ribs.** The first rib of a road is `district_rib_size(n, max) = min(max, even(n + max(4, ceil(n / 2))))` lots, `n` the houses the road holds with the batch that is being put on it. A continuation
+- **Ribs.** The first rib of a road is `district_rib_size(n, max) = min(max, even(n + max(4, ceil(n / 2))))` lots, `n` the houses the road holds with the batch that is being put on it (the houses on it and the one that comes, when there is no batch). A continuation
   rib has `min(max, max(district_road_need(n, max) - held, 1))` lots, `held` the lots of the ribs the road has, and `district_road_need(n, max) = even(n + max(4, ceil(n / 2)))`, capped at `max`
   only while `n <= max` ([engine.md](engine.md), "The world: grow", item 8). `even(x)` is `x` rounded up to an even number.
 - **Depth.** Ring 64 is the last: an `open_road`, `move_road` or `merge_roads` that would put a road in ring 65 is refused with the id `too_deep`, before anything changes. A port must not

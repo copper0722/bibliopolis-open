@@ -157,17 +157,38 @@ def ring_radius_for(gates: tuple[float, ...] | list[float], max_houses: int, w_m
     degrees wide, has at the ring's outer edge the arc one avenue needs: (R + BAND / 2) * radians(w_min) >= RING_AVENUE_ARC - EPS. `w_min` None: there is no
     sector (N = 0), only the first condition applies. Pure.
 
-    The walk from RING_MIN upward starts where it can: a lap holds at most two lots to each of floor(2 * pi * R) cells, and the sector's arc grows with R, so no radius
-    below the least that satisfies either bound satisfies both. The answer is the one the walk from RING_MIN gives; a `max` of thousands is not a loop of thousands."""
+    Each condition, once met at some radius, is met at every larger one. The arc of the sector rises with the radius. A lap holds two lots to each cell, and its cells are
+    the stretches of the lane between the blocked intervals of the gates (the first stretch runs from the start of the lane to the first of them, the last from the last of
+    them to the end), floor(length) cells to a stretch; the length of a stretch is R times the angle it spans less the width of what is blocked, so it rises with R, and a lap
+    never holds fewer houses at the next radius. So the least k is found by a bisection, and it is the one that a walk upward from RING_MIN gives (`tests/test_ring.py`
+    compares them).
+
+    The search starts where it can: a lap holds at most two lots to each of floor(2 * pi * R) cells, and the sector's arc is known, so no radius below the least that satisfies
+    either bound satisfies both. From there the step doubles until a radius holds, and the span between the last radius that fails and that one is halved. A walk costs a
+    lap for each radius between them (500 directions and a `max` of 10000: 119 laps of about 5,000 cells against 14)."""
     if w_min is not None and not (isinstance(w_min, (int, float)) and not isinstance(w_min, bool) and w_min > 0 and math.isfinite(w_min)):
         raise ValueError(f"the narrowest land must be a number of degrees above 0, got {w_min!r}")
     cells = math.ceil(max_houses / 2)  # two lots to a cell: at least this many cells are needed, so 2 * pi * R + EPS >= cells
     k = max(0, math.ceil((cells - EPS) / (2 * math.pi) - RING_MIN) - 1)
     if w_min is not None:
         k = max(k, math.ceil((RING_AVENUE_ARC - EPS) / math.radians(w_min) - lay.BAND / 2 - RING_MIN) - 1)
-    while not ((w_min is None or ring_sector_arc(RING_MIN + k, w_min) >= RING_AVENUE_ARC - EPS) and ring_capacity(RING_MIN + k, gates) >= max_houses):
-        k += 1
-    return RING_MIN + k
+
+    def holds(j: int) -> bool:
+        return (w_min is None or ring_sector_arc(RING_MIN + j, w_min) >= RING_AVENUE_ARC - EPS) and ring_capacity(RING_MIN + j, gates) >= max_houses
+
+    if holds(k):
+        return RING_MIN + k
+    low, step = k, 1  # low: a k that does not hold, and nor does any below it
+    while not holds(low + step):
+        low, step = low + step, step * 2
+    high = low + step  # high: a k that holds, and so does any above it
+    while high - low > 1:
+        mid = (low + high) // 2
+        if holds(mid):
+            high = mid
+        else:
+            low = mid
+    return RING_MIN + high
 
 
 @functools.cache

@@ -17,6 +17,7 @@ import checks
 from bibliopolis import coast
 from bibliopolis import layout as lay
 from bibliopolis import plan as plan_mod
+from bibliopolis import ring
 from bibliopolis import world as zw
 from bibliopolis.document import world_layout
 from bibliopolis.tree import TreeView
@@ -226,6 +227,18 @@ def radius_for(gates, max_houses, w_min=None):
     while not (capacity(8.5 + k, gates) >= max_houses and (w_min is None or (8.5 + k + 1.5) * math.radians(w_min) >= 3.0 - 1e-9)):
         k += 1
     return 8.5 + k
+
+
+def walk_radius_for(gates, max_houses, w_min=None):
+    """The radius as v0.2.0 found it, kept as the oracle of the bisection that `ring.ring_radius_for` is now: the walk upward, one whole step at a time, from the lower
+    bound that the houses and the sector give (no radius below it holds either condition), each step a lap of the engine's cells."""
+    k = max(0, math.ceil((math.ceil(max_houses / 2) - ring.EPS) / (2 * math.pi) - ring.RING_MIN) - 1)
+    if w_min is not None:
+        k = max(k, math.ceil((ring.RING_AVENUE_ARC - ring.EPS) / math.radians(w_min) - lay.BAND / 2 - ring.RING_MIN) - 1)
+    while not ((w_min is None or ring.ring_sector_arc(ring.RING_MIN + k, w_min) >= ring.RING_AVENUE_ARC - ring.EPS)
+               and ring.ring_capacity(ring.RING_MIN + k, gates) >= max_houses):
+        k += 1
+    return ring.RING_MIN + k
 
 
 def sea_with_tuple_stack(land, size, order=None):
