@@ -13,6 +13,7 @@ from support import T, make_tree
 from bibliopolis import cut
 from bibliopolis import layout as lay
 from bibliopolis import plan as plan_mod
+from bibliopolis.events import RULE_LIMIT
 from bibliopolis.tree import TreeView
 
 
@@ -23,6 +24,25 @@ def plan_of(spec, **kw):
 
 def weight(n):
     return lay.rib_slots(n)
+
+
+@pytest.mark.parametrize("mode", [plan_mod.GROW, plan_mod.MIRROR])
+@pytest.mark.parametrize("huge", [10**400, 10**5000, RULE_LIMIT + 1], ids=["10**400", "10**5000", "RULE_LIMIT+1"])
+def test_a_rule_beyond_the_range_of_the_rule_is_refused_before_the_radius_of_the_ring_is_computed(mode, huge):
+    """`max_houses` as large as a Python integer goes used to reach the radius of the ring road and raise an OverflowError (10**400); the range of the rule is the range of a world built
+    by hand: 1 <= min <= max <= RULE_LIMIT, whole numbers."""
+    for kwargs in ({"max_houses": huge}, {"min_houses": huge, "max_houses": huge}):
+        with pytest.raises(ValueError, match=r"1 <= min <= max <= " + str(RULE_LIMIT)):
+            plan_mod.build_plan(TreeView({"nodes": []}), [], mode=mode, **kwargs)
+    with pytest.raises(ValueError, match="an integer of about") if huge > 10**18 else pytest.raises(ValueError):  # (the message never needs the repr of a number of thousands of digits)
+        plan_mod.build_plan(TreeView({"nodes": []}), [], mode=mode, max_houses=huge)
+
+
+def test_the_largest_rule_of_the_range_builds_a_plan_and_the_next_does_not():
+    plan = plan_mod.build_plan(TreeView({"nodes": []}), [], max_houses=RULE_LIMIT, min_houses=RULE_LIMIT)
+    assert plan["params"]["districts"]["max"] == RULE_LIMIT and plan["params"]["ring"]["radius"] > 8.5
+    with pytest.raises(ValueError):
+        plan_mod.build_plan(TreeView({"nodes": []}), [], max_houses=RULE_LIMIT + 1)
 
 
 def test_the_circle_is_shared_in_proportion_to_weight_centred_on_north():

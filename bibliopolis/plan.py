@@ -29,6 +29,7 @@ from types import SimpleNamespace
 from . import cut
 from . import layout as lay
 from . import ring as ring_mod
+from .inputs import _shown
 from .tree import TreeView
 
 ZONING_VERSION = "districts-1"
@@ -37,14 +38,17 @@ GROW, MIRROR = "grow", "mirror"
 MODES = (GROW, MIRROR)  # the modes `build` knows
 HAND = "hand"  # the mode of a world built by hand (bibliopolis.hand): no library to plan from, so it is not one of the modes of `build`
 MAX_HOUSES, MIN_HOUSES = 40, 10  # a road holds 10 to 40 houses
+RULE_LIMIT = 100_000  # the largest `max` (and `min`) of a rule, in a grown city as in a world built by hand: far beyond any road, and a number that every language writes the same
 DISTRICT_EXTRACT, DISTRICT_COUNT = "largest", "direct"  # the only rules the engine knows: the largest group is opened, the houses on the road itself are counted
 
 
 def check_districts(districts: dict) -> None:
-    """ValueError unless `params.districts` is a rule the engine implements: whole numbers 1 <= min <= max, and the two named rules."""
+    """ValueError unless `params.districts` is a rule the engine implements: whole numbers 1 <= min <= max <= RULE_LIMIT, and the two named rules. The range is the range of a world
+    built by hand, and it is checked before anything is computed from `max` (the radius of the ring road is a float of it): a number of four hundred digits is refused here, not
+    by an OverflowError on the way."""
     mx, mn = districts.get("max"), districts.get("min")
-    if not (isinstance(mx, int) and isinstance(mn, int) and not isinstance(mx, bool) and not isinstance(mn, bool) and 1 <= mn <= mx):
-        raise ValueError(f"the district rule needs whole numbers 1 <= min <= max, got max={mx!r} min={mn!r}")
+    if not (isinstance(mx, int) and isinstance(mn, int) and not isinstance(mx, bool) and not isinstance(mn, bool) and 1 <= mn <= mx <= RULE_LIMIT):
+        raise ValueError(f"the district rule needs whole numbers 1 <= min <= max <= {RULE_LIMIT}, got max={_shown(mx)} min={_shown(mn)}")
     if districts.get("extract") != DISTRICT_EXTRACT or districts.get("count") != DISTRICT_COUNT:
         raise ValueError(f"the district rule knows extract={DISTRICT_EXTRACT!r} and count={DISTRICT_COUNT!r} only")
 

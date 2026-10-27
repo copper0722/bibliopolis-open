@@ -63,7 +63,7 @@ on the lighter side (the left on a tie), the heaviest outermost. A side wedge is
 wedge of a trunk is too narrow for them, both minimums are scaled down together by the same factor. Every other street hangs on the bands of the nearest trunk
 above it (its *carrier*).
 
-**The rule.** `max` (40) and `min` (10), two whole numbers with `1 <= min <= max`.
+**The rule.** `max` (40) and `min` (10), two whole numbers with `1 <= min <= max <= 100000` (the range of a world built by hand too: a larger number is refused before the radius of the ring road is computed).
 
 **The ring.** `params.ring` = `{label, radius}`: the name of the ring road (`Knowledge`) and the lane radius `R` of its first lap. `R` is the least `8.5 + k`
 (a whole `k >= 0`, 8.5 being the plaza radius, one bare cell and half a band) such that two things hold: the first lap holds `max` houses between its gates, and

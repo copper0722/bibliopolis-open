@@ -31,7 +31,7 @@ that a page can translate it into any language without reading the English text.
 from __future__ import annotations
 
 from .inputs import _CONTROL, _LANE_LIKE, MAX_DEPTH, MAX_PROBLEMS, _Problems, _shown, _whole, parse_added_at
-from .plan import MAX_HOUSES, MIN_HOUSES
+from .plan import MAX_HOUSES, MIN_HOUSES, RULE_LIMIT
 
 KINDS = ("add_item", "open_road", "file", "rename_road", "move_road", "merge_roads", "undo", "set_rule")
 ORDER = ("domain", "field", "subfield", "topic")  # the four levels of an OpenAlex topic, the widest first (the order the keys are written in)
@@ -41,7 +41,6 @@ RULE_KEYS = ("max", "min", "auto", "branches")
 START_OPTIONAL = ("branches",)  # a rule a world starts with may leave these out: they are the defaults (a `set_rule` event carries every key)
 BRANCHES_DEFAULT = 13
 DEFAULT_RULE = {"max": MAX_HOUSES, "min": MIN_HOUSES, "auto": False, "branches": BRANCHES_DEFAULT}
-RULE_LIMIT = 100_000  # the largest `max`: far beyond any road, and a number that every language writes the same
 BRANCHES_LEAST = 2  # the fewest `branches` a rule has: a full road must be able to merge two of its roads (MERGE_LEAST)
 BRANCHES_LIMIT = 1000  # the most: with that many directions a sector is a third of a degree and the ring road is some five hundred cells round
 AUTO_PREFIX = "auto:"  # the ids of the roads that the rule opens by itself; a player's road id never starts with it
