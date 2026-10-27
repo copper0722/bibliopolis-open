@@ -472,7 +472,8 @@ The TypeScript engine must give the same bytes as this one. What is easy to get 
   `suggest_road` offers nothing below the last ring and `suggest_merge` nothing that would pass it; the rule `auto` leaves such a place crowded.
 - A road for a topic is not split, whatever it holds: the OpenAlex tree has no level below a topic (`crowded` lists it).
 - The roads of a hand-built city are never marked over and nothing splits by itself, except under `auto`; `crowded` is computed on demand.
-- A `set_rule` that lowers `max` or `min` changes nothing in the world; it changes what `crowded` lists and what `open_road` takes.
+- A `set_rule` that lowers `min`, or a `max` that gives the ring road the radius it has, changes nothing in the world; it changes what `crowded` lists and what `open_road` takes. A `max` that the first
+  lap no longer needs gives the ring road a smaller radius (`max` 200 to 40 with 13 branches: 19.5 to 8.5), and the whole world is laid out again ("A new radius", above).
 
 ## Where the tests are
 

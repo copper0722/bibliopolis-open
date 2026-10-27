@@ -352,6 +352,23 @@ def test_a_rule_that_keeps_the_radius_changes_nothing_but_the_rule():
     assert not [e for e in h.state.city()["world"]["chronicle"] if "resized" in e]
 
 
+def test_a_lower_max_or_min_changes_nothing_in_the_world_unless_the_first_lap_needs_less_room_and_the_ring_road_gets_a_smaller_radius():
+    h = scene({"max": 200, "min": 5, "auto": False})  # 200 houses between the 13 gates: a radius of 19.5
+    assert radius_of(h.state) == radius_for(GATES, 200, W_MIN) == 19.5 and hand.ring_radius({"max": 196, "branches": 13}) == 19.5 > hand.ring_radius({"max": 190, "branches": 13})
+    before, kept = lot_snapshot(h.state), ring_snapshot(h.state)
+    for max_, min_ in ((200, 3), (196, 3)):  # a lower min; a lower max that the same radius holds
+        h.rule(max_, min_)
+        assert sound(h) and radius_of(h.state) == 19.5 and lot_snapshot(h.state) == before
+    assert not [e for e in h.state.city()["world"]["chronicle"] if "resized" in e]
+    h.rule(40, 3)  # a max that the first lap no longer needs: the sectors alone ask for 8.5
+    state = sound(h)
+    assert radius_of(state) == radius_for(GATES, 40, W_MIN) == 8.5 and expansion_violations(kept, state) == []
+    laid = state.city()["world"]["chronicle"][-1]
+    assert (laid["trigger"], laid["resized"], laid["was_radius"], laid["radius"]) == ("set_rule", ROOT, 19.5, 8.5)
+    lots = lot_snapshot(state)
+    assert all(lots[x] != before[x] for x in lots if state.road_of[x] in (None, "a", "b"))  # the ring and the avenues stand elsewhere: the whole world is laid out again
+
+
 def test_undoing_a_resize_gives_the_world_back_as_it_was():
     h = scene()
     h.rule(200, 5)
