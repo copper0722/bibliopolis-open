@@ -9,6 +9,7 @@ import math
 import random
 from collections import Counter
 from datetime import datetime, timedelta, timezone
+from fractions import Fraction
 from pathlib import Path
 
 import checks
@@ -180,6 +181,41 @@ def cells_table(n):
 def capacity(radius, gates):
     """What a lap holds, from the independent cells of tests/checks.py."""
     return 2 * len(checks.free_cells(radius, gates))
+
+
+def radical_inverse(j):
+    """The radical inverse of j in base 2 as an exact fraction: the binary digits of j read backwards after the point (j = 6 = 110 gives 0.011 = 3/8)."""
+    x, scale = Fraction(0), Fraction(1, 2)
+    while j:
+        if j & 1:
+            x += scale
+        j >>= 1
+        scale /= 2
+    return x
+
+
+def fill_order_of(slots):
+    """The order in which the slots of a lap fill, stated apart from the engine (docs/engine.md, "The ring road"): the slots listed by angle from north, clockwise (inner row first in a
+    cell) are numbered 0 .. slots - 1, and the j-th point of the van der Corput sequence, `radical_inverse(j)` in [0, 1), falls in the slot floor(point * slots); the order is the order
+    in which the slots are first hit, j = 0, 1, 2, ... (exact fractions; the engine reverses the bits of j below 2**m and scales by integers)."""
+    seen, out, j = set(), [], 0
+    while len(out) < slots:
+        slot = math.floor(radical_inverse(j) * slots)
+        if slot not in seen:
+            seen.add(slot)
+            out.append(slot)
+        j += 1
+    return out
+
+
+def first_free(laps, taken):
+    """(lap index from 0, slot) where the next house goes: the first free slot, in fill order, of the lowest lap that has one. `laps` is the number of slots of each lap that stands, `taken`
+    the set of (lap index, slot) that hold a house. (len(laps), 0) when every slot of every lap is taken: a lap opens, and its first slot is 0."""
+    for k, slots in enumerate(laps):
+        for s in fill_order_of(slots):
+            if (k, s) not in taken:
+                return k, s
+    return len(laps), 0
 
 
 def radius_for(gates, max_houses, w_min=None):

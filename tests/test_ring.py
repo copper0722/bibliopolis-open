@@ -8,14 +8,17 @@ The expectations are stated here apart from the engine: the cells of a lap are r
 in each free stretch), the gates from the plan file (the middle of each ring-1 wedge), the walks by hand.
 """
 
+import bisect
 import copy
+import heapq
 import json
 import math
+import random
 
 import checks
 import pytest
-from support import (ROOT, T, Town, art, by_tag, capacity, gates_of, laps_of, make_tree, on_ring, radius_for, ring_root_problems, simulate_districts, slot_cell,
-                     tag_street, world_of)
+from support import (ROOT, T, Town, art, by_tag, capacity, fill_order_of, first_free, gates_of, laps_of, make_tree, on_ring, radius_for, ring_root_problems, simulate_districts,
+                     slot_cell, tag_street, world_of)
 
 import bibliopolis
 from bibliopolis import document
@@ -260,22 +263,26 @@ def test_the_notes_of_a_ring_city_say_ring_and_never_underground():
 
 
 # --------------------------------------------------------------------- houses 1..40 and the split at house 41 ----
-def test_the_first_forty_houses_stand_on_the_ring_from_north_clockwise_inner_and_outer_in_turn():
+def test_the_first_forty_houses_stand_on_the_ring_round_the_whole_circle_in_fill_order():
     t = Town(SPEC_A)
     g = gates_of(t.plan)
     assert g == list(zw.PlanView(t.plan).gates()) and t.plan["params"]["ring"]["radius"] == 8.5
+    fill = fill_order_of(capacity(8.5, g))
     for n, a in enumerate(t.items[:40], start=1):
         t.send([a])
-        lot, slot = t.doc["places"][lay.article_place(a["id"])], n - 1
-        assert (lot["parent"], lot["street"], lot["slot"], lot["order"], lot["seq"]) == (ROOT, ROOT, slot, slot, n)  # arrival order is slot order
+        lot, slot = t.doc["places"][lay.article_place(a["id"])], fill[n - 1]
+        assert (lot["parent"], lot["street"], lot["slot"], lot["order"], lot["seq"]) == (ROOT, ROOT, slot, slot, n)  # the n-th arrival takes the n-th slot in fill order
         (x, z), facing = slot_cell(8.5, g, slot)
         assert (lot["position"]["x"], lot["position"]["z"]) == (round(x, 3), round(z, 3)) and lot["facing"] == pytest.approx(round(facing, 3), abs=2e-3)
         assert math.hypot(lot["position"]["x"], lot["position"]["z"]) == pytest.approx(7.5 if slot % 2 == 0 else 9.5, abs=2e-3)  # inner row 7.5, outer row 9.5
         assert "underground" not in lot and t.doc["chronicle"] == []
     places = t.doc["places"]
-    first, second = (places[lay.article_place(a["id"])] for a in t.items[:2])  # the first two houses share the first cell, north of the ring: one on each row, facing the road
-    assert (first["position"]["x"], first["position"]["z"]) == (0.441, -7.487) and (second["position"]["x"], second["position"]["z"]) == (0.559, -9.484)
-    assert first["facing"] == pytest.approx(math.degrees(0.5 / 8.5), abs=2e-3) and second["facing"] == pytest.approx(math.degrees(0.5 / 8.5) + 180.0, abs=2e-3)
+    first, second, third, fourth = (places[lay.article_place(a["id"])] for a in t.items[:4])
+    assert (first["position"]["x"], first["position"]["z"]) == (0.441, -7.487) and first["facing"] == pytest.approx(math.degrees(0.5 / 8.5), abs=2e-3)  # the first stands at the north
+    cells = len(checks.free_cells(8.5, g))
+    assert cells == 50 and len(fill) == 100 and fill[:4] == [0, 50, 25, 75]  # by hand: the 100 slots at 0, 1/2, 1/4 and 3/4 of the way round
+    assert [p["slot"] for p in (first, second, third, fourth)] == [0, 50, 25, 75]  # the north, half way round, the quarters: spread evenly
+    assert [p["slot"] // 2 for p in (first, second, third, fourth)] == [0, 25, 12, 37] and [p["slot"] % 2 for p in (first, second, third, fourth)] == [0, 0, 1, 1]  # (cells 0, 25, 12, 37; the rows)
     ring_street = places[ROOT]
     assert ring_street["lots"] == 40 and ring_street["reserved"] == 0 and "lanes" not in ring_street and "over" not in ring_street
     assert ring_street["ring"]["slots"] == capacity(8.5, g)
@@ -284,7 +291,7 @@ def test_the_first_forty_houses_stand_on_the_ring_from_north_clockwise_inner_and
     m = shown["composition"]["measure"]
     assert shown["composition"]["articles"] == shown["composition"]["buildings"] == shown["world"]["houses"] == 40 and m["lots"] == m["ring_lots"] == 40
     assert m["max_radius"] == round(max(math.hypot(p["position"]["x"], p["position"]["z"]) for p in on_ring(t.doc)) + 0.71, 1)
-    assert [p["slot"] for p in sorted((q for q in shown["places"].values() if q["kind"] == "lot"), key=lambda q: q["seq"])] == list(range(40))
+    assert [p["slot"] for p in sorted((q for q in shown["places"].values() if q["kind"] == "lot"), key=lambda q: q["seq"])] == fill[:40]
     sound(t)
 
 
@@ -293,7 +300,8 @@ def test_the_41st_house_opens_the_first_road_and_the_houses_that_stay_keep_their
     for a in t.items[:40]:
         t.send([a])
     before = {p["article"]: copy.deepcopy(p) for p in on_ring(t.doc)}
-    assert [before[a["id"]]["slot"] for a in by_tag(t.items, "pub")[:7]] == list(range(33, 40))  # behind the 33 houses of med
+    fill = fill_order_of(capacity(8.5, gates_of(t.plan)))
+    assert [before[a["id"]]["slot"] for a in by_tag(t.items, "pub")[:7]] == fill[33:40]  # behind the 33 houses of med
     res = t.send([t.items[40]])  # the 41st: the eighth house of pub
     (entry,) = t.doc["chronicle"]
     assert (entry["n"], entry["seq"], entry["trigger"], entry["from"], entry["to"], entry["label"]) == (1, 41, "arrival", ROOT, tag_street("med"), "Med")
@@ -305,15 +313,15 @@ def test_the_41st_house_opens_the_first_road_and_the_houses_that_stay_keep_their
     for aid in set(before) - left:  # the survivors keep their exact lot records (slot, position, facing, order, seq)
         assert after[aid] == before[aid]
     new = after[t.items[40]["id"]]
-    assert (new["slot"], new["parent"]) == (0, ROOT)  # the house of the call that stays takes the lowest free slot: a hole the split left
-    assert sorted(p["slot"] for p in after.values()) == [0, *range(33, 40)]
+    assert (new["slot"], new["parent"]) == (fill[0], ROOT) == (0, ROOT)  # the house of the call that stays takes the first free slot in fill order: a hole the split left
+    assert sorted(p["slot"] for p in after.values()) == sorted([fill[0], *fill[33:40]])
     assert t.doc["places"][ROOT]["lots"] == 8 and t.doc["places"][ROOT]["reserved"] == 0
     assert not [p for p in t.doc["places"].values() if p["kind"] == "reserved" and p["parent"] == ROOT]  # a ring lot leaves no empty-lot record
     assert [t.road(a) for a in by_tag(t.items, "pub")[:7]] == [ROOT] * 7 and all(t.road(h) == tag_street("med") for h in left)
     assert res["placements"][t.items[40]["id"]] == new and res["stats"]["splits"] == 1
-    for k, a in enumerate(by_tag(t.items, "pub")[8:11], start=1):  # the next arrivals take the lowest holes, one after the other
+    for k, a in enumerate(by_tag(t.items, "pub")[8:11], start=1):  # the next arrivals take the first holes in fill order, one after the other
         t.send([a])
-        assert (t.doc["places"][lay.article_place(a["id"])]["slot"], t.doc["places"][lay.article_place(a["id"])]["parent"]) == (k, ROOT)
+        assert (t.doc["places"][lay.article_place(a["id"])]["slot"], t.doc["places"][lay.article_place(a["id"])]["parent"]) == (fill[k], ROOT)
     sound(t)
 
 
@@ -422,7 +430,7 @@ def test_a_ring_over_max_with_no_group_to_leave_opens_lap_2_back_to_back_when_no
     assert math.hypot(first["position"]["x"], first["position"]["z"]) == pytest.approx(10.5, abs=2e-3)  # the inner row of lap 2, one cell inside its lane
     t.one_by_one(filler[c1 + 1:], check=False)  # lap 2 fills in turn, lap 1 stays as it was
     assert t.doc["places"]["place:root:lap:2"]["lots"] == 12 and t.doc["places"][ROOT]["lots"] == c1 and len(t.doc["chronicle"]) == 1  # (the ring is over once: one entry)
-    assert [p["slot"] for p in on_ring(t.doc) if p["parent"] == "place:root:lap:2"] == list(range(12))
+    assert [p["slot"] for p in on_ring(t.doc) if p["parent"] == "place:root:lap:2"] == fill_order_of(c2)[:12]  # the same rule on every lap: its first twelve in fill order
     shown = sound(t)  # ring_lots counts every lap; the ring is one street, its laps are continuations
     assert shown["composition"]["measure"]["ring_lots"] == c1 + 12 == shown["composition"]["measure"]["lots"]
     assert shown["composition"]["streets"]["total"] == 1 and shown["composition"]["streets"]["continuations"] == 1 and shown["composition"]["streets"]["ring"] == 2
@@ -513,7 +521,7 @@ def test_a_lap_the_houses_left_stays_in_the_world_and_takes_the_next_houses_befo
     assert shown["composition"]["streets"]["ring"] == 1 and shown["composition"]["streets"]["continuations"] == 0 and t.doc["places"][ROOT]["lots"] == c1
     t.one_by_one(filler[c1:])  # the next houses take lap 2 again: no third lap
     assert laps_of(t.doc) == [ROOT, "place:root:lap:2"] and t.doc["places"]["place:root:lap:2"]["lots"] == 14
-    assert [p["slot"] for p in on_ring(t.doc) if p["parent"] == "place:root:lap:2"] == list(range(14))
+    assert [p["slot"] for p in on_ring(t.doc) if p["parent"] == "place:root:lap:2"] == fill_order_of(t.doc["places"]["place:root:lap:2"]["ring"]["slots"])[:14]
     assert "place:root:lap:2" in t.shown()["places"] and t.shown()["composition"]["streets"]["ring"] == 2
 
 
@@ -535,16 +543,22 @@ def test_laps_open_one_after_the_other_each_beyond_the_one_before_and_only_when_
 def test_the_walk_to_a_ring_house_goes_out_through_the_nearest_gate_and_along_the_lane():
     tree, items, plan, doc = world_of(LAP_SPEC)
     g1, g2 = gates_of(plan), gates_of(plan, sides=True)  # [4.115, 101.83, 262.285] and the side gate 60.745
-    houses = untagged(c := capacity(8.5, g1) + 24)
+    c1, c2 = capacity(8.5, g1), capacity(11.5, g2)
+    houses = untagged(c := c1 + c2)
     doc = zw.apply_delta(doc, zw.assign(plan, TreeView(tree), doc, houses[:2])["delta"])
     walks = lay.lot_door_walks(document.world_layout(doc, with_coast=False))
     # the gate 4.115 cuts the lane from u = 8.5 * radians(4.115) - 0.5 = 0.1105 to 1.1105, so the first cell starts at 1.1105 and its centre is u = 1.6105: one cell along the
-    # lane from the axis of the gate. Slot 0 and slot 1 stand in it: the walk is out to the lane, 8.5, and one cell along it, 1.0, the nearest gate of G1 being that one
+    # lane from the axis of the gate. Slot 0 stands in it: the walk is out to the lane, 8.5, and one cell along it, 1.0, the nearest gate of G1 being that one
     assert checks.free_cells(8.5, g1)[0] == pytest.approx(8.5 * math.radians(4.115) + 1.0)
-    assert walks[houses[0]["id"]] == pytest.approx(8.5 + 1.0, abs=3e-3) and walks[houses[1]["id"]] == pytest.approx(8.5 + 1.0, abs=3e-3)  # inner and outer lot: the same cell
+    assert walks[houses[0]["id"]] == pytest.approx(8.5 + 1.0, abs=3e-3)
+    # the second house takes the slot half a circle round (fill order): its walk is out to the lane and along it to the nearest gate of G1, found from the independent cells
+    second = fill_order_of(c1)[1]
+    theta = math.degrees(checks.free_cells(8.5, g1)[second // 2] / 8.5)
+    d = min(abs((theta - g + 180.0) % 360.0 - 180.0) for g in g1)
+    assert doc["places"][lay.article_place(houses[1]["id"])]["slot"] == second and walks[houses[1]["id"]] == pytest.approx(8.5 + 8.5 * math.radians(d), abs=3e-3)
     # a house on lap 2 (R2 = 11.5, no line is open) next to the side gate 60.745 of G2 only: the walk counts the gates of G1 (the gates by which the plaza reaches the
     # ring), not the gates of the lap
-    doc = zw.apply_delta(doc, zw.assign(plan, TreeView(tree), doc, houses[2:c])["delta"])
+    doc = zw.apply_delta(doc, zw.assign(plan, TreeView(tree), doc, houses[2:c])["delta"])  # (both laps are full now: every cell of lap 2 has its houses)
     cells2 = checks.free_cells(11.5, g2)
     k = min(range(len(cells2)), key=lambda i: abs(math.degrees(cells2[i] / 11.5) - 60.745))
     (house,) = [p for p in on_ring(doc) if p["parent"] == "place:root:lap:2" and p["slot"] == 2 * k]
@@ -582,6 +596,133 @@ def test_the_same_inputs_give_the_same_bytes_twice_and_a_stored_world_gives_the_
     assert json.dumps(res["delta"], sort_keys=True) == json.dumps(again["delta"], sort_keys=True)
     one, two = bibliopolis.build_city({"items": items}, tree, first=100), bibliopolis.build_city({"items": items}, tree)
     assert one["world"]["chronicle"] == [e for e in two["world"]["chronicle"] if e["seq"] <= 100] and one["places"][ROOT]["ring"] == two["places"][ROOT]["ring"]
+
+
+# ----------------------------------------------------------------------------------------------- the fill order ----
+@pytest.mark.parametrize("slots", [1, 2, 3, 5, 8, 50, 58, 64, 90, 106, 289])
+def test_the_fill_order_is_the_bit_reversal_permutation_of_the_slots_with_the_numbers_of_slots_or_more_left_out(slots):
+    order = ring.ring_fill_order(slots)
+    assert list(order) == fill_order_of(slots) and sorted(order) == list(range(slots))  # a permutation of the slots, found two ways
+    if slots >= 4 and slots & (slots - 1) == 0:
+        assert order[:4] == (0, slots // 2, slots // 4, 3 * slots // 4)  # the north, the south, the quarters
+
+
+def test_the_engine_and_the_independent_statement_give_the_same_fill_order_for_every_lap_size_up_to_400_slots():
+    assert [n for n in range(1, 401) if list(ring.ring_fill_order(n)) != fill_order_of(n)] == []
+    assert ring.ring_fill_order(58)[:12] == (0, 29, 14, 43, 7, 36, 21, 50, 3, 32, 18, 47)  # the lap of 58 slots: the second house half way round, at 29
+    assert ring.ring_fill_order(122)[:9] == (0, 61, 30, 91, 15, 76, 45, 106, 7)
+    for slots, want in ((1, [0]), (2, [0, 1]), (3, [0, 1, 2]), (4, [0, 2, 1, 3]), (5, [0, 2, 1, 3, 4]), (6, [0, 3, 1, 4, 2, 5]), (7, [0, 3, 1, 5, 4, 2, 6])):
+        assert list(ring.ring_fill_order(slots)) == want  # by hand: floor(j * slots / 8) for the 3-bit numbers read backwards, 0 4 2 6 1 5 3 7, a slot counted when it first comes up
+    for m in range(1, 9):  # a power of two: the first 2^j houses stand 2^(m-j) slots apart, as in the bit-reversal order
+        for j in range(m + 1):
+            assert sorted(ring.ring_fill_order(1 << m)[:1 << j]) == [i << (m - j) for i in range(1 << j)]
+    for slots in range(2, 400):  # the second house stands half way round whatever the number of slots
+        assert ring.ring_fill_order(slots)[1] == slots // 2
+        assert sorted(ring.ring_fill_order(slots)) == list(range(slots))  # every slot once
+
+
+def test_the_first_2_to_the_i_slots_of_the_fill_order_cut_the_lap_into_stretches_of_floor_or_ceil_of_n_over_2_to_the_i():
+    for slots in range(1, 401):
+        order = ring.ring_fill_order(slots)
+        for i in range(slots.bit_length()):  # 2^i <= slots
+            taken = sorted(order[:1 << i])
+            stretches = [b - a for a, b in zip(taken, taken[1:])] + [slots - taken[-1] + taken[0]]  # round the lap, the last back to the first
+            assert set(stretches) <= {slots // (1 << i), -(-slots // (1 << i))}, (slots, i)
+
+
+def prefix_gaps(taken, slots):
+    """For every prefix k of `taken` (distinct slots of a lap of `slots` slots, in the order the houses took them): the largest cyclic gap, in slots, between the slots of the
+    first k, a whole lap for one. The gaps are kept in a max-heap; a gap that a new slot has split is dropped when it comes to the top."""
+    points, after, heap, out = [], {}, [], []
+    for x in taken:
+        if not points:
+            points, after, heap = [x], {x: x}, [(-slots, x, x)]
+        else:
+            i = bisect.bisect_left(points, x)
+            a, b = points[i - 1], points[i % len(points)]
+            points.insert(i, x)
+            after[a], after[x] = x, b
+            for lo, hi in ((a, x), (x, b)):
+                heapq.heappush(heap, (-((hi - lo) % slots or slots), lo, hi))
+        while after[heap[0][1]] != heap[0][2]:
+            heapq.heappop(heap)
+        out.append(-heap[0][0])
+    return out
+
+
+def brute_gaps(taken, slots):
+    """The same by a plain sort at every prefix (what `prefix_gaps` is checked against)."""
+    out = []
+    for k in range(1, len(taken) + 1):
+        have = sorted(taken[:k])
+        out.append(max([b - a for a, b in zip(have, have[1:])] + [have[0] + slots - have[-1]]))
+    return out
+
+
+def test_the_gap_checker_agrees_with_a_plain_sort_at_every_prefix_whatever_the_order():
+    rng = random.Random(11)
+    for slots in (1, 2, 7, 58, 90):
+        shuffled = list(range(slots))
+        rng.shuffle(shuffled)
+        for taken in (fill_order_of(slots), list(range(slots)), shuffled):
+            assert prefix_gaps(taken, slots) == brute_gaps(taken, slots), (slots, taken[:6])
+    assert prefix_gaps([0, 2], 58) == [58, 56] and prefix_gaps([0, 1], 58) == [58, 57]  # by hand: one slot leaves the whole lap, two neighbours leave all but one
+
+
+def test_every_prefix_of_the_fill_order_is_spread_round_the_lap_no_gap_is_over_twice_the_even_spacing_and_a_slot_and_the_clockwise_fill_is_not():
+    """After k houses, the largest gap between neighbours round a lap of n slots is at most 2 * n / k + 1 slots, for every k and every lap size up to 400 slots (a table of what
+    holds, not a proof; in cells, the gates left out, at most n / k + 1). The planted fault, the clockwise fill, breaks it at once: after half the houses all stand in one half of the ring."""
+    for slots in range(1, 401):
+        gaps = prefix_gaps(fill_order_of(slots), slots)
+        assert [k for k, g in enumerate(gaps, start=1) if g * k > 2 * slots + k] == [], slots
+    for slots in (58, 90, 122, 156):
+        bad = prefix_gaps(list(range(slots)), slots)
+        assert any(g * k > 2 * slots + k for k, g in enumerate(bad, start=1)), slots
+        assert bad[slots // 2 - 1] == slots - slots // 2 + 1  # after half the houses: all the other half and one slot is one gap
+
+
+def test_the_houses_the_engine_puts_on_each_lap_take_the_fill_order_and_every_prefix_is_spread():
+    t = Town(LAP_SPEC)
+    g1, g2 = gates_of(t.plan), gates_of(t.plan, sides=True)
+    c1, c2 = capacity(8.5, g1), capacity(11.5, g2)
+    t.one_by_one(untagged(c1 + c2), check=False)  # lap 1 fills, lap 2 opens and fills
+    assert laps_of(t.doc) == [ROOT, "place:root:lap:2"]
+    for lap, slots in ((ROOT, c1), ("place:root:lap:2", c2)):
+        taken = [p["slot"] for p in on_ring(t.doc) if p["parent"] == lap]  # the slots in the order the houses arrived
+        assert taken == fill_order_of(slots) and len(taken) == slots  # the fill order, the whole lap
+        assert all(g * k <= 2 * slots + k for k, g in enumerate(prefix_gaps(taken, slots), start=1)), lap  # every prefix of what the engine did is spread
+    t.check()
+
+
+def ring_cells_of(doc):
+    """{house id: (index of its lap from 0, slot)} of the houses on the ring, and the slots of each lap that stands."""
+    laps = laps_of(doc)
+    return {p["article"]: (laps.index(p["parent"]), p["slot"]) for p in on_ring(doc)}, [doc["places"][lap]["ring"]["slots"] for lap in laps]
+
+
+@pytest.mark.parametrize("seed", [1, 2, 3])
+def test_each_house_that_comes_to_the_ring_takes_the_first_free_slot_in_fill_order_of_the_lowest_lap_that_has_one(seed):
+    """Stated apart from the engine (`first_free` of tests/support.py): after each arrival, a house that stands on the ring stands at the first free slot in fill order of the lowest lap that has
+    one, the houses that stood on the ring before and stand on it still taking no other lot (a split frees the lots of the group that leaves and nothing else)."""
+    t = Town(LAP_SPEC)
+    rng = random.Random(seed)
+    arrivals = untagged(260) + by_tag(t.items, "a1", "a2")[:50] + by_tag(t.items, "pub") + by_tag(t.items, "h1", "h2", "s1", "s2")
+    rng.shuffle(arrivals)
+    checked = opened_laps = 0
+    for a in arrivals[:300]:
+        before, _ = ring_cells_of(t.doc)
+        laps_before = len(laps_of(t.doc))
+        t.send([a], check=False)
+        after, laps = ring_cells_of(t.doc)
+        assert all(after[h] == cell for h, cell in before.items() if h in after), "a house that stayed on the ring changed lot"
+        if a["id"] in after:
+            taken = {cell for h, cell in after.items() if h != a["id"]}
+            want = first_free(laps[:laps_before] if laps_before else laps, taken)
+            assert after[a["id"]] == want, (a["id"], after[a["id"]], want)
+            checked += 1
+            opened_laps += want[0] >= laps_before
+    assert checked > 200 and opened_laps >= 1 and any(e.get("from") == ROOT for e in t.doc["chronicle"])  # (the run has laps and splits from the ring)
+    t.check()
 
 
 # --------------------------------------------------------------------------------------- the polyline of the road ----

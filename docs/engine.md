@@ -88,7 +88,7 @@ checked before the next, because the road of a house depends on the splits the h
    are grouped by the child topic of the road's key on each house's path (a house whose address is the key itself, or a collapsed topic, is in no group).
    The largest group of at least `min` houses (ties: the lower child id) opens a road of its own, below this one, and moves there. Then the houses
    that stay are packed again onto the first lots of the road in arrival order (on the ring road they stay where they are: only the lots of the group that leaves
-   are freed, and the houses of the call that stay take the lowest free slots), and the new road is checked in turn (a group larger than `max` splits
+   are freed, and the houses of the call that stay take the first free slots of the fill order), and the new road is checked in turn (a group larger than `max` splits
    again at once). `seq` never changes.
 5. **Where a road opens.** From the ring road only a ring-1 road of the plan can open (the wedges are pinned): the plan's street of the root topic, with
    the chain the plan pins. Below a road, the new road is the deepest topic whose subtree still holds the whole group, and the topics between are its
@@ -114,8 +114,16 @@ geometry is `bibliopolis.ring` (pure functions of numbers; the order of the oper
   those instead); G2 is G1 and the axes of the side trunks (a lap beyond the first can lie across the spoke of a side line). A gate is cut in both rows: outward it is where the avenue leaves, inward it is how the town hall reaches the ring.
 - **Cells and slots.** The lane is cut into cells one long, from north clockwise, each starting where the one before ended, skipping a stretch of one round every
   gate. A cell holds two lots: slot `s` is in cell `s // 2`, the inner lot (radius `R - 1`, facing out) when `s` is even, the outer lot (radius `R + 1`, facing
-  in) when it is odd. A house takes the lowest free slot of the lowest lap that has one. There are no empty-lot records on the ring: the cell of a slot is a
-  function of the slot.
+  in) when it is odd. So the slots of a lap are listed by angle from north clockwise, the two rows of one cell sharing an angle, the inner lot first. There are no
+  empty-lot records on the ring: the cell of a slot is a function of the slot.
+- **Fill order.** The `n = 2C` slots of a lap are taken in the order of the scaled radical inverse (`ring_fill_order(n)`): for `j = 0 .. 2^m - 1`, `2^m` the least power of two
+  that is at least `n`, the slot `floor(rev_m(j) * n / 2^m)` (integer arithmetic: `(rev_m(j) * n) >> m`), `rev_m` reading the `m` bits of `j` backwards, and a slot counts the first
+  time it comes up (the map is onto `0 .. n - 1`, so every slot is taken once). The first house stands at north, the second half way round (slot `n // 2`, whatever `n` is), the next
+  two at the quarters, then the eighths, and so on (a lap of 122 slots: 0, 61, 30, 91, 15, 76, 45, 106, 7, ...; of 58: 0, 29, 14, 43, 7, 36, ...): the first `2^i` slots of the order cut the
+  lap into `2^i` stretches of `floor(n / 2^i)` or `ceil(n / 2^i)` slots, so the houses stand spread round the whole ring whatever their number. A house that comes to the ring takes the **first free slot in that fixed order** of the lowest lap that has one; a slot that a split or a move
+  freed is taken again in the same order; survivors keep their slots. Every lap alike, each with its own `n`. The spread, as tested: after `k` houses the largest gap between
+  neighbouring slots round the lap is at most `2 * n / k + 1` slots, so at most `n / k + 1` cells (the cell index, the gates left out); `tests/test_ring.py` takes it for every lap
+  size up to 400 slots and for the laps of the sample plans.
 - **Avenues.** A ring-1 spoke starts at the outer edge of the ring, `R + 0.5`; its first band lies at `R + 3` or farther (back to back with the outer row of the
   ring where its wedge allows it), and a street along its spoke starts at `R + 1.5` or later.
 - **Laps.** When every slot of the laps that stand is taken and one more house comes to the ring, a lap opens: a street `place:root:lap:<k>` that continues the ring
@@ -186,7 +194,7 @@ them again and compares them with the committed files byte for byte.
 | rule | test file |
 |---|---|
 | the 41st house, packing, a split in the middle of a call, again at once, ribs, continuation, over, no merge back, chains, ring 1 | `tests/test_districts.py` |
-| the ring road: the radius, the gates, the cells of a lap, day one, the first forty houses, the survivors of a split, the avenues, the laps, the walks | `tests/test_ring.py` |
+| the ring road: the radius, the gates, the cells of a lap, the fill order and its spread, day one, the first forty houses, the survivors of a split, the avenues, the laps, the walks | `tests/test_ring.py` |
 | mirror, items filed under several topics, `complete` | `tests/test_mirror.py` |
 | the cut and the plan: leaf and container streets, chains, the sectors of ring 1, the heavy path and the sides | `tests/test_plan.py` |
 | angles, geometry, records, measures, the stable text, the coast | `tests/test_layout.py` |

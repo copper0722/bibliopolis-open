@@ -12,8 +12,8 @@ import math
 
 import checks
 import pytest
-from support import (ROOT, T, Town, art, as_text, by_tag, capacity, count, direct_counts, gates_of, lot_of, make_tree, on_ring, ribs_of, road_of, roads_of, send,
-                     simulate_districts, slot_cell, tag_street, world_of)
+from support import (ROOT, T, Town, art, as_text, by_tag, capacity, count, direct_counts, fill_order_of, gates_of, lot_of, make_tree, on_ring, ribs_of, road_of, roads_of,
+                     send, simulate_districts, slot_cell, tag_street, world_of)
 
 from bibliopolis import layout as lay
 from bibliopolis import plan as plan_mod
@@ -63,12 +63,13 @@ SPEC_A = {"med": T(0, a1=T(8), a2=T(7), b=T(9), c=T(9)), "pub": T(12)}  # 33 hou
 def test_the_first_forty_houses_stand_on_the_ring_and_the_41st_opens_the_first_road():
     tree, arts, plan, doc = world_of(SPEC_A)
     g = gates_of(plan)
+    fill = fill_order_of(capacity(8.5, g))
     for n, a in enumerate(arts[:40], start=1):
         doc, _ = send(plan, tree, doc, [a], event_id=n)
         lot = lot_of(doc, a)
         assert lot["street"] == ROOT and lot["parent"] == ROOT and "underground" not in lot and doc["chronicle"] == []
-        (x, z), facing = slot_cell(8.5, g, n - 1)
-        assert (lot["slot"], lot["order"]) == (n - 1, n - 1) and (lot["position"]["x"], lot["position"]["z"]) == (round(x, 3), round(z, 3))  # arrival order
+        (x, z), facing = slot_cell(8.5, g, fill[n - 1])
+        assert (lot["slot"], lot["order"]) == (fill[n - 1], fill[n - 1]) and (lot["position"]["x"], lot["position"]["z"]) == (round(x, 3), round(z, 3))  # the n-th slot in fill order
         assert lot["facing"] == pytest.approx(round(facing, 3), abs=2e-3)
     # the ring is one street round the town hall: a road and a lap, no rib, houses on both sides of its lane
     assert doc["places"][ROOT] == {"kind": "street", "shape": "ring", "level": 1, "class": "大道", "label": "Knowledge", "address": ["Knowledge"], "parent": lay.PLAZA_PLACE,
@@ -116,22 +117,23 @@ def test_the_survivors_of_a_split_from_the_ring_keep_their_lots_and_the_next_hou
     tree, arts, plan, doc = world_of(SPEC_A)
     doc, _ = send(plan, tree, doc, arts[:40])
     before = {p["article"]: p for p in doc["places"].values() if p["kind"] == "lot"}
-    assert [before[a["id"]]["slot"] for a in by_tag(arts, "pub")[:7]] == list(range(33, 40))  # behind the 33 houses of med
+    fill = fill_order_of(capacity(8.5, gates_of(plan)))
+    assert [before[a["id"]]["slot"] for a in by_tag(arts, "pub")[:7]] == fill[33:40]  # behind the 33 houses of med
     doc, _ = send(plan, tree, doc, [arts[40]])
     stay = on_ring(doc)
     assert {p["parent"] for p in stay} == {ROOT} and [p["article"] for p in stay] == [a["id"] for a in by_tag(arts, "pub")[:8]]
     for p in stay[:7]:  # the houses that stay keep their exact lot records: slot, position, facing, order, seq
         assert p == before[p["article"]]
-    assert (stay[7]["slot"], stay[7]["seq"]) == (0, 41)  # the house of the call that stays takes the lowest free slot: a hole the split left
-    assert sorted(p["slot"] for p in stay) == [0, *range(33, 40)]
+    assert (stay[7]["slot"], stay[7]["seq"]) == (fill[0], 41)  # the house of the call that stays takes the first free slot in fill order: a hole the split left
+    assert sorted(p["slot"] for p in stay) == sorted([fill[0], *fill[33:40]])
     assert doc["places"][ROOT]["lots"] == 8 and not [q for q in doc["places"].values() if q["kind"] == "reserved" and q["parent"] == ROOT]  # (an empty cell is nothing)
     new_road = [p for p in doc["places"].values() if p["kind"] == "lot" and p["street"] == tag_street("med")]
     assert sorted(p["slot"] for p in new_road) == list(range(33)) and {p["parent"] for p in new_road} == {tag_street("med")}
     assert [p["seq"] for p in sorted(new_road, key=lambda p: p["slot"])] == sorted(p["seq"] for p in new_road)  # (seq is kept: arrival order)
     assert all(lot_of(doc, a["id"])["seq"] == before[a["id"]]["seq"] for a in arts[:40])
-    for k, a in enumerate(by_tag(arts, "pub")[8:11], start=1):  # the next arrivals take the holes, the lowest first
+    for k, a in enumerate(by_tag(arts, "pub")[8:11], start=1):  # the next arrivals take the holes, the first in fill order first
         doc, _ = send(plan, tree, doc, [a])
-        assert (lot_of(doc, a)["slot"], lot_of(doc, a)["parent"]) == (k, ROOT)
+        assert (lot_of(doc, a)["slot"], lot_of(doc, a)["parent"]) == (fill[k], ROOT)
 
 
 def test_a_split_in_the_middle_of_one_call_changes_where_the_next_houses_of_that_topic_stand():
@@ -277,12 +279,13 @@ def test_the_ring_over_max_with_no_group_of_min_is_over_and_a_group_of_min_leave
     (over,) = t.doc["chronicle"]
     assert over["over"] == ROOT and over["count"] == 13 and t.doc["places"][ROOT]["over"] is True and roads_of(t.doc) == {}
     assert "rib" not in t.doc["places"][ROOT] and "lanes" not in t.doc["places"][ROOT]  # the ring has no ribs, and it holds 13 houses in a lap of 100 slots
-    assert [p["slot"] for p in on_ring(t.doc)] == list(range(13))  # the 13th has its cell too (the lap does not end at max)
+    fill = fill_order_of(t.doc["places"][ROOT]["ring"]["slots"])
+    assert [p["slot"] for p in on_ring(t.doc)] == fill[:13]  # the 13th has its cell too (the lap does not end at max)
     t.send([art(900, ["p"])], event_id=2)  # p has 4 = min: it opens
     entry = t.doc["chronicle"][1]
     assert (entry["from"], entry["to"], entry["count_before"], entry["count_after"]) == (ROOT, tag_street("p"), 14, 10) and len(entry["houses"]) == 4
     assert "over" not in t.doc["places"][ROOT] and t.count(ROOT) == 10 and t.count(tag_street("p")) == 4
-    assert [p["slot"] for p in on_ring(t.doc)] == list(range(3, 13))  # the houses that stay keep their slots: the three that stood on slots 0 to 2 left, the 14th was never placed
+    assert [p["slot"] for p in on_ring(t.doc)] == fill[3:13]  # the houses that stay keep their slots: the three that stood on the first three slots in fill order left, the 14th was never placed
 
 
 def test_a_road_the_split_leaves_under_min_stays_open_there_is_no_merge_back():

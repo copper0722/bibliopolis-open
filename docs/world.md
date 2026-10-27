@@ -69,7 +69,7 @@ world **starts** with may leave `branches` out, and it is then 13, while a `set_
 ## What the fold does
 
 **The ring road.** The root of the player's tree is the ring road, a closed circular road round the town hall, on the surface, with a lot on each side of its lane (see [engine.md](engine.md),
-"The ring road"). It is called `Knowledge` until `rename_road` with `road` null names it, and the world starts with it, empty. A house starts on it, on the lowest free slot of its first lap, and
+"The ring road"). It is called `Knowledge` until `rename_road` with `road` null names it, and the world starts with it, empty. A house starts on it, on the first free slot of its first lap in the fill order (north, half way round, the quarters, the eighths, ...: the houses spread round the whole ring), and
 a full lap goes on as a lap outside it, as in a grown city. It is no road of the player's tree: it has no id, `parent` null names it in `open_road`, and a house on it stands on road `None`.
 Its **gates** are the spoke axes of all N directions of the table (below), so an avenue that opens later never moves a house of the ring. Its **radius** is the least `8.5 + k` (a whole `k`) such
 that the first lap holds `max` houses between the gates and the narrowest LAND of the N directions has at the ring's outer edge an arc of 3 cells, `(R + 1.5) * radians(w) >= 3` (`w` in degrees): the
@@ -78,8 +78,10 @@ avenue builds in its land (below), so that is where its spoke lane and a lot on 
 
 **A new radius.** A `set_rule` after which the ring road of the plan is another one - another number of branches, which adds gates and narrows the sectors (or takes gates and widens them), or
 a `max` that the first lap cannot hold or no longer needs - lays the whole world out again: a fresh world (the ring road of the plan, no road, no line, no rib), and every house put again, the ring
-road's houses first and then each road's in the order the roads were opened, **each house in the order it stands along its street** (the laps of the ring in turn and the ribs of a road in turn, a
-slot at a time: a hole between two houses closes, and no house passes another; where no road ever had a departure this is arrival order). Nothing changes road, no avenue changes its bearing, the
+road's houses first and then each road's in the order the roads were opened, **each house in the order it stands along its street** (the laps of the ring in turn, each from the north clockwise, and the ribs of a road in turn, a
+slot at a time: a hole between two houses closes, and no house passes another). The houses of a road take its lots one after the other; the *m* houses of the ring take the first *m* slots of the
+fill orders of the new laps, the first lap's slots before the second's, and are matched to them by rank: in the order they stood round the ring, to the chosen slots in the order round the ring.
+Nothing changes road, no avenue changes its bearing, the
 chronicle and the arrival numbers stay, and the sector of an avenue only narrows when the branches grow, only widens when they fall. Raising `branches` is the **expansion** of the city. It
 writes two entries, the change of rule and `resized` (see "The chronicle"). Every other event keeps the stability rule below.
 
@@ -127,7 +129,7 @@ the new number allows. The refusal names the road (null: the ring road) and the 
 
 **Stability.** A house keeps its lot unless an event moves it. `open_road` moves the houses chosen, `file` moves that house, `move_road` moves the houses of the road and of the roads
 below it; nothing else moves a house, and the houses that stay keep their lots whatever holes the others leave (a lot that a house leaves stays empty, and the next house on that road
-takes the lowest empty lot). The one exception is `undo`, which is the fold of the log without the event it takes back, so it may place again what came after that event. The tests
+takes the lowest empty lot; on the ring road, the first free slot in the fill order of the lap). The one exception is `undo`, which is the fold of the log without the event it takes back, so it may place again what came after that event. The tests
 replay logs one event at a time and check this (`tests/test_stability.py`), with planted faults that must turn the check red.
 
 **Moving a road.** The road and the roads below it are put again below the new parent, a road at a time in the order the roads were opened, and their houses in the order they arrived;
@@ -428,8 +430,9 @@ The TypeScript engine must give the same bytes as this one. What is easy to get 
   sector, the widths in whole tenths of a degree rounded half up (`(span + 5) // 10` for a span in units of 1/100 degree, so 26.26 and 26.27 are both 263 and 32.46 and 32.47 both 325); an
   avenue that moves below a road, and the members of a merge, give their numbers up.
 - **The ring and its radius.** The gates are the spoke axes `r3((axis / 100) % 360)` of the N directions; the cells and slots are those of [engine.md](engine.md), "The ring road". The radius is
-  `8.5 + k` for the least whole `k` with `capacity(R) >= max` and `(R + 1.5) * radians(w) >= 3 - 1e-9` (`w` the narrowest land in degrees: twice `min(axis - lo, hi - axis)` of the direction with the least); the walk may start at the lower bound the houses give. A
-  new radius or a new `branches` lays the world out again in the order along the streets (above): the same log must give the same houses on the same lots in every engine.
+  `8.5 + k` for the least whole `k` with `capacity(R) >= max` and `(R + 1.5) * radians(w) >= 3 - 1e-9` (`w` the narrowest land in degrees: twice `min(axis - lo, hi - axis)` of the direction with the least); the walk may start at the lower bound the houses give. The
+  slots of a lap fill in the order of the scaled radical inverse of [engine.md](engine.md), "Fill order" (`bibliopolis.ring.ring_fill_order`): a house takes the first free slot of it. A
+  new radius or a new `branches` lays the world out again in the order along the streets (above), the houses of the ring by rank onto the first slots of the new fill orders: the same log must give the same houses on the same lots in every engine.
 - **Road ids.** The engine names a new road `road:<place>`, and when that is in use `road:<place>@1`, `@2`, and so on: the first that is not in use now. When an avenue gives up its direction
   (merged, or moved below a road) its line, its spoke, its arcs and the roads of the ribs on it are taken away, so those ids are free again and the next road of that name takes them. The
   layout document carries the road ids, so a port must reuse them in the same way.
@@ -458,7 +461,7 @@ The TypeScript engine must give the same bytes as this one. What is easy to get 
 |---|---|
 | the shape of an item, an event and a rule; which events count | `tests/test_events.py` |
 | the sectors, every kind of event and its refusals, undo and undo of an undo, the fold, the documents | `tests/test_hand.py` |
-| the ring road of a hand-built world: its radius, a new `max` or `branches`, the expansion, N = 5 to 89 | `tests/test_hand_ring.py` |
+| the ring road of a hand-built world: its radius, a new `max` or `branches`, the expansion and the order of its houses round the ring, N = 5 to 89 | `tests/test_hand_ring.py` |
 | stability of the lots, and the planted faults that turn it red | `tests/test_stability.py` |
 | the journal | `tests/test_journal.py` |
 | suggestions, `crowded`, the rule `auto`, the sample | `tests/test_suggest.py` |

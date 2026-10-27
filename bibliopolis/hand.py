@@ -7,7 +7,8 @@
 There is no library to plan from, so the plan grows with the world and never changes what it has given:
 
   the ring road   the root of the player's tree, `Knowledge` until `rename_road` names it (`road` null), a closed circular road round the town hall (bibliopolis.ring).
-                  The world starts with it, empty, and a house starts on it (`add_item`), as in a grown city. Its radius is `ring_radius(rule)`: it follows the rule.
+                  The world starts with it, empty, and a house starts on it (`add_item`) on the first free slot of its lap in the fill order, as in a grown city: north, half way
+                  round, the quarters, the eighths, ..., so the houses spread round the whole ring. Its radius is `ring_radius(rule)`: it follows the rule.
   a road          a named category the player opens (`open_road`) with a chosen set of houses. It is a topic node of the player's tree. Below the ring road it is a
                   ring-1 road and takes the next direction of the golden angle (below); below a road it is laid out as the engine lays out a topic the plan does
                   not hold: a rib on the line of its ring-1 road. No trunk is promoted and no heavy path changes (a stated limitation).
@@ -32,7 +33,8 @@ There is no library to plan from, so the plan grows with the world and never cha
                   OpenAlex below the place, with the same mechanics as `open_road`, so even then the houses that stay keep their lots. A road so opened is split in
                   turn while it holds more than `max`.
   a new radius    the ring road holds `max` houses between the gates of its N bearings, so a rule with another N, or a `max` that asks for another radius (`ring_radius`), lays the
-                  whole world out again on the new ring: every house stays on its road and in its place along its street, every avenue keeps its bearing.
+                  whole world out again on the new ring: every house stays on its road and in its place along its street, every avenue keeps its bearing. The houses of the ring keep
+                  their order round it (the laps in turn, each from the north) and take the first slots of the fill order of the new laps, matched by rank (`put_ring_again`).
   the chronicle   one entry for each road opened (the shape of a split), house filed, road renamed or moved, undo and change of rule, in log order; `event_id` is the
                   `seq` of the event and `at` its `at`.
 """
@@ -207,6 +209,19 @@ class HandWorld(zw.World):
         self.free_lot(lot)
         self.add_houses(place, [{"article": house, "tag": key, "seq": lot["seq"]}], trigger)
         self.note(trigger, filed=house, left=lot["street"], joined=place)
+
+    def put_ring_again(self, lots: list[dict]) -> None:
+        """Put the houses of the ring road again, on the new ring: `lots` are their old lots in the order round the ring (the laps in turn, each from the north clockwise). The m
+        houses take the first m slots of the fill orders of the laps, the first lap's slots before the second's, and are matched to them by rank, the slots in the order round the
+        ring: nobody passes another, a hole closes, and the slots they take are the ones a ring of m houses that never lost one holds (a lap opens when the laps that stand
+        are too few)."""
+        need = len(lots)
+        while sum(self.places.get(lap)["ring"]["slots"] for lap in self.laps()) < need:
+            self.open_lap()
+        laps = self.laps()
+        fill = [(k, slot) for k, lap in enumerate(laps) for slot in ring_mod.ring_fill_order(self.places.get(lap)["ring"]["slots"])][:need]
+        for lot, (k, slot) in zip(lots, sorted(fill)):
+            self.put_ring(lot["article"], lot["tag"], lot["seq"], track=False, at=(laps[k], slot))
 
     def put_again(self, keys: list[str], trigger: str) -> list[str]:
         """The roads `keys` (in the order they were opened) have moved: they stand below their new parents in the tree already. Their street records, ribs and lots go
@@ -742,14 +757,18 @@ class State:
 
     def relay(self, e: dict) -> tuple[HandWorld, dict, list[str]]:
         """The world laid out again on the plan as it is now: a fresh world (the ring road of the plan, no road, no line, no rib), the chronicle and the arrivals of the
-        old one kept, and every house put again, the ring road's first and then each road's, in the order they stood along their streets. Nothing changes road, no
-        house passes another along its street and no avenue changes direction; where a hole stood the next house closes it. Returns the working copy, the fresh world it
-        starts from (for `commit`) and the ids of the houses put again, in the order they were put."""
+        old one kept, and every house put again, the ring road's first and then each road's, in the order they stood along their streets (on the ring: round it, the laps in
+        turn; the houses of the ring take the first slots of the fill order of the new laps, matched by rank, `put_ring_again`). Nothing changes road, no house passes another
+        along its street and no avenue changes direction; where a hole stood the next house closes it. Returns the working copy, the fresh world it starts from (for
+        `commit`) and the ids of the houses put again, in the order they were put."""
         old = self.doc
         base = {**zw.new_world(self.plan), "seq": old["seq"], "chronicle": [dict(c) for c in old["chronicle"]]}
         w, put = HandWorld(zw.PlanView(self.plan), self.tree, base, event_id=e["seq"]), []
         for place, lots in self.layout_order():
-            w.add_houses(place, [{"article": lot["article"], "tag": lot["tag"], "seq": lot["seq"]} for lot in lots], "set_rule")
+            if place == zw.ROOT_PLACE:
+                w.put_ring_again(lots)
+            else:
+                w.add_houses(place, [{"article": lot["article"], "tag": lot["tag"], "seq": lot["seq"]} for lot in lots], "set_rule")
             put.extend(lot["article"] for lot in lots)
         return w, base, put
 

@@ -13,7 +13,7 @@ from pathlib import Path
 import checks
 import pytest
 from hand_support import Hand, hand_problems, hid, lot_snapshot, play, stamp, text_problems
-from support import cells_table
+from support import cells_table, fill_order_of
 
 import bibliopolis
 from bibliopolis import hand, inputs, picture, plan
@@ -25,6 +25,7 @@ from bibliopolis.journal import Journal
 from bibliopolis.tree import TreeView
 
 ROOT = Path(__file__).resolve().parents[1]
+FILL = fill_order_of(58)  # the ring of the default rule: 13 gates at radius 8.5 leave 29 cells and 58 slots; a house takes the first free slot in this order (0, 29, 14, 43, 7, ...)
 FIRST_RING = [(-1623, 1003, 0), (12128, 14754, 13751), (-10121, -7495, -8498), (3629, 6256, 5252), (-18620, -15994, -16997), (-4869, -1623, -3246), (8882, 12128, 10505),
               (-13368, -10121, -11745), (1003, 3629, 2006), (14754, 17380, 15757), (-7495, -4869, -6492), (6256, 8882, 7259), (-15994, -13368, -14991)]  # the thirteen sectors of a
 # ring road of 13 branches, (lo, hi, axis) in units of 1/100 degree: the spoke is on the bearing of the number, the sector is its nearest-bearing cell
@@ -137,7 +138,7 @@ def test_an_item_becomes_a_house_on_the_ring_road_and_the_town_has_no_road_but_t
     assert [state.road_of[hid(i)] for i in (1, 2, 3)] == [None] * 3 and list(state.nodes) == []
     assert summary(city) == {"mode": "hand", "houses": 3, "roads": 1, "ring": 3, "splits": 0, "over": 0}
     lots = lot_snapshot(state)
-    assert [lots[hid(i)]["slot"] for i in (1, 2, 3)] == [0, 1, 2] and all(lots[hid(i)]["parent"] == "place:root" for i in (1, 2, 3))
+    assert [lots[hid(i)]["slot"] for i in (1, 2, 3)] == FILL[:3] == [0, 29, 14] and all(lots[hid(i)]["parent"] == "place:root" for i in (1, 2, 3))
     assert city["places"]["place:root"]["label"] == "Knowledge" and city["places"]["place:root"]["lots"] == 3
     assert city["world"]["mode"] == "hand" and city["world"]["chronicle"] == [] and city["composition"]["ring1"] == []
     assert state.items[hid(2)]["title"] == "Title 2" and state.items[hid(2)]["openalex"] == []
@@ -166,7 +167,7 @@ def test_log_order_is_arrival_order_and_the_date_of_an_event_is_only_written_dow
     for i, at in enumerate(["2030-01-01", "2020-01-01T00:00:00Z", "2025-06-30T12:00:00+08:00"], start=1):  # a clock that runs backwards
         h.journal.append("add_item", {"item": {"id": hid(i), "title": "", "authors": [], "year": None, "type": "article"}}, at)
     lots = lot_snapshot(h.state)
-    assert [lots[hid(i)]["seq"] for i in (1, 2, 3)] == [1, 2, 3] and [lots[hid(i)]["slot"] for i in (1, 2, 3)] == [0, 1, 2]
+    assert [lots[hid(i)]["seq"] for i in (1, 2, 3)] == [1, 2, 3] and [lots[hid(i)]["slot"] for i in (1, 2, 3)] == FILL[:3]
     h.journal.append("set_rule", {"max": 30, "min": 5, "auto": False, "branches": 13}, "1999-12-31")
     entry = h.state.city()["world"]["chronicle"][0]
     assert entry["at"] == "1999-12-31" and entry["event_id"] == 4 and entry["trigger"] == "set_rule"
@@ -189,7 +190,7 @@ def test_the_first_road_opens_at_the_north_with_the_houses_chosen_and_the_others
     assert [state.road_of[x] for x in chosen] == ["a"] * 12 and [state.road_of[hid(i)] for i in (13, 14, 15)] == [None] * 3
     for i in (13, 14, 15):
         assert after[hid(i)] == before[hid(i)]  # the houses that stay keep their lots, whatever the hole in front of them
-    assert [after[hid(i)]["slot"] for i in (13, 14, 15)] == [12, 13, 14]
+    assert [after[hid(i)]["slot"] for i in (13, 14, 15)] == FILL[12:15]
     street = the_street(h, "a")
     assert (street["shape"], street["level"], street["class"], street["address"], street["lots"], street["parent"]) == ("trunk", 1, "大道", ["Alpha"], 12, "place:plaza")
     assert (street["wedge"], street["axis"]) == ([-10.03, 10.03], 0.0)  # the land: within the narrower side (10.03) of the spoke, which is on the bearing
@@ -518,7 +519,7 @@ def test_an_event_that_nothing_depends_on_may_be_undone_from_the_middle_and_the_
     state = sound(h)
     assert hid(6) not in state.items and hid(7) in state.items
     after = lot_snapshot(state)
-    assert after[hid(7)]["slot"] == 5 and before[hid(7)]["slot"] == 6  # the house after it moves up a lot: an undo may re-place what came after the event
+    assert after[hid(7)]["slot"] == FILL[5] and before[hid(7)]["slot"] == FILL[6]  # the house after it moves up a place in fill order: an undo may re-place what came after the event
     assert all(after[hid(i)] == before[hid(i)] for i in range(1, 6))
 
 

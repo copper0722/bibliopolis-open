@@ -24,7 +24,7 @@ from hand_support import (
     text_problems,
     topic,
 )
-from support import capacity, cells_table, gates_of, radius_for, slot_cell
+from support import capacity, cells_table, fill_order_of, gates_of, laps_of, radius_for, slot_cell
 
 from bibliopolis import hand
 from bibliopolis import layout as lay
@@ -36,6 +36,7 @@ from bibliopolis.journal import Journal, read_world, world_document
 ROOT = "place:root"
 TABLE13 = cells_table(13)
 GATES = sorted({round((axis / 100) % 360, 3) for _, _, axis in TABLE13})  # the 13 spoke axes, stated apart from the engine
+FILL = fill_order_of(capacity(8.5, GATES))  # the order the 58 slots of lap 1 fill in: 0, 29, 14, 43, 7, ...
 W_MIN = min(2 * min(axis - lo, hi - axis) for lo, hi, axis in TABLE13) / 100  # 20.06: the narrowest LAND, twice the narrower side of a spoke
 
 
@@ -159,15 +160,17 @@ def test_every_avenue_of_a_ring_of_n_branches_keeps_all_its_lots_inside_its_sect
 
 
 # ------------------------------------------------------------------------------------ houses on the ring ----
-def test_the_houses_stand_on_the_ring_from_north_clockwise_and_a_full_lap_goes_on_as_a_lap():
+def test_the_houses_stand_on_the_ring_round_the_whole_circle_in_fill_order_and_a_full_lap_goes_on_as_a_lap():
     h = Hand()
     h.add(60, topic(1, 1, 1, 1))
     city = sound(h).city()
     lots = lot_snapshot(h.state)
+    assert len(FILL) == 58 and FILL[:5] == [0, 29, 14, 43, 7]  # the second house half way round, the next two at the quarters
     for i in range(1, 59):
-        (x, z), _facing = slot_cell(8.5, GATES, i - 1)
+        (x, z), _facing = slot_cell(8.5, GATES, FILL[i - 1])  # the i-th house takes the i-th slot in fill order
         assert lots[hid(i)]["parent"] == ROOT and (lots[hid(i)]["position"]["x"], lots[hid(i)]["position"]["z"]) == (round(x, 3), round(z, 3)), i
-    assert [lots[hid(i)]["parent"] for i in (59, 60)] == ["place:root:lap:2"] * 2
+    assert [lots[hid(i)]["slot"] for i in range(1, 59)] == FILL
+    assert [lots[hid(i)]["parent"] for i in (59, 60)] == ["place:root:lap:2"] * 2 and [lots[hid(i)]["slot"] for i in (59, 60)] == fill_order_of(capacity(11.5, GATES))[:2]
     lap2 = city["places"]["place:root:lap:2"]
     assert lap2["ring"]["radius"] == 11.5 == 8.5 + 3.0 and lap2["label"] == "Knowledge" and lap2["lane_of"] == ROOT  # no road is open: back to back
     assert city["composition"]["streets"]["ring"] == 2 and city["composition"]["measure"]["ring_lots"] == 60
@@ -269,12 +272,61 @@ def test_a_hole_closes_when_the_world_is_laid_out_again_and_the_lap_count_follow
     h = Hand({"max": 40, "min": 3, "auto": False})
     h.add(130, topic(1, 1, 1, 1))
     h.open("a", "A", None, houses(1, 20))  # twenty holes at the front of the ring road
-    assert sorted({lot["slot"] for lot in lot_snapshot(h.state).values() if lot["parent"] == ROOT})[:3] == [20, 21, 22]
+    assert sorted(lot["slot"] for lot in lot_snapshot(h.state).values() if lot["parent"] == ROOT) == sorted(FILL[20:])  # the first twenty slots in fill order are empty
     h.rule(200, 3)
     state = sound(h)
+    slots = state.doc["places"][ROOT]["ring"]["slots"]
     on_ring = sorted(lot["slot"] for lot in lot_snapshot(state).values() if lot["parent"] == ROOT)
-    assert on_ring == list(range(110)) and "lanes" not in state.doc["places"][ROOT]  # the hole closed: the 110 houses of the ring fill the first lap, from slot 0
-    assert state.doc["places"][ROOT]["ring"]["slots"] >= 200
+    assert on_ring == sorted(fill_order_of(slots)[:110]) and "lanes" not in state.doc["places"][ROOT]  # the holes closed: the 110 houses of the ring take the first 110 slots in fill order
+    assert slots >= 200
+
+
+def ring_slots(state):
+    """{house id: (number of its lap, slot)} of the houses on the ring road."""
+    laps = ["place:root"] + list(state.doc["places"]["place:root"].get("lanes", []))
+    return {lot["article"]: (laps.index(lot["parent"]), lot["slot"]) for lot in lot_snapshot(state).values() if lot["parent"] in laps}
+
+
+def test_the_expansion_keeps_the_cyclic_order_of_the_ring_after_a_house_left_and_another_took_its_slot():
+    h = Hand({"max": 40, "min": 1, "auto": False})
+    h.add(4)  # the houses 1 to 4 take the slots 0, 29, 14 and 43 in fill order: round the ring from the north 1, 3, 2, 4
+    h.open("x", "X", None, [hid(2)])  # the house 2 leaves the ring; the house 5 that comes takes its slot, the first free one in fill order
+    h.add(1)
+    before = ring_slots(h.state)
+    assert [hid(i) for i in (1, 3, 5, 4)] == sorted(before, key=lambda x: before[x]) and [before[hid(i)][1] for i in (1, 3, 5, 4)] == [0, 14, 29, 43]
+    kept = ring_snapshot(h.state)
+    h.rule(200, 1)  # the ring is another: the world is laid out again
+    state = sound(h)
+    after = ring_slots(state)
+    slots = state.doc["places"][ROOT]["ring"]["slots"]
+    assert sorted(after.values()) == sorted((0, s) for s in fill_order_of(slots)[:4])  # the first four slots in fill order of the new lap ...
+    assert sorted(after, key=lambda x: after[x]) == [hid(i) for i in (1, 3, 5, 4)]  # ... and nobody passed another: arrival order would have put the house 4 before the house 5
+    assert expansion_violations(kept, state) == []
+
+
+@pytest.mark.parametrize("houses_on_ring, laps", [(62, 1), (63, 2)])
+def test_a_world_laid_out_again_opens_a_second_lap_only_for_a_house_that_has_no_slot_in_the_first(houses_on_ring, laps):
+    h = Hand({"max": 40, "min": 5, "auto": False, "branches": 13})
+    h.add(houses_on_ring, topic(1, 1, 1, 1))  # a lap of 58 slots is full and the next lap holds the rest
+    assert len(laps_of(h.state.doc)) == 2
+    h.rule(40, 5, False, 12)  # twelve branches: one gate fewer, a lap of 62 slots at the same radius
+    state = sound(h)
+    assert radius_of(state) == 8.5 and state.doc["places"][ROOT]["ring"]["slots"] == capacity(8.5, gates_of(state.plan)) == 62
+    assert len(laps_of(state.doc)) == laps  # 62 houses fill the one lap exactly; the 63rd is the first of a second lap
+    assert sorted(ring_slots(state).values()) == sorted([(0, s) for s in range(62)] + ([(1, 0)] if laps == 2 else []))
+
+
+def test_freed_slots_of_the_ring_are_taken_again_in_fill_order():
+    h = Hand({"max": 40, "min": 1, "auto": False})
+    h.add(10)
+    h.open("x", "X", None, [hid(1), hid(2), hid(3), hid(4)])  # the first four slots in fill order are free again
+    h.add(2)
+    slots = {x: v[1] for x, v in ring_slots(h.state).items()}
+    assert [slots[hid(11)], slots[hid(12)]] == [FILL[0], FILL[1]]  # the new houses take the first two of them
+    h.file(hid(5), "x")  # a house leaves from the middle of the fill: its slot is free
+    h.add(1)
+    assert {x: v[1] for x, v in ring_slots(h.state).items()}[hid(13)] == FILL[2]  # the first free slot in fill order: the third of the four
+    sound(h)
 
 
 def test_a_smaller_max_that_asks_for_a_smaller_ring_lays_the_world_out_again_on_it():

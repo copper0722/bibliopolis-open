@@ -37,7 +37,7 @@ directions (the ring-1 wedges, the trunks and their sides); which topics are roa
              `min` (ties: code-point order of the child key) opens a road of its own below it (collapsed: down to the deepest topic whose
              subtree still holds the whole group). The group moves there; the houses that stay are packed again onto the first lots of the
              road in arrival order (`seq`) - on the ring road they KEEP their lots: only the lots of the group that leaves are freed, and the
-             houses of the call that stay take the lowest free slots after it; the new road is checked in turn. No group reaches `min`: the street
+             houses of the call that stay take the first free slots of the fill order after it; the new road is checked in turn. No group reaches `min`: the street
              record says `over`. Ring 1 is the plan's: the ring road opens the plan's ring-1 street of a root topic (the wedges are pinned; its
              record's `parent` stays the plaza), and collapse works below it.
   rib        a rib is sized to the houses its road holds when it opens plus headroom, `min(max, even(n + max(4, ceil(n / 2))))`, n counting
@@ -53,9 +53,11 @@ The ring road (geometry in bibliopolis.ring; the plan's `params.ring` = {label, 
 
   gates      G1 = the axes of the plan's ring-1 trunks, G2 = G1 plus the axes of its side trunks (bibliopolis.ring, "gates"). A gate is cut in both rows.
   slots      a lap is cut into cells one long, from north clockwise, round the gates; a cell holds two lots, slot s is in cell s // 2 (the inner lot when s
-             is even). A house takes the lowest free slot of the lowest lap that has one (a split or a move leaves holes). There are no empty-lot records on
-             the ring: the cell of a slot is a function of the slot. A lot of the ring is a lot record with `parent` its lap, `slot` within the lap and
-             `street` `place:root`; the document leaves `street` out, as for every lot.
+             is even), so the slots are listed by angle from north clockwise. A house takes the first free slot, in the fill order of its lap
+             (`bibliopolis.ring.ring_fill_order`: north, half way round, the quarters, the eighths, ...: the houses spread round the whole ring), of the lowest lap
+             that has one; a split or a move leaves holes, and a hole is taken again in the same order. There are no empty-lot records on the ring: the cell of
+             a slot is a function of the slot. A lot of the ring is a lot record with `parent` its lap, `slot` within the lap and `street` `place:root`; the
+             document leaves `street` out, as for every lot.
   avenues    ring-1 members start at s0 = R1 + TRUNK_LANE, the outer edge of the ring: an avenue's first band is at R1 + 3 or farther (back to back with the
              outer row of the ring where its wedge allows it), and its spoke ribs start at R1 + 1.5 or later (the wedge-fit bound of a narrow wedge).
   laps       when every slot of the laps that stand is taken and one more house comes to the ring, lap k + 1 opens with radius
@@ -82,7 +84,7 @@ from dataclasses import dataclass, field
 from . import layout as lay
 from . import ring as ring_mod
 from .plan import HAND, MIRROR, MODES, check_districts
-from .ring import ROOT_PLACE, lap_place, lap_road, ring_slot
+from .ring import ROOT_PLACE, lap_place, lap_road, ring_fill_order, ring_slot
 from .tree import TreeView, major_tag
 
 WORLD_VERSION = "world/1"
@@ -345,20 +347,27 @@ class World:
         self.stats["laps"] += 1
         return place
 
-    def put_ring(self, article_id: str, tag: str | None, seq: int, track: bool = True) -> dict:
-        """Put a house on the ring road: the lowest free slot of the lowest lap that has one, a new lap when every slot of every lap is taken. The cell of a slot is
-        a function of the slot (`ring_slot`), so there is no empty-lot record; a house that stays after a split keeps its slot."""
+    def put_ring(self, article_id: str, tag: str | None, seq: int, track: bool = True, at: tuple[str, int] | None = None) -> dict:
+        """Put a house on the ring road: the first free slot, in the fill order of the lap (`ring_fill_order`: spread round the whole ring), of the lowest lap that has one, a new lap
+        when every slot of every lap is taken. The cell of a slot is a function of the slot (`ring_slot`), so there is no empty-lot record; a house that stays after a split keeps its
+        slot, and a slot a split freed is taken again in the same order. `at` is a free (lap, slot) that the caller has chosen (a world laid out again: `bibliopolis.hand`)."""
         used: dict[str, set[int]] = {}
         for p in self.by_road().get(ROOT_PLACE, ()):
             used.setdefault(p["parent"], set()).add(p["slot"])
         lap, slot = None, 0
-        for candidate in self.laps():
-            held = used.get(candidate, set())
-            if len(held) < self.places.get(candidate)["ring"]["slots"]:
-                lap, slot = candidate, next(s for s in range(len(held) + 1) if s not in held)
-                break
-        if lap is None:
-            lap = self.open_lap()
+        if at is not None:
+            lap, slot = at
+            assert slot not in used.get(lap, set()), f"slot {slot} of {lap} is taken"
+        else:
+            for candidate in self.laps():
+                held = used.get(candidate, set())
+                slots = self.places.get(candidate)["ring"]["slots"]
+                if len(held) < slots:
+                    lap, slot = candidate, next(s for s in ring_fill_order(slots) if s not in held)
+                    break
+            if lap is None:
+                lap = self.open_lap()
+                slot = ring_fill_order(self.places.get(lap)["ring"]["slots"])[0]  # (0: north)
         ring = self.places.get(lap)["ring"]
         xz, facing = ring_slot(ring["radius"], ring["gaps"], slot)
         lot = lay.lot_record(article_id, lap, slot, slot, xz, facing)
@@ -613,7 +622,7 @@ class World:
                                "to": found["place"], "label": self.spec(found["place"]).label, "houses": [h["article"] for h in go],
                                "count_before": len(everyone), "count_after": len(stay)})
         self.add_houses(found["place"], go, trigger)
-        if keep:  # (the survivors stand: only the houses of the call that stay are still to be put, on the lowest free slots)
+        if keep:  # (the survivors stand: only the houses of the call that stay are still to be put, on the first free slots of the fill order)
             stand = {lot["article"] for lot in existing}
             stay = [h for h in stay if h["article"] not in stand]
         self.add_houses(road, stay, trigger)

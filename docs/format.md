@@ -134,7 +134,7 @@ Every place has a `kind`.
 
 - **`plaza`**: `{label, position, radius}`.
 - **`lot`**: one house. `{article, parent, order, slot, position, facing, seq}`. `article` is the item id, `parent` the rib it stands in (its road, or a
-  continuation of it; for a house on the ring road, its lap), `slot` its number in the rib (the lowest empty one is used first), `seq` the arrival number,
+  continuation of it; for a house on the ring road, its lap), `slot` its number in the rib (the lowest empty one is used first; on a lap of the ring road, the first empty one in the fill order of the lap, see [engine.md](engine.md), "The ring road"), `seq` the arrival number,
   `facing` a bearing in degrees.
 - **`reserved`**: an empty lot (only in a document made with reserved lots; `build` does not).
 - **`street`**: a road, in one of these `shape`s:

@@ -17,7 +17,7 @@ from bibliopolis import layout as lay
 from bibliopolis import world as zw
 from bibliopolis.events import Refusal, standing
 from bibliopolis.hand import State, fold
-from support import bearing_of_direction, capacity, cells_table, gates_of, radius_for
+from support import bearing_of_direction, capacity, cells_table, fill_order_of, first_free, gates_of, laps_of, radius_for
 from bibliopolis.journal import Journal
 from bibliopolis.suggest import suggest_merge, suggest_road
 
@@ -542,6 +542,17 @@ def radius_of(state: State) -> float:
     return state.plan["params"]["ring"]["radius"]
 
 
+def ring_cells(state: State) -> dict[str, tuple[int, int]]:
+    """house id -> (the number of its lap from 0, its slot) for the houses on the ring road, read from the document of the world."""
+    laps = laps_of(state.doc)
+    return {p["article"]: (laps.index(p["parent"]), p["slot"]) for p in state.doc["places"].values() if p["kind"] == "lot" and p["street"] == ROOT}
+
+
+def lap_slots(state: State) -> list[int]:
+    """The slots of each lap that stands in the world, lap 1 first (a lap no house stands on any more stands too)."""
+    return [state.doc["places"][lap]["ring"]["slots"] for lap in laps_of(state.doc)]
+
+
 def ring_of(state: State) -> tuple:
     """What a new radius or a new number of directions changes in the ring road of the plan: (the radius, the number of branches)."""
     return radius_of(state), state.rule["branches"]
@@ -569,6 +580,10 @@ def expansion_violations(before: tuple, after: State) -> list[str]:
     for place, ids in order.items():
         if now.get(place) != ids:
             bad.append(f"the houses of {place} do not stand along it in the order they did")
+    cells = ring_cells(after)  # the houses of the ring stand on the first slots of the fill orders of the laps, the first lap's before the second's: no hole is left
+    fill = [(k, s) for k, slots in enumerate(lap_slots(after)) for s in fill_order_of(slots)][:len(cells)]
+    if sorted(cells.values()) != sorted(fill):
+        bad.append("the houses of the ring do not stand on the first slots of the fill orders of its laps")
     here = {r["place"]: (r["from"], r["to"], r["axis"]) for r in after.sectors()}
     if set(here) != set(sectors):
         bad.append(f"the avenues changed: {sorted(set(here) ^ set(sectors))}")
@@ -622,6 +637,7 @@ def stability_violations(events: list[dict], rule: dict) -> list[str]:
         before_lots, before_roads, auto, before_nodes = lot_snapshot(state), dict(state.road_of), state.rule["auto"], set(state.nodes)
         expected = moved_by(e, state)
         kept, was_ring, chron = ring_snapshot(state), ring_of(state), len(state.doc["chronicle"])
+        cells_before, laps_before = ring_cells(state), lap_slots(state)
         try:
             state.apply(e)
         except Refusal as why:
@@ -633,6 +649,11 @@ def stability_violations(events: list[dict], rule: dict) -> list[str]:
         after_lots = lot_snapshot(state)
         changed = {h for h, road in before_roads.items() if state.road_of[h] != road}
         if e["kind"] == "add_item":
+            house, cells = e["payload"]["item"]["id"], ring_cells(state)
+            if house in cells:  # it stands on the ring: where it was put, on the first free slot in fill order of the lowest lap that has one in the world before the event (a split that
+                want = first_free(laps_before, set(cells_before.values()))  # this event then makes frees lots of the group that leaves, and the house that stays keeps its own)
+                if cells[house] != want:
+                    bad.append(f"event {e['seq']} (add_item) put the house {house} on (lap, slot) {cells[house]}, not on the first free slot in fill order, {want}")
             new = [k for k in state.nodes if k not in before_nodes]
             if not auto and new:
                 bad.append(f"event {e['seq']} (add_item) opened roads without the rule auto: {new}")

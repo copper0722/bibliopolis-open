@@ -23,9 +23,9 @@ TABLE = [(0, "0"), (-0.0, "0"), (1, "1"), (-1, "-1"), (40, "40"), (6.0, "6"), (1
          (2026, "2026"), (-189.97, "-189.97"), (0.30000000000000004, "0.30000000000000004")]
 
 # the sha256 of the text of the city that the sample makes (examples/tree.json + library.json); change them on purpose, with the engine
-PINS = {"grow": "4658bf88a2ab94579bf24339dcf48f72c738bea1c30614a23d3fff3db6b6217b",
-        "mirror": "49f2c49eabc10f7777269f485fb23856fed1966d453878bef0db049e04beeb86",
-        "grow, first 41": "525294305416c6bb3c16220b99fa53c11e7b93950a5bd7ea3a8059bfb0d336e0"}
+PINS = {"grow": "9b3a576aeb5d315f4a41fa7628111e7fc06a50cc0a6b648ede318798d6f67ee3",
+        "mirror": "0e3dbc04ffda3d2078dd757fde8621ef712518df6073573a9823ab9ae0a5f1d7",
+        "grow, first 41": "89fcd60dc932f45a476269517a7de87d5ec142ba0fb9289dad3beed06ec0b005"}
 
 
 @pytest.fixture(scope="module")
