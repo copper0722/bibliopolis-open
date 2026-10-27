@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bibliopolis"
-version = "0.2.0"
+version = "0.2.1"
 description = "Turn a literature collection into a city-state."
 readme = "README.md"
 requires-python = ">=3.11"
