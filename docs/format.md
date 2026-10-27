@@ -143,7 +143,7 @@ Every place has a `kind`.
   - `rib`: a road with no road below it, a stretch of a band of its carrier trunk (`carrier`), or of the spoke.
   - `ring`: the ring road `place:root` (label `Knowledge`), a closed circular road round the plaza, and its laps (below). It is in the document from day one,
     empty or not. It has no rib: its houses are the polar cells of its lane, one on each side. `{ring: {lap, radius, slots, gaps}}`: the number of the lap (1 for
-    `place:root`), the radius of its lane, how many houses it holds (two to a cell, a cell one long along the lane) and the bearings of the gates its cells keep
+    `place:root`), the radius of its lane (a number of at least 1, as `s` of a rib on a band: a house stands one cell from its lane, and the reader refuses a smaller radius, with which a picture would divide by nothing), how many houses it holds (two to a cell, a cell one long along the lane) and the bearings of the gates its cells keep
     clear (the directions the avenues leave by). A lot of the ring has `slot` s in cell s // 2 of its lap: the inner row at the lane radius less 1 when s is even,
     the outer row at the lane radius plus 1 when odd. When the ring is full it goes on as a **lap**: a street of shape `ring` with `lane_of: "place:root"`,
     `ordinal`, `continued: true` and the ring's label, address and class, outside the lane of the lap before it, in `lanes` of the ring.

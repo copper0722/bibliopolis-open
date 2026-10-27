@@ -239,6 +239,9 @@ PLACE_KINDS = ("plaza", "street", "lot", "reserved")
 PLAZA = "place:plaza"
 REACH = 1e7  # cells: far beyond any city, and small enough that the arithmetic of a picture stays finite
 COUNT = 10**12  # houses, arrivals, levels: far beyond any library
+LANE_LEAST = 1.0  # cells: the least radius of a lane (a band, the ring road or a lap of it). A house of a lane is a polar cell of it and stands one cell inside or outside it, so a lane has an
+# inside; and `picture` takes half a cell as the angle 0.5 / radius, which is infinity for the smallest number above 0 (1e323), and the sine of infinity a ValueError
+LANE_WANTED = f"a number of at least {LANE_LEAST:g} (the radius of the lane)"
 
 
 def _number(value, limit: float = REACH) -> bool:
@@ -293,13 +296,13 @@ def _check_street(problems: _Problems, where: str, p: dict) -> None:
             problems.add(f"{where}.rib", f"must be an object, got {_shown(rib)}")
         elif rib.get("band") is not None:  # a cell of a band is the polar cell of its lane: `s`, the radius of the lane, divides
             _typed(problems, f"{where}.rib", rib, "band", _whole, "a whole number or null")
-            _typed(problems, f"{where}.rib", rib, "s", lambda v: _number(v) and v > 0, "a number above 0 (the radius of the lane)")
+            _typed(problems, f"{where}.rib", rib, "s", lambda v: _number(v) and v >= LANE_LEAST, LANE_WANTED)
     if p.get("shape") == "ring":  # the ring road or a lap of it: a house on it is the polar cell of its lane, the radius of the lane divides
         ring = p.get("ring")
         if not isinstance(ring, dict):
             problems.add(f"{where}.ring", f"must be an object {{radius, ...}} for a street of shape ring, got {_shown(ring)}")
         else:
-            _typed(problems, f"{where}.ring", ring, "radius", lambda v: _number(v) and v > 0, "a number above 0 (the radius of the lane)")
+            _typed(problems, f"{where}.ring", ring, "radius", lambda v: _number(v) and v >= LANE_LEAST, LANE_WANTED)
 
 
 def _check_house(problems: _Problems, where: str, p: dict) -> None:

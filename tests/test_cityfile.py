@@ -136,13 +136,13 @@ MISTAKES = [
     ("a street with a weight that is a word", lambda d: d["places"][a_street(d)].update(weight="heavy"), ".weight: must be a number"),
     ("a street whose road is a list", lambda d: d["places"][a_street(d)].update(road=["x"]), ".road: must be a road id"),
     ("a street whose name is a number", lambda d: d["places"][a_street(d)].update(label=5), ".label: must be a string"),
-    ("a lane of radius 0", lambda d: d["places"][a_street(d, "rib")]["rib"].update(band=0, s=0), ".rib.s: must be a number above 0"),
+    ("a lane of radius 0", lambda d: d["places"][a_street(d, "rib")]["rib"].update(band=0, s=0), ".rib.s: must be a number of at least 1"),
     ("a road hung on the ring road", lambda d: d["places"][a_street(d)].update(parent=the_ring(d)), "is no lap of it, a street of shape ring (a house on it:"),
     ("a ring road with no ring", lambda d: d["places"][the_ring(d)].pop("ring"), ".ring: must be an object {radius, ...} for a street of shape ring"),
     ("a ring road whose ring is a list", lambda d: d["places"][the_ring(d)].update(ring=[8.5]), ".ring: must be an object {radius, ...} for a street of shape ring"),
-    ("a ring road of radius 0", lambda d: d["places"][the_ring(d)]["ring"].update(radius=0), ".ring.radius: must be a number above 0 (the radius of the lane)"),
-    ("a ring road with no radius", lambda d: d["places"][the_ring(d)]["ring"].pop("radius"), ".ring: radius is missing (a number above 0"),
-    ("a ring road whose radius is a word", lambda d: d["places"][the_ring(d)]["ring"].update(radius="wide"), ".ring.radius: must be a number above 0"),
+    ("a ring road of radius 0", lambda d: d["places"][the_ring(d)]["ring"].update(radius=0), ".ring.radius: must be a number of at least 1 (the radius of the lane)"),
+    ("a ring road with no radius", lambda d: d["places"][the_ring(d)]["ring"].pop("radius"), ".ring: radius is missing (a number of at least 1"),
+    ("a ring road whose radius is a word", lambda d: d["places"][the_ring(d)]["ring"].update(radius="wide"), ".ring.radius: must be a number of at least 1"),
     ("a count of houses on the ring that is a word", lambda d: d["composition"]["measure"].update(ring_lots="many"), "measure.ring_lots: must be a number"),
     ("a lane with no radius", lane_without_radius, "rib: s is missing"),
     ("a rib that is a list", lambda d: d["places"][a_street(d, "rib")].update(rib=[1]), ".rib: must be an object"),
@@ -199,8 +199,8 @@ NUMBERS = [  # (the number, how to put a value there, what the message names)
     ("a point of a road", lambda d, v: next(iter(d["roads"].values())).update(points=[[0, 0], [v, 1]]), ".points: must be a list of at least two"),
     ("a bearing of a sector", lambda d, v: d["composition"]["ring1"][0].update({"from": v}), "ring1[0].from: must be a bearing in degrees"),
     ("the weight of a street", lambda d, v: d["places"][a_street(d)].update(weight=v), ".weight: must be a number"),
-    ("the radius of a lane", lambda d, v: d["places"][a_street(d, "rib")]["rib"].update(band=0, s=v), ".rib.s: must be a number above 0"),
-    ("the radius of the ring road", lambda d, v: d["places"][the_ring(d)]["ring"].update(radius=v), ".ring.radius: must be a number above 0"),
+    ("the radius of a lane", lambda d, v: d["places"][a_street(d, "rib")]["rib"].update(band=0, s=v), ".rib.s: must be a number of at least 1"),
+    ("the radius of the ring road", lambda d, v: d["places"][the_ring(d)]["ring"].update(radius=v), ".ring.radius: must be a number of at least 1"),
     ("a corner of the coast", lambda d, v: d["coast"]["polygons"][0].__setitem__(0, [v, 0]), "coast.polygons[0]: must be a list of at least three"),
     ("the number of buildings", lambda d, v: d["composition"].update(buildings=v), "composition.buildings: must be a number"),
     ("the total of streets", lambda d, v: d["composition"]["streets"].update(total=v), "composition.streets.total: must be a number"),
@@ -236,6 +236,26 @@ def test_the_same_after_a_round_trip_through_json_text(real_city, put, names, va
     with pytest.raises(inputs.InputError) as refused:
         inputs.read_city(json.loads(text))
     assert names in str(refused.value)
+
+
+LANES = [("a lane", lambda d, v: d["places"][a_street(d, "rib")]["rib"].update(band=0, s=v), ".rib.s"),
+         ("the ring road", lambda d, v: d["places"][the_ring(d)]["ring"].update(radius=v), ".ring.radius")]
+
+
+@pytest.mark.parametrize("put, where", [pytest.param(put, where, id=what) for what, put, where in LANES])
+@pytest.mark.parametrize("value", [5e-324, 1e-300, 1e-9, 0.5, 0.999], ids=["5e-324", "1e-300", "1e-9", "0.5", "0.999"])
+def test_the_radius_of_a_lane_is_at_least_a_cell_and_the_reader_says_so_where_the_picture_would_divide_by_nothing(real_city, put, where, value):
+    """A house of a band or of the ring road is a polar cell of its lane: `picture` takes half a cell as the angle 0.5 / radius, which for the smallest number above 0 is 1e323, infinity,
+    and the sine of it a ValueError. A lane is at least 1 cell from the town hall (a house stands one cell inside it, so it must have an inside)."""
+    doc = copy.deepcopy(real_city)
+    put(doc, value)
+    with pytest.raises(inputs.InputError) as refused:
+        inputs.read_city(doc)
+    assert f"{where}: must be a number of at least 1 (the radius of the lane" in str(refused.value)
+    for kind, edge in (("a lane of one cell is read and drawn", 1.0), ("so is one of a hundred", 100.0)):
+        doc = copy.deepcopy(real_city)
+        put(doc, edge)
+        assert picture.render(inputs.read_city(doc), None, size=400).startswith("<svg"), kind
 
 
 def test_a_number_written_as_1e400_is_infinity_in_a_json_file_and_is_refused(real_city):

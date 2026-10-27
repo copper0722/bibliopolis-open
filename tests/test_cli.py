@@ -431,7 +431,7 @@ WRONG_CITIES = [
     ("a street that is its own parent", own_parent, "the parents lead round in a circle"),
     ("two streets that are each other's parent", each_others_parent, "the parents lead round in a circle"),
     ("a house on a street that is not there", lambda d: next(p for p in d["places"].values() if p["kind"] == "lot").update(parent="place:nowhere"), "is not a street"),
-    ("a lane of radius 0", lane_of_no_radius, "must be a number above 0"),
+    ("a lane of radius 0", lane_of_no_radius, "must be a number of at least 1"),
     ("a coast that is null", lambda d: d.update(coast=None), "coast: must be an object"),
     ("an integer too large for a float", lambda d: d["composition"]["measure"].update(walk_mean=10**400), "measure.walk_mean: must be a number"),
     ("a number that is infinity", lambda d: d["composition"]["measure"].update(max_radius=float("inf")), "measure.max_radius: must be a number, got inf"),
