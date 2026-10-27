@@ -388,7 +388,6 @@ def test_the_largest_max_is_a_ring_of_eight_hundred_cells_and_is_laid_out_in_a_b
     assert [problem for problem in hand_problems(h.state) if problem[0] not in ("geometry", "document")] == []  # (what the streets do at that radius is the next test)
 
 
-@pytest.mark.xfail(strict=True, reason="the arc of a street has too few points at a large radius, so its chords cut into the lots beside it (the rule for the arcs is not changed yet)")
 def test_the_streets_of_a_city_at_the_largest_max_run_beside_its_lots_and_not_through_them():
     h = a_city_of_400_houses_with_an_avenue_of_200()
     h.rule(RULE_LIMIT, 3)

@@ -5,7 +5,7 @@ import math
 from pathlib import Path
 
 import pytest
-from support import T, make_tree
+from support import T, five_degree_arc, make_tree
 
 import bibliopolis
 from bibliopolis import coast
@@ -74,6 +74,33 @@ def test_an_arc_has_a_point_every_five_degrees_at_most_and_ends_where_it_is_aske
     pts = lay.arc_points(10.0, 0.0, 22.0)
     assert len(pts) == 6 and pts[0] == lay.pt(lay.polar_xz(10.0, 0.0)) and pts[-1] == lay.pt(lay.polar_xz(10.0, 22.0))
     assert len(lay.arc_points(10.0, 5.0, 5.0)) == 2
+
+
+@pytest.mark.parametrize("radius, a, b, chords", [(8.5, 0.0, 360.0, 72), (18.0, 12.5, 98.3, 18), (48.644, 10.0, 15.0, 1), (52.5, 0.0, 5.0, 1), (52.6, 0.0, 5.0, 2),
+                                                  (104.264, 30.0, 35.0, 2), (800.0, 0.0, 360.0, 281), (7964.5, 10.0, 14.0, 10), (10.0, 3.0, 3.0, 1)])
+def test_an_arc_keeps_every_chord_within_the_sagitta_bound_and_its_points_of_old_up_to_radius_52_5(radius, a, b, chords):
+    """The polyline of an arc (a lane of a band, an arc to a side wedge): a chord every 5 degrees at most, as before, and more where that would leave a chord deeper than 0.05 cell inside
+    the circle: n = max(ceil(|b - a| / 5), ceil(radians(|b - a|) / (2 * acos(1 - 0.05 / R)))), the least count that keeps the bound and never fewer chords than before. Up to radius
+    52.53 a chord of 5 degrees keeps the bound, so every arc there keeps its points."""
+    old = max(1, math.ceil(abs(b - a) / 5.0))
+    need = math.ceil(math.radians(abs(b - a)) / (2 * math.acos(1 - 0.05 / radius)))  # stated apart from the engine's helper
+    assert lay.ARC_STEP == 5.0 and lay.ARC_SAGITTA == 0.05 == ring.RING_SAGITTA and lay.arc_chords(radius, a, b) == chords == max(old, need)
+    points = lay.arc_points(radius, a, b)
+    assert len(points) == chords + 1 and points[0] == lay.pt(lay.polar_xz(radius, a)) and points[-1] == lay.pt(lay.polar_xz(radius, b))
+    if chords == old:
+        assert points == five_degree_arc(radius, a, b)  # (no byte of a city whose arcs all lie within radius 52.53 changes)
+    for (ax, az), (bx, bz) in zip(points, points[1:]):  # every chord's middle lies within the bound of the circle (positions are rounded to 1e-3)
+        assert radius - math.hypot((ax + bx) / 2, (az + bz) / 2) <= 0.05 + 2e-3
+    if chords > old:  # the least such count: one chord fewer would not keep the bound
+        phi = math.radians(abs(b - a))
+        assert radius * (1 - math.cos(phi / (2 * chords))) <= 0.05 < radius * (1 - math.cos(phi / (2 * (chords - 1))))
+
+
+def test_the_page_gives_the_chord_rule_of_an_arc_and_the_radius_up_to_which_a_5_degree_chord_keeps_it():
+    page = " ".join((EXAMPLES.parent / "docs" / "format.md").read_text(encoding="utf-8").split())
+    assert "`n = max(ceil(|b - a| / 5), ceil(radians(|b - a|) / (2 * acos(1 - 0.05 / R))))` chords of equal angle" in page and "beyond the radius 52.53" in page
+    assert 0.05 / (1 - math.cos(math.radians(2.5))) == pytest.approx(52.5332, abs=1e-4)  # a chord of 5 degrees lies 0.05 inside a circle of this radius
+    assert (lay.arc_chords(52.53, 0.0, 5.0), lay.arc_chords(52.54, 0.0, 5.0)) == (1, 2)
 
 
 def test_a_street_of_the_plan_weighs_its_lots_and_the_empty_lots_kept_for_growth():

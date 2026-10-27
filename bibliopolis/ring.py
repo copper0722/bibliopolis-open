@@ -11,7 +11,7 @@ for, where a slot stands and the two records of a lap. `bibliopolis.world` puts 
             the spoke of a side line). A gate is cut in both rows: outward it is where the avenue leaves, inward it is how the town hall reaches the ring.
   cells     from north clockwise, each cell starting where the one before ended, skipping the open interval (centre - TRUNK_LANE, centre + TRUNK_LANE) round every
             gate (`ring_cells`): a cell never stands within TRUNK_LANE of a gate axis, as the first lot of a band never stands within it of its trunk.
-  fill      the n slots of a lap, listed by angle from north clockwise (slot s in cell s // 2, the inner lot first), are taken in the order of the scaled radical inverse
+  fill      the n slots of a lap, listed by angle from north clockwise (slot s in cell s // 2: even s its inner lot, odd s its outer lot), are taken in the order of the scaled radical inverse
             (`ring_fill_order`): for j = 0 .. 2^m - 1, 2^m the least power of two that is at least n, the slot floor(rev_m(j) * n / 2^m), rev_m reading the m bits of j
             backwards, the first time a slot comes up. The first house stands at north, the second half way round, the next two at the quarters, then the eighths, and so on,
             so that the houses of the ring spread round the whole circle whatever their number and whatever n is. A house takes the first free slot of that fixed order, a
@@ -41,7 +41,7 @@ RING_MIN = lay.PLAZA_RADIUS + lay.LEAD + lay.BAND / 2  # the least lane radius: 
 RING_AVENUE_ARC = 2 * (lay.TRUNK_LANE + 1.0)  # the arc one avenue needs at the ring's outer edge: its spoke lane (TRUNK_LANE each side of the axis) and a lot (1) on each side: 3
 RING_CLASS_RING = 1  # the ring road and its laps are ring 1 (display class 大道)
 EPS = 1e-9
-RING_SAGITTA = 0.05  # the most a chord of a ring road's polyline lies inside its circle (cells): the road drawn stays on its lane at any radius
+RING_SAGITTA = lay.ARC_SAGITTA  # the most a chord of a ring road's polyline lies inside its circle (cells, 0.05, as on every arc): the road drawn stays on its lane at any radius
 RING_CHORD_STEP = 72  # a ring road's polyline has a whole multiple of 72 chords: 73 points (5 degrees a chord) wherever that is fine enough
 
 
@@ -174,7 +174,7 @@ def ring_radius_for(gates: tuple[float, ...] | list[float], max_houses: int, w_m
 def ring_fill_order(slots: int) -> tuple[int, ...]:
     """The order in which the slots of a lap of n = `slots` slots take houses: the scaled radical inverse. For j = 0 .. 2^m - 1, 2^m the least power of two that is at least n, the
     slot is floor(rev_m(j) * n / 2^m), `rev_m` reading the m bits of j backwards, and a slot counts the first time it comes up (the map is onto 0 .. n - 1, so the order holds every
-    slot once). The slots are listed by angle from north clockwise (slot s in cell s // 2, the inner row first), so the first house stands at north, the second at slot n // 2,
+    slot once). The slots are listed by angle from north clockwise (slot s in cell s // 2: even s its inner lot, odd s its outer lot; a numbering only, the order takes both rows from the start), so the first house stands at north, the second at slot n // 2,
     half way round whatever n is, then the quarters, the eighths, and so on: every prefix of the order is spread round the whole ring. A house takes the first free slot in this
     order. Pure, cached."""
     m = 0

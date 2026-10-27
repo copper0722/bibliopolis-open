@@ -23,19 +23,14 @@ PLAZA_RADIUS = 6.0
 TRUNK_LANE, BAND = 0.5, 3.0  # (the constants of the geometry, stated here apart from the engine's)
 RING_ROOT = "place:root"
 EPS = 1e-6
-LANE_ROUNDING = 8.5 * math.radians(0.02)  # cells along a lane: what two points of one lane may differ by because positions are written to three decimals. The checks had a fixed 0.02
-# degrees for it, which is this at the radius 8.5 of the first ring; as an angle it must shrink as the lane widens (0.02 degrees is wider than a lot from radius 1432 on)
+EDGE = 0.003  # cells: where two cells touch, or a road passes the edge of a cell, the positions (rounded to 0.001) may cross by this much; a length along the lane, so the allowance in
+#              angle, degrees(EDGE / R), shrinks with the radius and never turns negative (a fixed 0.02 degrees did beyond the radius 1432)
 DOCUMENT_CHECKS = ("overlaps", "not_adjacent", "road_tree_problems", "crossings", "roads_through_lots")
 WORLD_CHECKS = ("position_problems", "wedge_problems", "branch_circle_problems", "registry_problems", "bookkeeping_problems", "ring_problems")
 
 
 def bearing_of(x, z):
     return math.degrees(math.atan2(x, -z))
-
-
-def rounding_degrees(radius):
-    """`LANE_ROUNDING` as an angle on a lane of lane radius `radius`: the allowance of the checks that compare angles on one lane."""
-    return math.degrees(LANE_ROUNDING / radius)
 
 
 def is_ring_lot(places, p):
@@ -86,7 +81,7 @@ def overlaps(layout):
                 if a[5] and b[5]:
                     dphi = abs((a[3] - b[3] + 180) % 360 - 180)
                     # positions are rounded to a millimetre-ish: neighbours in a row touch exactly, so allow the rounding
-                    if abs(a[2] - b[2]) < 1 - 0.01 and dphi < math.degrees(0.5 / a[4] + 0.5 / b[4]) - rounding_degrees(min(a[4], b[4])):
+                    if abs(a[2] - b[2]) < 1 - 0.01 and dphi < math.degrees((0.5 - EDGE / 2) / a[4] + (0.5 - EDGE / 2) / b[4]):
                         bad.append((a[0], b[0]))
                 elif d < 0.99:
                     bad.append((a[0], b[0]))
@@ -272,7 +267,7 @@ def roads_through_lots(layout):
                         continue
                     if c[5]:
                         dphi = abs((bear - c[3] + 180) % 360 - 180)
-                        if abs(rho - c[2]) < 0.45 and dphi < math.degrees(0.5 / c[4]) - rounding_degrees(c[4]):
+                        if abs(rho - c[2]) < 0.45 and dphi < math.degrees((0.5 - EDGE) / c[4]):
                             bad.append((rid, c[0]))
                     elif math.hypot(x - cx, z - cz) < 0.45:
                         bad.append((rid, c[0]))

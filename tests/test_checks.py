@@ -2,13 +2,15 @@
 
 `overlaps` and `roads_through_lots` compare angles on a lane. They allowed a fixed 0.02 degrees for the rounding of the positions (three decimals), which is the width of a lot from the
 radius 1432 on: beyond it the allowance was wider than the lot, the threshold went negative and no lot was ever found to overlap or to have a road through it. The allowance is a length
-along the lane now (`checks.LANE_ROUNDING`), so that it shrinks as an angle when the lane widens. A planted fault at each radius is found, and its confusable twin (one cell off, or
+along the lane now (`checks.EDGE`, 0.003 cell), so that it shrinks as an angle when the lane widens. A planted fault at each radius is found, and its confusable twin (one cell off, or
 touching) is not: a detector that never fires is no check."""
 
 import math
 
 import checks
 import pytest
+
+from support import five_degree_arc
 
 from bibliopolis import layout as lay
 
@@ -61,6 +63,28 @@ def test_two_lots_that_overlap_are_found_and_two_that_touch_are_not_whatever_the
     assert checks.overlaps(touching) == []
 
 
-def test_the_allowance_for_the_rounding_is_a_length_along_the_lane_and_was_0_02_degrees_at_the_first_ring():
-    assert checks.rounding_degrees(8.5) == pytest.approx(0.02) and checks.rounding_degrees(850.0) == pytest.approx(0.0002)
-    assert checks.rounding_degrees(7964.5) < math.degrees(0.5 / 7964.5) / 100  # at the radius of the review it is a hundredth of a lot
+def test_the_allowance_for_the_rounding_is_a_length_along_the_lane_so_that_in_angle_it_shrinks_with_the_radius_and_never_passes_a_lot():
+    assert checks.EDGE == 0.003  # (positions are rounded to 0.001: a point moves by 0.0014 cell at the most)
+    for radius in (8.5, 850.0, 7964.5):
+        assert 0 < math.degrees(checks.EDGE / radius) < math.degrees(0.5 / radius) / 100  # under a hundredth of half a lot, at every radius
+    assert math.degrees(0.5 / 1431.0) > 0.02 > math.degrees(0.5 / 1433.0)  # the fixed 0.02 degrees was wider than half a lot from the radius 1432 on
+
+
+def test_a_far_arc_drawn_a_chord_every_5_degrees_runs_through_its_inner_row_and_the_chord_rule_keeps_it_on_its_lane():
+    """A lane at radius 7964.5 from bearing 10 to 14 degrees (556 cells) with a lot on each row of every cell. Drawn a chord every 5 degrees (one chord) its middle lies 4.85 cells inside
+    the circle, and the road runs through the inner row near both ends: the check flags those lots. Drawn by the chord rule (10 chords, at most 0.05 cell inside the circle) the road is
+    clear of both rows."""
+    radius, a, b = 7964.5, 10.0, 14.0
+    cells = int(radius * math.radians(b - a))  # whole cells along the lane
+    places = {"place:s": {"kind": "street", "parent": "place:plaza"}, "place:s:rib": {"kind": "rib", "parent": "place:s", "rib": {"s": radius, "band": 0}}}
+    for c in range(cells):
+        theta = a + math.degrees((c + 0.5) / radius)
+        places[f"lot:{c}:in"] = lay.lot_record(f"a{c}i", "place:s:rib", c, 2 * c, lay.polar_xz(radius - 1, theta), theta)
+        places[f"lot:{c}:out"] = lay.lot_record(f"a{c}o", "place:s:rib", c, 2 * c + 1, lay.polar_xz(radius + 1, theta), theta + 180)
+    old = {"places": places, "roads": {"road:s": {"points": five_degree_arc(radius, a, b)}}}
+    new = {"places": places, "roads": {"road:s": {"points": lay.arc_points(radius, a, b)}}}
+    assert cells == 556 and len(old["roads"]["road:s"]["points"]) == 2 and len(new["roads"]["road:s"]["points"]) == 11
+    flagged = {lot for _rid, lot in checks.roads_through_lots(old)}
+    assert len(flagged) > 40 and all(lot.endswith(":in") for lot in flagged)  # the inner row, near both ends of the chord
+    assert {int(lot.split(":")[1]) < cells // 2 for lot in flagged} == {True, False}
+    assert checks.roads_through_lots(new) == [] and checks.overlaps(new) == []

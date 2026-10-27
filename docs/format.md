@@ -174,6 +174,8 @@ Each road has `street`, `kind`, `class`, `parent` (the road it hangs on), `at` (
 - `lane`: an arc around the plaza across a trunk, one stretch per street (`trunk`, `band`, `side`, `off`, `radius`, `bearings`);
 - `ring`: the lane of the ring road or of one of its laps, a closed circle round the plaza from north clockwise (the last point is the first), with no parent (`radius`).
 
+The polyline of an arc (`lane`, `arc`) from bearing `a` to `b` on a circle of radius `R` has `n = max(ceil(|b - a| / 5), ceil(radians(|b - a|) / (2 * acos(1 - 0.05 / R))))` chords of equal angle, the point `k` at the bearing `a + (b - a) * k / n` (`bibliopolis.layout.arc_chords`): a chord every 5 degrees at most, and more where a chord of 5 degrees would lie more than 0.05 cell inside its circle, which is beyond the radius 52.53. A road drawn along a lane stays within 0.05 cell of it at any radius, and a city whose arcs all lie within that radius has the points it always had. The ring road keeps a count of its own, a whole multiple of 72 chords with the same bound.
+
 The walk from the plaza to a door is the sum of the `at` of its road and its ancestors, and the distance along its own lane. The spokes of ring 1 start at the outer
 edge of the ring road (`s0`); the walk to a house on the ring goes out through the nearest gate to its lane, then along it.
 

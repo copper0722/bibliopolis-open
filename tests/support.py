@@ -195,8 +195,8 @@ def radical_inverse(j):
 
 
 def fill_order_of(slots):
-    """The order in which the slots of a lap fill, stated apart from the engine (docs/engine.md, "The ring road"): the slots listed by angle from north, clockwise (inner row first in a
-    cell) are numbered 0 .. slots - 1, and the j-th point of the van der Corput sequence, `radical_inverse(j)` in [0, 1), falls in the slot floor(point * slots); the order is the order
+    """The order in which the slots of a lap fill, stated apart from the engine (docs/engine.md, "The ring road"): the slots listed by angle from north, clockwise (slot 2c the inner lot of cell c, 2c + 1 its outer lot) are numbered
+    0 .. slots - 1, and the j-th point of the van der Corput sequence, `radical_inverse(j)` in [0, 1), falls in the slot floor(point * slots); the order is the order
     in which the slots are first hit, j = 0, 1, 2, ... (exact fractions; the engine reverses the bits of j below 2**m and scales by integers)."""
     seen, out, j = set(), [], 0
     while len(out) < slots:
@@ -225,6 +225,13 @@ def radius_for(gates, max_houses, w_min=None):
     while not (capacity(8.5 + k, gates) >= max_houses and (w_min is None or (8.5 + k + 1.5) * math.radians(w_min) >= 3.0 - 1e-9)):
         k += 1
     return 8.5 + k
+
+
+def five_degree_arc(radius, a, b):
+    """The polyline of an arc as the engine drew it before the chord rule: a chord every 5 degrees at most, at any radius. The control of the tests that show a far arc drawn that way
+    leaving its lane."""
+    n = max(1, math.ceil(abs(b - a) / 5.0))
+    return [lay.pt(lay.polar_xz(radius, a + (b - a) * k / n)) for k in range(n + 1)]
 
 
 def slot_cell(radius, gates, slot):

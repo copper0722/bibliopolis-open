@@ -179,6 +179,8 @@ RIB_GAP = 0.0  # empty cells between two bands (the rows of lots of two bands st
 ITEM_GAP = 1  # empty cells between two streets of one band
 FIT_MARGIN = 0.5  # clear cells between a lot and the border of its wedge
 TRUNK_MIN = 300  # weight (lots plus reserved lots of the plan) from which a container street gets a trunk and a wedge of its own
+ARC_STEP = 5.0  # degrees: the widest chord of the polyline of an arc (the floor of its chord count, `arc_chords`)
+ARC_SAGITTA = 0.05  # cells: the most a chord of the polyline of an arc lies inside its circle, at any radius (the bound of the ring road's polyline too)
 
 
 def polar_xz(rho: float, deg: float) -> tuple[float, float]:
@@ -217,9 +219,18 @@ def pt(xz: tuple[float, float]) -> list[float]:
     return [r3(xz[0]), r3(xz[1])]
 
 
+def arc_chords(radius: float, a: float, b: float) -> int:
+    """The number of chords of the polyline of the arc of `radius` from bearing `a` to `b`: one every ARC_STEP degrees at most (the count of the first version, the floor), and more where a
+    chord would lie deeper than ARC_SAGITTA inside the circle: the least n with radius * (1 - cos(phi / (2 * n))) <= ARC_SAGITTA, phi = radians(|b - a|), that is
+    ceil(phi / (2 * acos(1 - ARC_SAGITTA / radius))). Up to radius 52.53 a chord of 5 degrees keeps within the bound, so an arc there keeps its points; beyond it the polyline follows its
+    lane at any radius."""
+    n = max(1, math.ceil(abs(b - a) / ARC_STEP))
+    return max(n, math.ceil(math.radians(abs(b - a)) / (2.0 * math.acos(1.0 - ARC_SAGITTA / radius))))
+
+
 def arc_points(radius: float, a: float, b: float) -> list[list[float]]:
-    """Points of the arc of the given radius from bearing `a` to `b`, one every 5 degrees at most."""
-    n = max(1, math.ceil(abs(b - a) / 5.0))
+    """Points of the arc of the given radius from bearing `a` to `b`: `arc_chords` chords of equal angle, point k at the bearing a + (b - a) * k / n."""
+    n = arc_chords(radius, a, b)
     return [pt(polar_xz(radius, a + (b - a) * k / n)) for k in range(n + 1)]
 
 

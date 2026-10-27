@@ -114,7 +114,7 @@ geometry is `bibliopolis.ring` (pure functions of numbers; the order of the oper
   those instead, and no ring-1 trunk adds to them: one that a road left behind is no gate); G2 is G1 and the axes of the side trunks (a lap beyond the first can lie across the spoke of a side line). A gate is cut in both rows: outward it is where the avenue leaves, inward it is how the town hall reaches the ring.
 - **Cells and slots.** The lane is cut into cells one long, from north clockwise, each starting where the one before ended, skipping a stretch of one round every
   gate. A cell holds two lots: slot `s` is in cell `s // 2`, the inner lot (radius `R - 1`, facing out) when `s` is even, the outer lot (radius `R + 1`, facing
-  in) when it is odd. So the slots of a lap are listed by angle from north clockwise, the two rows of one cell sharing an angle, the inner lot first. There are no
+  in) when it is odd. So the slots of a lap are listed by angle from north clockwise, the two lots of a cell sharing an angle (slot `2c` the inner lot of cell `c`, slot `2c + 1` its outer lot: a numbering only, the fill order below takes both rows from the start). There are no
   empty-lot records on the ring: the cell of a slot is a function of the slot.
 - **Fill order.** The `n = 2C` slots of a lap are taken in the order of the scaled radical inverse (`ring_fill_order(n)`): for `j = 0 .. 2^m - 1`, `2^m` the least power of two
   that is at least `n`, the slot `floor(rev_m(j) * n / 2^m)` (integer arithmetic: `(rev_m(j) * n) >> m`), `rev_m` reading the `m` bits of `j` backwards, and a slot counts the first
@@ -133,7 +133,7 @@ geometry is `bibliopolis.ring` (pure functions of numbers; the order of the oper
   world and takes houses before another lap opens; the document leaves it out.
 - **The road.** The road of a lap is a closed polyline from north, clockwise, whose last point is its first: `n` chords, `n` the least whole multiple of 72 with
   `R * (1 - cos(pi / n)) <= 0.05` (a chord lies at most 0.05 cell inside the lane), the point `k` at the bearing `360 * k / n`. So 73 points up to `R = 52.5`, 289 at `R = 800`; the
-  road of a far lap does not cut across its inner row of lots.
+  road of a far lap does not cut across its inner row of lots. Every other arc has the same bound with its own count (`arc_chords`, [format.md](format.md)).
 - **The walk** from the plaza to a house on the ring goes out through the nearest gate of G1 to the lane, then along the lane: `R + R * radians(d)`, `d` the angle
   between the house and that gate.
 - **Stability.** A split from the ring frees the lots of the group that leaves and nothing else: the houses that stay keep their lots. Every other road packs its
