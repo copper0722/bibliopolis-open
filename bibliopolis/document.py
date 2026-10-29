@@ -35,9 +35,10 @@ Keys:
   places      plaza {kind label position radius [tag]}; lot {kind article parent order slot position facing seq}; reserved {kind
               parent slot end position facing} (with_reserved only); street, in the shapes
                 trunk  address axis bands class kind level lots open order parent reserved road s0 s_end shape wedge weight
-                       [carrier collapsed heavy label lane lanes rib tag over]
-                group  address carrier class kind level lots order parent reserved shape weight [collapsed label lanes rib road tag over]
+                       [carrier collapsed heavy label lane rib tag over]
+                group  address carrier class kind level lots order parent reserved shape weight [collapsed label rib road tag over]
                 rib    as group; a lap of the ring road is a street of shape ring with lane_of, ordinal, continued, the ring's label and no order, weight or tag
+                       (the key `lanes` is the ring road's list of its laps; a city file of version 0.3 or before may give a road `lanes` too: continuation ribs)
               and `rib` {trunk band side x0 x1 s slots} (band null: laid along the spoke of `trunk`, lots on both sides of its axis).
               `lot.seq` is the arrival number (orders the growth). A street's `lots` counts its built lots, `reserved` the lots it holds empty.
   roads       spoke {at axis class kind length open parent points s0 s_end street wedge}; arc {at class kind length parent points side

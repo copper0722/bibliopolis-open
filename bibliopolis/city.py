@@ -57,7 +57,7 @@ def build_city(library: dict, tree: dict, *, mode: str = GROW, max_houses: int =
 
 
 def summary(doc: dict) -> dict:
-    """The numbers of a city document: houses, roads (continuations are not counted twice; the ring road counts as one), the houses on the ring road (`ring`), splits,
+    """The numbers of a city document: houses, roads (a road is counted once, whatever ribs it has; the ring road counts as one), the houses on the ring road (`ring`), splits,
     and the streets that are over now (a road or the ring road that holds more than `max` houses and cannot split). The chronicle remembers every road that was ever
     over; a road that a later split brought back under `max` is in the chronicle and no longer counts here."""
     streets = doc["composition"]["streets"]

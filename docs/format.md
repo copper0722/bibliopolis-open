@@ -44,7 +44,7 @@ The order of the items in the file does not matter: only `added_at` and `id` do.
 
 | field | type | meaning |
 |---|---|---|
-| `id` | string, not empty | unique in the tree; no control characters; not of the form `lane:<anything>:<number>` (it would share ids with a continuation rib). |
+| `id` | string, not empty | unique in the tree; no control characters; not of the form `lane:<anything>:<number>` (a continuation rib of an earlier version had reserved ids of that form; the form stays refused). |
 | `label` | string, not empty | the name of the road. |
 | `parent` | string or null | the id of the parent node; null for a root. |
 
@@ -121,8 +121,8 @@ writes from a world built by hand is the same document, with `world.mode` `hand`
 
 `home_max`, `trunk_min` (the numbers the plan was cut with), `articles` = `buildings` (the houses in the document), `reserved_lots`
 (empty lots in the document: always 0 here), `ring1` (every ring-1 sector: `{place, label, weight, from, to, span}`, degrees; a world built by hand ([world.md](world.md)) adds `axis`, the bearing of the spoke, which lies in the sector and need not be its middle), `streets`
-(`{total, containers, leaves, trunks, groups, spokes, lanes, continuations, ring}`: a road with continuation ribs is counted once, and the ring road counts as one
-street, its laps being continuations; `ring` is the number of street records of shape `ring`, laps included) and `measure` (`lots`, `land_area`, `max_radius`, the
+(`{total, containers, leaves, trunks, groups, spokes, lanes, continuations, ring}`: a road is one record, and the ring road counts as one
+street, its laps being the only continuations (a document of version 0.3 or before may have more: a continuation rib of a road); `ring` is the number of street records of shape `ring`, laps included) and `measure` (`lots`, `land_area`, `max_radius`, the
 walk from the plaza to the doors, `streets_by_class`, `ring_lots`, the houses on the ring road, ...). Every house is on the surface, and the measures count them all.
 
 ### `world`
@@ -153,8 +153,7 @@ A **chronicle** entry is either a split or an over, numbered `n` = 1, 2, ... in 
 Every place has a `kind`.
 
 - **`plaza`**: `{label, position, radius}`.
-- **`lot`**: one house. `{article, parent, order, slot, position, facing, seq}`. `article` is the item id, `parent` the rib it stands in (its road, or a
-  continuation of it; for a house on the ring road, its lap), `slot` its number in the rib (the lowest empty one is used first; on a lap of the ring road, the first empty one in the fill order of the lap, see [engine.md](engine.md), "The ring road"), `seq` the arrival number,
+- **`lot`**: one house. `{article, parent, order, slot, position, facing, seq}`. `article` is the item id, `parent` the rib it stands in (its road; for a house on the ring road, its lap), `slot` its number in the rib (the lowest empty one is used first; on a lap of the ring road, the first empty one in the fill order of the lap, see [engine.md](engine.md), "The ring road"), `seq` the arrival number,
   `facing` a bearing in degrees.
 - **`reserved`**: an empty lot (only in a document made with reserved lots; `build` does not).
 - **`street`**: a road, in one of these `shape`s:
@@ -173,13 +172,12 @@ Every place has a `kind`.
   `lots` and `reserved`. `label` is there when it differs from the tree's label (a road with a collapsed
   chain: `"Humanities・History"`), else `address[-1]` is the name. `collapsed` lists the topics collapsed into the road, top first. `over: true` marks a road
   that holds more than `max` houses and cannot split. `rib` is `{trunk, band, side, x0, x1, s, slots}` (`band` is null when the rib lies along the spoke).
-  A road that holds more than its first rib has `lanes`: continuation ribs, records with `lane_of`, `ordinal`, `continued: true` and the same label,
-  level, class and address as the road.
+  A road has one rib, which grows at its end when it is full (engine.md, "Growth in place"); `lanes` is the key of the ring road alone, which lists its laps. (A document made by version 0.3
+  or before may give a road `lanes`: continuation ribs, records with `lane_of`, `ordinal`, `continued: true` and the same label, level, class and address as the road. The reader takes them, and
+  a road with several records is read as before: the houses standing on it are the `lots` of its record plus the `lots` of every record in its `lanes`.)
 
-  **`lots` and `reserved` count one segment**: the houses that stand in, and the empty lots that are left in, the rib that this record carries. A road with
-  continuation ribs is several records, each with its own counts. **The houses standing on a whole road are the `lots` of its record plus the `lots` of every
-  record in its `lanes`, and not the houses of the roads below it.** In the sample, Ecology is a record with `lots: 18` and two continuations with `lots: 12` and `lots: 5`: 35
-  houses. `reserved` is read the same way. (A continuation that a split left empty is not in the document, nor in `lanes`, unless a road hangs on it: then it stands there with `lots: 0`.)
+  **`lots` and `reserved` count the rib that the record carries**: the houses that stand in, and the empty lots that are left in, it. **The houses standing on a road are the `lots` of its
+  record, and not the houses of the roads below it.** In the sample, Ecology is a record with `lots: 35`, `reserved: 5` and a rib of 40 lots: 35 houses.
 
   **A road with no lots of its own** has `lots: 0`, `reserved: 0` and no `rib`. In `grow` mode it is a road whose houses have all moved to the roads below it, and none has arrived since. In
   `mirror` mode it is also a topic that has roads below it and no house of its own, or a topic an item is filed under while that item's house stands elsewhere.

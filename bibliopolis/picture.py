@@ -171,7 +171,7 @@ def draw_roads(city: dict, add, look: Look) -> None:
 
 
 def ring2_of(places: dict[str, dict], pid: str | None) -> str | None:
-    """The street of ring 2 (not a continuation) that a place stands in or under, if any. A circle of parents is an error (`ValueError`), not a loop."""
+    """The street of ring 2 (not a continuation: a city file of version 0.3 or before may have them) that a place stands in or under, if any. A circle of parents is an error (`ValueError`), not a loop."""
     for _ in range(len(places)):
         if not pid or pid == PLAZA:
             return None
@@ -183,7 +183,7 @@ def ring2_of(places: dict[str, dict], pid: str | None) -> str | None:
 
 
 def ring2_centres(places: dict[str, dict]) -> dict[str, tuple[float, float]]:
-    """Street of ring 2 -> the centroid of the lots of its subtree (its continuations and the streets below it)."""
+    """Street of ring 2 -> the centroid of the lots of its subtree (its rib, the continuation ribs that a city file of version 0.3 or before may give it, and the streets below it)."""
     sums: dict[str, list[float]] = {}
     for p in places.values():
         if p["kind"] in ("lot", "reserved"):

@@ -32,12 +32,13 @@ the full chronicle. `first=0` is the town hall and the empty ring road; a number
 
 The last step of a build, `complete` (see "The world: mirror"), runs only when every item is placed. A `mirror` replay therefore shows the roads that the first
 `n` items reached and the roads above them, and no other: a road that no house stands on or below is not there yet, and a road that is reached later opens, when
-its first house arrives, where the full build opens it. Had a replay taken the last step as well, such a road would start nearer the plaza than it does in the
-full city, because it would open at the frontier of its trunk before the houses that push the frontier outward have arrived.
+its first house arrives, at the frontier of its trunk as it stands then. Had a replay taken the last step as well, such a road would start nearer the plaza than it
+does when its first house arrives, because it would open at the frontier of its trunk before the houses that push the frontier outward have arrived.
 
-What keeps its place, in both modes: the bearing of every road, and the point where each spoke starts. What does not: a spoke grows longer as houses arrive, and
-a later split re-packs the houses of the road that split (not those of the ring road, whose houses stay), so a lot can stand elsewhere in the full city. A continuation rib that a later split empties is in the
-earlier document and not in the later one, unless a road hangs on it (a road that opened after it on the same side of its band).
+What keeps its place, in both modes: the bearing of every road, and the point where each ring-1 spoke starts. What does not: a rib that is full grows in place and what lies
+beyond it moves outward (see "Growth in place"), so a deeper trunk, a branch circle, a band or a rib along the spoke stands as far out in the full city as in the replay or
+farther, never nearer; a spoke grows longer as houses arrive; and a later split re-packs the houses of the road that split (not those of the ring road, whose houses stay),
+so a lot can stand elsewhere in the full city. A rib that grows later has fewer lots in the replay, and every house it had stands on the same lot (unless its road splits).
 
 ## The plan
 
@@ -101,15 +102,56 @@ checked before the next, because the road of a house depends on the splits the h
 6. **Over.** If no group of `min` exists (or none can open), the road stays as it is and is marked `over: true`; the chronicle records the moment once. The mark
    goes when the road holds `max` or fewer houses again (a later split took some away).
 7. **No merge back.** A road that holds fewer than `min` houses (the survivors of a split) stays open.
-8. **Ribs.** A road's first rib is sized to the houses the road holds when it opens plus headroom: `min(max, even(n + max(4, ceil(n / 2))))`, `n` counting the
-   arrivals of the call (the group that moved, the survivors, or 1). A road that has no empty lot opens a *continuation* rib that holds what the whole road needs and
-   its ribs do not hold yet. The *need* of a road of `n` houses is its houses and the same headroom in whole cells, `even(n + max(4, ceil(n / 2)))` lots, at most `max`
-   while the road is not over (`n <= max`) and uncapped once it is; the continuation rib has `min(max, max(need - held, 1))` lots, `held` the lots of the ribs the road has:
-   at least 1 and, as every rib, at most `max`. So the ribs of a road that has never been over hold at most `max` lots together, and a road over `max` takes ribs of at most
-   `max` lots, one when the one before is full. A continuation is the same road: the same label, level, class and address, and the street counts count the road once. A house
-   takes the lowest empty lot of the first rib that has one.
+8. **Ribs.** A road has ONE rib, a stretch of a band or of the spoke of its carrier trunk. It is sized when it opens to the houses the road holds plus headroom: `min(max,
+   even(n + max(4, ceil(n / 2))))` lots, `n` counting the arrivals of the call (the group that moved, the survivors, or 1). A rib grows only when it has no empty lot, by
+   `max(need - held, 1)` lots at its end: the *need* of a road of `n` houses is its houses and the same headroom in whole cells, `even(n + max(4, ceil(n / 2)))` lots,
+   at most `max` while the road is not over (`n <= max`) and uncapped once it is, and `held` is the lots the rib has. So the rib of a road that has never been over holds at
+   most `max` lots, and a road over `max` takes what it needs. A road is one stretch of one street, with one label, level, class and address, and the street counts count
+   it once; only a lap of the ring road continues another street. `over` is independent of the size of the rib. A house takes the lowest empty lot of the rib. No house
+   changes its lot when the rib grows, and the lots of a rib never get fewer. Growth moves what lies beyond the rib, outward: see "Growth in place".
 9. **The chronicle.** Every split and every road that became over is an entry of `world.chronicle`, in order, with the arrival that caused it (see
    [format.md](format.md)).
+
+## Growth in place
+
+A rib that grows gives its road more lots at its end, where there may already be another road. What lies beyond it moves out; nothing moves in, and no house changes its
+lot. This is how, and what a port must copy to the last bit.
+
+**The log of a line.** A line (a trunk and its heavy chain) keeps what was *decided*, in radial order, inner to outer. The entries: a **member** (a trunk that opens: the first
+house of its subtree arrives), the **branch** circle of a member that has side children in the plan, a **band** with the ribs of each side in order (side -1, the left, then
+side +1; a rib is `{place, road, width, carrier}`, `width = ceil(slots / 2)`), and a **spoke** entry for a rib along the spoke (`{place, width, carrier}`). Which line, which
+band and side, where along the side, band or spoke: decided when the rib opens, by the first fit of the radii as they stand, and never undone. A rib behind another on a side
+of a band is appended at the open end of that side. A road that moves (a world built by hand: [world.md](world.md)) takes its street, rib and lots away and leaves its entry,
+a *ghost*, with its width and its road: the ground it claimed stays claimed, and nothing is pulled inward.
+
+**The order.** A new span (a band, a circle, a rib along the spoke) goes in the log after every entry that lies before it: a span lies before it when it ends at or below the
+start of the new one; a member lies before it when it starts below the end of the new one. (A member opens at the frontier of what stands, and its lead, the bare cell of
+spoke after it, is no span: a band that starts in the lead of a member and ends beyond it is laid after the member, and does not move it.) A member and its circle are
+appended at the end. The radial order is not the order the ribs opened in: a band that opens later can lie in a gap inward of one that opened before.
+
+**The laying.** Everything with a radius is *derived* from the log, in one pass outward, by the operations of first placement: the first member starts at `R + 0.5` (a ring-1
+line, `R` the radius of the ring) or on the branch circle it hangs on (a side line); every other member at the frontier of the entries before it; a branch circle at
+`r3(frontier + 1)` (the frontier takes the lead of its member in), moved to the upper end of a lap span plus 1 while its clearance meets one; a band at the smallest radius
+`s` from `max(s0 + 1 + 1.5, the end of the last span laid + 1.5)` (`s0` the start of the first member) such that every rib of both sides fits the wedge of its own carrier,
+`fit_centre(x1, half) <= s` with `half` that of the carrier's wedge, cut by the deepest branch circle inward of `s`, and the span `s +- 1.5` meets no lap: the iteration is
+`s <- ceil3(jump(max(s, need(s)) - 1.5, 3) + 1.5)`, `need(s)` the largest `fit_centre` of the ribs, until a round moves it by less than 1e-9 (at most 64 rounds), and `jump` moves
+an interval past every lap span; a rib along the spoke likewise from `max(s0 + 1, the end of the last span laid)`, with `half` at most 85 degrees and an interval of its
+width + 1. Along a side, `x0 = used + gap`, `gap = 1` once the side holds a rib and 0 before, `x1 = x0 + width`, `used = r3(x1)`. Nothing is laid inward of the end of the entry
+before it: that is what keeps the radial order. A radius is `ceil3` of what the iteration gives, a thousandth up, and stored with three decimals. The records that hold a
+radius follow: the spoke roads (a member's ends where the next begins; the last, at the farthest of its lead, its circle, its bands and its ribs), the arcs, the roads of the
+ribs (the first of a side hangs on the road of the member that covers it, the next on the road before it), the ribs (`x0`, `x1`, `s`, `reach`) and the lots (`cell`). A line
+laid again as it stands writes nothing.
+
+**Growth.** A rib with no empty lot gains `max(need - held, 1)` lots; the width of its entry is `ceil(slots / 2)`; its new empty lots are made; and the line is laid again.
+The rib behind it on its side moves along the band by the cells it gained; a band that has to reach farther moves out and the entries beyond it with it; a rib along the spoke
+pushes the next; a member or a circle beyond moves out, and a side line that hangs on a circle that moved is laid again from its new start. A span that would lie across a lap
+of the ring road lies beyond it. The cap `GROWTH_REACH` (a band reaches 80 cells off its axis) decides where a new rib goes; a rib that has grown may stand beyond it. No
+chronicle entry is made: the chronicle is the splits and the roads that became over.
+
+**What holds after every arrival** (`tests/test_grow.py` reads each after every arrival of random worlds, `stability_violations` of `tests/hand_support.py` after every event of random worlds built by hand): a house keeps its road, its
+topic, its rib and its slot unless a split or a move puts it again; a road has one rib; a rib keeps its mode, its band and its side, a house its row and its side of the axis;
+the spans of a line stay disjoint, clear of the laps and in the same radial order; nothing moves inward and no rib loses lots; a line laid from its log as it stands writes
+nothing; a rib grows only when it is full, by `max(need - held, 1)`, and ends with at most `need` lots for its houses; the same input gives the same bytes.
 
 ## The ring road
 
@@ -159,7 +201,7 @@ The topic tree is the street plan.
 - There is no split: `min` has no effect (it stays in `world.districts`). A road that holds more than `max` houses is marked `over`, and the chronicle records
   when it became so. Over is a hint that a collection is crowded.
 - An item with no topic, an item filed only under the bucket, and an item whose address is the centre, stand on the ring road.
-- Houses are placed exactly as in `grow`: arrival order, the lowest empty lot, continuation ribs.
+- Houses are placed exactly as in `grow`: arrival order, the lowest empty lot, a rib that grows in place.
 - A mirror road that no house stands on or below (a topic an item is filed under while the house stands elsewhere) has no street record until the world is
   completed (`bibliopolis.world.complete`): it appears in the document only then. `build_city`, and so the command line, completes the world after the last
   arrival, and a replay (`first`, see above) stops before that; code that calls `assign` by itself gets the world without those roads. `complete` is a step of
@@ -194,6 +236,9 @@ them again and compares them with the committed files byte for byte.
   9,000 houses that all stay on the ring road (1,000 topics of 9) take about 12 seconds; a library whose topics open roads takes a fraction of a second
   per 1,000 items. The radius of the ring road of a world with 500 directions and a `max` of 10000 takes about 2 seconds (14 laps are tried; a walk up from the lower bound
   tried 119 and took about 19).
+- **A narrow wedge.** A band reaches `(s - 1.5) * radians(half) - 0.5` cells off its axis, so in a wedge of 14 degrees one more cell of rib moves its band about 4 cells farther
+  out, and everything beyond the band with it: a road in a narrow wedge that grows large lies far from the plaza (in the sample in `mirror` mode, with 80 roads, the farthest house
+  stands at 59.7 cells; with the continuation ribs of versions up to 0.3 it stood at 30.5).
 - **Depth.** A tree deeper than 64 levels is refused.
 - **Words in the document.** The label of the plaza (`市政廳`, the town hall) and the road classes (`大道`, `路`, `巷`, `弄`) are zh-TW names that a viewer reads
   as constants; `format.md` gives their meaning. (The ring road is named `Knowledge`, a name of the plan.)
@@ -202,7 +247,9 @@ them again and compares them with the committed files byte for byte.
 
 | rule | test file |
 |---|---|
-| the 41st house, packing, a split in the middle of a call, again at once, ribs, continuation, the measure of waste (land laid beyond need, read step by step), over, no merge back, chains, ring 1 | `tests/test_districts.py` |
+| the 41st house, packing, a split in the middle of a call, again at once, ribs, a full rib that grows, the measure of waste (land laid beyond need, read step by step), over, no merge back, chains, ring 1 | `tests/test_districts.py` |
+| the log of a line (every span once, in radial order) and a world laid again from it, byte for byte, with the instrument that shows it can fail | `tests/test_lay.py` |
+| growth in place: the ten invariants after every arrival, what moves and what does not on worlds one can read, a lap that is not crossed, a ghost that keeps its ground, the delta of a growth, the planted faults | `tests/test_grow.py` |
 | the ring road: the radius, the gates, the cells of a lap, the fill order and its spread, day one, the first forty houses, the survivors of a split, the avenues, the laps (and the measure of waste for a lap), the walks | `tests/test_ring.py` |
 | mirror, items filed under several topics, `complete` | `tests/test_mirror.py` |
 | the root bucket: the key of the tree and its checks, the tree view that does not hold it, the address of an item, the plan that it does not weigh on, its houses on the ring road in both modes (the 41st house, a ring of nothing else, the laps) | `tests/test_bucket.py` |

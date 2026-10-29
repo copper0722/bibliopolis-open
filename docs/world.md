@@ -88,9 +88,9 @@ writes two entries, the change of rule and `resized` (see "The chronicle"). Ever
 **A road** is a node of the player's tree (it may also stand for a node of OpenAlex: see "A road's node"). It stands in a **ring**: an avenue in ring 1, a road below an avenue in ring 2, and so on to
 ring 64, the last (`too_deep` refuses an event that would pass it). Below the ring road it is a **ring-1 road**: a trunk of its own, with a sector of the circle and a spoke through the plaza, starting at the outer edge of the ring road.
 Below a road it is laid out as the engine lays out a topic that the plan does not hold: a rib on the line of its ring-1 road (a road of ring 3 is a rib on the same line). No
-trunk is promoted and no heavy path changes. A road with more houses than a rib holds opens continuation ribs, as in a grown city: each holds what the whole road needs less
-what its ribs hold (engine.md, "The world: grow", item 8). A road built by hand is never marked over, and the houses it holds may pass `max`; the need of a road is capped at `max` lots while it
-holds `max` houses or fewer, as in a grown city, and has no cap once it holds more.
+trunk is promoted and no heavy path changes. A road has one rib, as in a grown city, and a rib with no empty lot grows in place by what the whole road needs less what the
+rib holds (engine.md, "The world: grow", item 8, and "Growth in place"). A road built by hand is never marked over, and the houses it holds may pass `max`; the need of a road is capped at `max` lots while it
+holds `max` houses or fewer, as in a grown city, and has no cap once it holds more. A road that moves leaves its rib in the log of its line as a ghost, with its width, and the road behind it on its side of a band stays where it stood.
 
 **Directions.** There is no library to plan from, so the direction of a ring-1 road (an avenue) is decided when it opens, from the golden angle. The directions are numbered 0, 1, 2, ...;
 direction k has the bearing k * 137.50776405003785 degrees, clockwise from north, in whole units of 1/100 degree and in exact integer arithmetic:
@@ -452,9 +452,9 @@ The TypeScript engine must give the same bytes as this one. What is easy to get 
 - **Road ids.** The engine names a new road `road:<place>`, and when that is in use `road:<place>@1`, `@2`, and so on: the first that is not in use now. When an avenue gives up its direction
   (merged, or moved below a road) its line, its spoke, its arcs and the roads of the ribs on it are taken away, so those ids are free again and the next road of that name takes them. The
   layout document carries the road ids, so a port must reuse them in the same way.
-- **Ribs.** The first rib of a road is `district_rib_size(n, max) = min(max, even(n + max(4, ceil(n / 2))))` lots, `n` the houses the road holds with the batch that is being put on it (the houses on it and the one that comes, when there is no batch). A continuation
-  rib has `min(max, max(district_road_need(n, max) - held, 1))` lots, `held` the lots of the ribs the road has, and `district_road_need(n, max) = even(n + max(4, ceil(n / 2)))`, capped at `max`
-  only while `n <= max` ([engine.md](engine.md), "The world: grow", item 8). `even(x)` is `x` rounded up to an even number.
+- **Ribs.** The rib of a road has `district_rib_size(n, max) = min(max, even(n + max(4, ceil(n / 2))))` lots when it opens, `n` the houses the road holds with the batch that is being put on it (the houses on it and the one that comes, when there is no batch). When it has no empty lot it
+  gains `max(district_road_need(n, max) - held, 1)` lots at its end, `held` the lots it has and `district_road_need(n, max) = even(n + max(4, ceil(n / 2)))`, capped at `max`
+  only while `n <= max` ([engine.md](engine.md), "The world: grow", item 8), and the line is laid again from its log ("Growth in place": the log of a line, the order of its entries, the sweep that gives every radius, the ghost of a rib that a move takes away). `even(x)` is `x` rounded up to an even number.
 - **Depth.** Ring 64 is the last: an `open_road`, `move_road` or `merge_roads` that would put a road in ring 65 is refused with the id `too_deep`, before anything changes. A port must not
   leave that to its stack, which runs out at another depth than Python's: the same log must be taken or refused by every engine.
 - **Rounding.** The `confidence` of `suggest_file` is `round(count / whole, 2)` with Python's `round`, which rounds a half to the even digit on the binary value: 1/8 is 0.12, not 0.13.

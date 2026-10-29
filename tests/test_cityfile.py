@@ -10,6 +10,7 @@ from support import T, art, make_tree, random_world, sample
 
 import bibliopolis
 from bibliopolis import city, inputs, picture
+from bibliopolis import layout as lay
 
 
 @pytest.fixture(scope="module")
@@ -299,6 +300,38 @@ def test_the_links_are_followed_only_when_the_shapes_are_right(real_city):
     with pytest.raises(inputs.InputError) as refused:
         inputs.read_city(doc)
     assert ".parent: must be the id of the street above, or of the plaza" in str(refused.value)
+
+
+# ------------------------------------------------------------------------- a city file of an earlier version ----
+def with_a_continuation_rib(doc, road, first):
+    """The document as version 0.3 wrote a full road: the slots from `first` on in a second record of the road (`lane_of`, `ordinal` 2, `continued`), listed in the `lanes` of
+    the road, with a road of its own. The engine makes no such rib any more; city files that have them are still read."""
+    places, roads = doc["places"], doc["roads"]
+    rec = places[road]
+    slots, key = rec["rib"]["slots"], road.removeprefix("place:tag:")
+    lane, lane_road = f"place:lane:{key}:2", f"road:place:lane:{key}:2"
+    lots = [p for p in places.values() if p["kind"] == "lot" and p["parent"] == road and p["slot"] >= first]
+    for p in lots:
+        p["parent"], p["slot"], p["order"] = lane, p["slot"] - first, p["slot"] - first
+    places[lane] = {"kind": "street", "shape": "rib", "lane_of": road, "ordinal": 2, "continued": True, "level": rec["level"], "class": rec["class"], "parent": road,
+                    "label": rec["address"][-1], "address": list(rec["address"]), "carrier": rec["carrier"], "lots": len(lots), "reserved": slots - first - len(lots),
+                    "road": lane_road, "rib": {**rec["rib"], "x0": rec["rib"]["x0"] + first // 2, "slots": slots - first}}
+    rec["lots"], rec["reserved"], rec["lanes"] = rec["lots"] - len(lots), 0, [lane]
+    rec["rib"]["slots"], rec["rib"]["x1"] = first, rec["rib"]["x0"] + first // 2
+    roads[lane_road] = {**roads[rec["road"]], "street": lane, "parent": rec["road"]}
+    doc["composition"]["streets"]["continuations"] += 1
+    return doc
+
+
+def test_a_city_file_of_version_0_3_with_a_continuation_rib_is_still_read_drawn_and_counted_once():
+    chronicle_lines, summary = city.chronicle_lines, city.summary
+    tree, library = sample()
+    made = json.loads(lay.render(bibliopolis.build_city(library, tree)))
+    doc = with_a_continuation_rib(copy.deepcopy(made), "place:tag:ecology", 24)
+    assert doc["places"]["place:tag:ecology"]["lanes"] == ["place:lane:ecology:2"] and doc["places"]["place:lane:ecology:2"]["lots"] == 11
+    old = inputs.read_city(copy.deepcopy(doc))
+    assert summary(old)["roads"] == summary(inputs.read_city(copy.deepcopy(made)))["roads"] == 23  # (a road is counted once, whatever the ribs it has)
+    assert picture.render(old) and chronicle_lines(old) == chronicle_lines(inputs.read_city(copy.deepcopy(made)))
 
 
 # ------------------------------------------------------------------------------------ nothing gets through ----

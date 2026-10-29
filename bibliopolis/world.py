@@ -23,7 +23,8 @@ heavy chain: one axis, one frontier, one set of bands. A side child of a trunk s
   log       a line keeps what was DECIDED, in radial order, inner to outer: its members, their branch circles, its bands (with the ribs of each side in order
             and their widths) and the ribs along its spoke. Which line, which band and side, where along the side, band or spoke: decided when a rib opens, never
             undone. Every radius and every record that holds one is DERIVED from the log by `lay_line`, which sweeps it outward through the operations first placement
-            uses; a rib that grows is laid again from itself outward. A road that moves leaves its rib in the log as a ghost: the ground it claimed stays claimed.
+            uses; when a rib grows its line is laid again, and only what lies beyond the rib changes. A road that moves leaves its rib in the log as a ghost: the ground it
+            claimed stays claimed. docs/engine.md, "Growth in place", gives the rules to the last bit.
 
 Determinism: same plan, tree, world and arrivals give the same bytes (sorted iteration, integer angles, coordinates rounded to 3 decimals).
 
@@ -47,8 +48,9 @@ directions (the ring-1 wedges, the trunks and their sides); which topics are roa
   rib        a road has ONE rib. It is sized to the houses its road holds when it opens plus headroom, `min(max, even(n + max(4, ceil(n / 2))))`, n counting
              the arrivals of the call (a split group, the survivors, or 1). A rib with no empty lot GROWS in place, at its end, by `max(need - held, 1)` lots: `need`
              is `district_road_need(n)` (the road's houses and the same headroom in whole cells, at most `max` while the road is not over, no cap once it is) and
-             `held` the lots of the rib. The line is then laid again from the rib outward (`lay_line`): what lies beyond it moves out, nothing moves in, and no house
-             changes its lot. A road is one stretch of one street everywhere; `over` is independent of its size. A house takes the lowest free lot.
+             `held` the lots of the rib. The line is then laid again from its log (`lay_line`): what lies inward of the rib is laid as it stood and writes nothing, what lies
+             beyond it moves out, nothing moves in, and no house changes its lot. A road is one stretch of one street everywhere; `over` is independent of the size of the
+             rib. A house takes the lowest free lot.
   chronicle  every split and every road that became over is an entry of the document's `world.chronicle`, in the order it happened:
              `{n, event_id, seq, trigger, from, to, label, houses, count_before, count_after}` or `{n, event_id, seq, trigger, over, count}`.
   no merge   a road that falls under `min` (the survivors of a split) stays open.

@@ -110,6 +110,8 @@ python3 -m bibliopolis picture --city city-41.json --out city-41.svg
 - **A city from zero (`grow`, data-driven).** Houses arrive one at a time and the roads grow from the data:
   - The first houses live on the ring road round the town hall.
   - A road holds 10 to 40 houses directly.
+  - When a road runs out of room for its houses it grows where it is: the road gets longer at its end and the roads beyond it move outward. A road is always one
+    stretch of street, never two pieces with the same name.
   - When a road holds more than 40, the largest group of at least 10 of its houses that share a sub-topic moves out and opens a new
     road.
   - Every split is written into the town hall's chronicle, where it can be checked and repaired.
@@ -278,6 +280,7 @@ python3 -m bibliopolis picture --city city-41.json --out city-41.svg
 - **從零開始建城邦（`grow`，依資料長出來）。** 房子一棟一棟進來，路依資料自己長出來：
   - 最早的房子住在環繞市政廳的環形大道上。
   - 一條路直接住 10 到 40 棟。
+  - 一條路的位置不夠住時，這條路就地加長，它外側的路往外挪；一條路永遠只有一段街，不會分成兩段同名的路。
   - 一條路超過 40 棟時，把同一個子主題、至少 10 棟的最大一組房子搬出去，開一條新路。
   - 每一次分路都記在市政廳的市政紀事裡，可以查，也可以修補。
 
