@@ -235,6 +235,7 @@ class HandWorld(zw.World):
                 continue
             for carrier in ([place] if "rib" in rec else []) + list(rec.get("lanes", [])):
                 rib = self.places.get(carrier)["rib"]
+                self.ghost_rib(carrier, rib["line"])
                 for slot in range(rib["slots"]):
                     self.places.delete(lay.reserved_place(rib["block"], slot))
                 if carrier != place:

@@ -743,7 +743,7 @@ class World:
             self.ensure_street(spec.parent)
         if t["role"] == "ring1":
             s0, parent_road, at = self.plan.ring["radius"] + TRUNK_LANE, None, 0.0  # the spoke leaves the outer edge of the ring road
-            self.lines.put(line_id, {"root": place, "axis": lay.r3(axis), "parent": None, "members": [], "bands": [], "spokes": []})
+            self.lines.put(line_id, {"root": place, "axis": lay.r3(axis), "parent": None, "members": [], "bands": [], "spokes": [], "log": []})
         elif t["role"] == "heavy":
             self.open_member(t["parent"])
             line = self.lines.mut(line_id)
@@ -757,7 +757,7 @@ class World:
             r1, arc, at = self.branch_for(pline_id, t["parent"], place, t["side"], axis)
             s0, parent_road = r1, arc
             self.lines.put(line_id, {"root": place, "axis": lay.r3(axis), "parent": {"line": pline_id, "member": t["parent"], "side": t["side"]},
-                                     "members": [], "bands": [], "spokes": []})
+                                     "members": [], "bands": [], "spokes": [], "log": []})
         rid = self.fresh_road(f"road:{place}")
         s_end = s0 + LEAD
         pts = [lay.pt(lay.polar_xz(s0, axis)), lay.pt(lay.polar_xz(s_end, axis))]
@@ -768,10 +768,12 @@ class World:
                   "inner": [lay.r3(v / lay.UNIT) for v in self.plan.inner(place)]}
         line = self.lines.mut(line_id)
         line["members"].append(member)
+        line["log"].append({"kind": "member", "place": place})  # (beyond everything that stands: a member opens at the frontier)
         if t["left"] or t["right"]:  # side children are planned: the branch circle is drawn now, so that the circles of the members of a line
             member["r1"] = lay.r3(self.frontier(line) + BRANCH_CLEAR)  # grow outward from the one above (an arc then never meets a deeper spoke)
             member["r1"] = self.clear_laps(member["r1"])  # a branch circle clears the laps of the ring road
             self.spoke_to(rid, member["r1"])
+            line["log"].append({"kind": "branch", "place": place})
         self.stats["members"] += 1
         return member
 
@@ -941,7 +943,9 @@ class World:
         wedge = self.plan.wedge(spec.carrier)
         rib = {"trunk": spec.carrier, "line": line_id, "mode": mode, "x0": lay.r3(st["x0"]), "x1": lay.r3(st["x1"]), "s": lay.r3(s), "slots": slots,
                "next": 0, "block": rib_block_key(spec.key, ordinal), "wedge": [lay.r3(wedge[0] / lay.UNIT), lay.r3(wedge[1] / lay.UNIT)]}
+        entry = {"place": rib_place, "road": None, "width": width, "carrier": spec.carrier}  # what the line's log keeps of this rib: the rest is derived (`lay_line`)
         if mode == "spoke":  # the lane of the street is the spoke itself; the rib stands in its own stretch of radii
+            line["log"].insert(self.log_index(line, s, st["x1"] + ITEM_GAP), {"kind": "spoke", "spoke": len(line["spokes"]), "rib": entry})
             line["spokes"].append([lay.r3(s), lay.r3(st["x1"] + ITEM_GAP)])
             self.extend_line(line, st["x1"])
             rib.update({"band": None, "side": 0})
@@ -951,6 +955,7 @@ class World:
             side = st["side"]
             i = 0 if side < 0 else 1
             if st["new"]:
+                line["log"].insert(self.log_index(line, s - BAND / 2, s + BAND / 2), {"kind": "band", "band": len(line["bands"]), "ribs": [[], []]})
                 line["bands"].append({"s": lay.r3(s), "used": [TRUNK_LANE, TRUNK_LANE], "last": [None, None]})
                 self.stats["bands"] += 1
             band = line["bands"][st["band"]]
@@ -967,6 +972,8 @@ class World:
                           band=st["band"], side=side, off=lay.r3(st["start"]), radius=lay.r3(s), bearings=[lay.r3(a0), lay.r3(a1)])
             band["used"][i] = lay.r3(st["x1"])
             band["last"][i] = rid
+            entry["road"] = rid
+            next(e for e in line["log"] if e["kind"] == "band" and e["band"] == st["band"])["ribs"][i].append(entry)
             rib.update({"band": st["band"], "side": side, "reach": lay.r3(st["reach"])})
         if ordinal == 1:
             street = self.places.mut(spec.place)
@@ -996,6 +1003,271 @@ class World:
         s, side = rib["s"], rib["side"]
         bearing = axis + side * math.degrees((rib["x0"] + slot // 2 + 0.5) / s)
         return lay.polar_xz(s - 1.0 if slot % 2 == 0 else s + 1.0, bearing), bearing + (0.0 if slot % 2 == 0 else 180.0)
+
+    # ---- the log of a line and the laying that derives the rest from it
+    def line_start(self, line: dict) -> float:
+        """The radius at which a line starts: the outer edge of the ring road for a ring-1 line, the branch circle of the member it hangs on for a side line."""
+        parent = line["parent"]
+        if parent is None:
+            return self.plan.ring["radius"] + TRUNK_LANE
+        return next(m for m in self.lines.get(parent["line"])["members"] if m["place"] == parent["member"])["r1"]
+
+    def log_index(self, line: dict, lo: float, hi: float) -> int:
+        """Where a span (lo, hi) that is about to be laid goes in the log of a line, which keeps its entries in RADIAL order, inner to outer: after every entry that lies before
+        it. A span lies before it when it ends at or below `lo`. A member lies before it when it starts below `hi`: a member opens at the frontier of what stands, its lead is
+        no span, and a span that starts in the lead of a member and ends beyond it is laid after the member."""
+        members = {m["place"]: m for m in line["members"]}
+        at = 0
+        for i, e in enumerate(line["log"]):
+            kind = e["kind"]
+            if kind == "member":
+                before = members[e["place"]]["s0"] < hi - EPS
+            elif kind == "branch":
+                before = members[e["place"]]["r1"] + BRANCH_CLEAR <= lo + EPS
+            elif kind == "band":
+                before = line["bands"][e["band"]]["s"] + BAND / 2 <= lo + EPS
+            else:
+                before = line["spokes"][e["spoke"]][1] <= lo + EPS
+            if before:
+                at = i + 1
+        return at
+
+    @staticmethod
+    def jump(spans: list[tuple[float, float]], a: float, length: float) -> float:
+        """The smallest radius from `a` outward at which an interval `length` long overlaps none of `spans` (`free_start` over a given list)."""
+        moved = True
+        while moved:
+            moved = False
+            for lo, hi in spans:
+                if a < hi - EPS and a + length > lo + EPS:
+                    a, moved = hi, True
+        return a
+
+    def derive(self, line: dict) -> dict:
+        """A line laid from its log: the radii of its members, branch circles, bands and spoke ribs, and where each rib stands. The log keeps what was DECIDED, in radial
+        order: the members, the circles, the bands with the ribs of each side in order and their widths, the ribs along the spoke. Nothing else is read from the line. One
+        pass outward, through the operations that first placement uses: a member at the frontier of what is laid before it, a circle one cell beyond it (clear of the laps),
+        a band at the smallest radius from the end of the entries before it at which every rib of both sides fits the wedge of its own carrier and the band is clear of the
+        laps, a spoke rib likewise. Returns {"members", "bands", "spokes"}; writes nothing."""
+        laps = sorted(self.lap_spans())
+        laid: dict = {"members": [], "bands": {}, "spokes": {}, "line": {"members": [], "bands": [], "spokes": []}}
+        scratch = laid["line"]  # what is laid so far, as `frontier`, `half_at` and `covering` read a line
+        cursor = None  # where the last span laid ends: nothing is laid inward of it
+        for e in line["log"]:
+            kind = e["kind"]
+            if kind == "member":
+                s0 = self.frontier(scratch) if scratch["members"] else self.line_start(line)
+                scratch["members"].append({"place": e["place"], "s0": lay.r3(s0), "r1": None})
+                laid["members"].append({"place": e["place"], "s0": s0, "r1": None})
+            elif kind == "branch":
+                member = scratch["members"][-1]
+                member["r1"] = laid["members"][-1]["r1"] = self.clear_laps(lay.r3(self.frontier(scratch) + BRANCH_CLEAR))
+                cursor = member["r1"] + BRANCH_CLEAR
+            elif kind == "band":
+                used, ribs = [TRUNK_LANE, TRUNK_LANE], [[], []]
+                for i in (0, 1):
+                    for rib in e["ribs"][i]:
+                        gap = ITEM_GAP if used[i] > TRUNK_LANE + EPS else 0
+                        x0 = used[i] + gap
+                        x1 = x0 + rib["width"]
+                        ribs[i].append({"rib": rib, "x0": x0, "x1": x1, "start": used[i] if gap else 0.0})
+                        used[i] = lay.r3(x1)
+                fits = [(r["x1"], r["rib"]["carrier"]) for side in ribs for r in side]
+                s = scratch["members"][0]["s0"] + LEAD + BAND / 2
+                if cursor is not None:
+                    s = max(s, cursor + BAND / 2)
+                for _ in range(64):
+                    need = max(lay.fit_centre(x1, self.half_at(scratch, carrier, s)) for x1, carrier in fits)
+                    nxt = ceil3(self.jump(laps, max(s, need) - BAND / 2, BAND) + BAND / 2)
+                    if abs(nxt - s) < EPS:
+                        break
+                    s = nxt
+                s = lay.r3(s)
+                for side in ribs:
+                    for r in side:
+                        r["reach"] = lay.r3(self.reach_at(scratch, r["rib"]["carrier"], s, r["rib"]["width"]))
+                laid["bands"][e["band"]] = {"s": s, "used": used, "ribs": ribs}
+                scratch["bands"].append({"s": s})
+                cursor = s + BAND / 2
+            else:
+                rib = e["rib"]
+                a = scratch["members"][0]["s0"] + LEAD
+                if cursor is not None:
+                    a = max(a, cursor)
+                for _ in range(64):
+                    half = min(self.half_at(scratch, rib["carrier"], a), 85.0)
+                    nxt = ceil3(self.jump(laps, max(a, (1.5 + lay.FIT_MARGIN) / math.tan(math.radians(half))), rib["width"] + ITEM_GAP))
+                    if abs(nxt - a) < EPS:
+                        break
+                    a = nxt
+                span = [lay.r3(a), lay.r3(a + rib["width"] + ITEM_GAP)]
+                laid["spokes"][e["spoke"]] = {"a": a, "x1": a + rib["width"], "span": span, "rib": rib}
+                scratch["spokes"].append(span)
+                cursor = span[1]
+        return laid
+
+    def arc_offset(self, line_id: str, member: str, side: int) -> float:
+        """How far round the branch circle of `member` the arc of one side reaches, in degrees from the axis of the line: the farthest of the side lines that hang on it."""
+        axis = self.lines.get(line_id)["axis"]
+        far = 0.0
+        for _lid, other in self.lines.items():
+            hung = other["parent"]
+            if hung is not None and hung["line"] == line_id and hung["member"] == member and hung["side"] == side:
+                far = max(far, abs(((self.plan.axis(other["root"]) - axis + 180.0) % 360.0) - 180.0))
+        return far
+
+    def set_fields(self, store: Overlay, key: str, fields: dict) -> bool:
+        """Write `fields` into the record `key` of an overlay when one of them differs; True when it was written (a record is copied into the delta only then)."""
+        rec = store.get(key)
+        if all(k in rec and rec[k] == v for k, v in fields.items()):
+            return False
+        store.mut(key).update(fields)
+        return True
+
+    def lay_line(self, line_id: str, *, grown: str | None = None, full: bool = False) -> bool:
+        """Lay a line again from its log (`derive`) and write what differs: the radii and the records that hold them (the line's members, bands and spokes, the spoke and arc
+        roads, the roads of the ribs, the ribs and the lots on them). A side line that hangs on a branch circle that moved is laid again too. Everything goes through
+        `places.mut` / `roads.mut` / `lines.mut`, so a delta carries it, and only a record whose value changes is written: a line whose log is laid as it stands writes nothing
+        (`full` looks at every lot too). `grown` is the rib that has gained lots: the records of its new lots are made. True when anything was written."""
+        line = self.lines.get(line_id)
+        laid = self.derive(line)
+        wrote, moved = False, set()
+        # the line record
+        members, bands, spokes = laid["members"], laid["bands"], laid["spokes"]
+        if (any(line["members"][k]["s0"] != lay.r3(m["s0"]) or line["members"][k]["r1"] != m["r1"] for k, m in enumerate(members))
+                or any(line["bands"][k]["s"] != b["s"] or line["bands"][k]["used"] != b["used"] for k, b in bands.items())
+                or any(line["spokes"][k] != sp["span"] for k, sp in spokes.items())):
+            live = self.lines.mut(line_id)
+            for k, m in enumerate(members):
+                if live["members"][k]["r1"] != m["r1"]:
+                    moved.add(m["place"])
+                live["members"][k]["s0"], live["members"][k]["r1"] = lay.r3(m["s0"]), m["r1"]
+            for k, b in bands.items():
+                live["bands"][k]["s"], live["bands"][k]["used"] = b["s"], list(b["used"])
+            for k, sp in spokes.items():
+                live["spokes"][k] = list(sp["span"])
+            wrote = True
+            line = live
+        axis = line["axis"]
+        final = line["members"]
+        # the spoke roads of the members and the arcs on their circles
+        for k, m in enumerate(members):
+            rec = final[k]
+            if k + 1 < len(members):
+                end = members[k + 1]["s0"]
+            else:
+                end = max(m["s0"] + LEAD, rec["r1"] if rec["r1"] is not None else 0.0, *(b["s"] + BAND / 2 for b in bands.values()), *(sp["x1"] for sp in spokes.values()))
+            fields = {"s0": rec["s0"], "s_end": lay.r3(end), "length": lay.r3(end - rec["s0"]), "points": [lay.pt(lay.polar_xz(m["s0"], axis)), lay.pt(lay.polar_xz(end, axis))],
+                      "open": k + 1 == len(members)}
+            if k:
+                fields["at"] = lay.r3(m["s0"] - final[k - 1]["s0"])
+            elif line["parent"] is not None:
+                offset = abs(((self.plan.axis(rec["place"]) - self.lines.get(line["parent"]["line"])["axis"] + 180.0) % 360.0) - 180.0)
+                fields["at"] = lay.r3(math.radians(offset) * rec["s0"])
+            wrote |= self.set_fields(self.roads, rec["road"], fields)
+            if self.places.get(rec["place"]) is not None:
+                wrote |= self.set_fields(self.places, rec["place"], {"s0": rec["s0"]})
+            for key, arc in rec["arcs"].items():
+                if arc is None:
+                    continue
+                side = -1 if key == "L" else 1
+                offset = self.arc_offset(line_id, rec["place"], side)
+                wrote |= self.set_fields(self.roads, arc["road"], {
+                    "at": lay.r3(rec["r1"] - rec["s0"]), "length": lay.r3(math.radians(offset) * rec["r1"]),
+                    "points": [lay.pt(lay.polar_xz(rec["r1"], axis + side * a)) for a in self.arc_grid(offset)]})
+        # the ribs: bands, then the ribs along the spoke
+        for k, b in bands.items():
+            s = b["s"]
+            for i, side_ribs in enumerate(b["ribs"]):
+                side = -1 if i == 0 else 1
+                before = None
+                for r in side_ribs:
+                    rib, x0, x1, start = r["rib"], r["x0"], r["x1"], r["start"]
+                    a0 = axis + side * math.degrees(start / s)
+                    a1 = axis + side * math.degrees(x1 / s)
+                    if before is None:
+                        owner = self.covering({"members": final}, s)
+                        parent, at = owner["road"], s - owner["s0"]
+                    else:
+                        parent, at = before, self.roads.get(before)["length"]
+                    wrote |= self.set_fields(self.roads, rib["road"], {"parent": parent, "at": lay.r3(at), "length": lay.r3(x1 - start), "off": lay.r3(start), "radius": s,
+                                                                      "bearings": [lay.r3(a0), lay.r3(a1)], "points": lay.arc_points(s, a0, a1)})
+                    before = rib["road"]
+                    if not rib.get("ghost"):
+                        wrote |= self.lay_rib(rib["place"], {"x0": lay.r3(x0), "x1": lay.r3(x1), "s": s, "reach": r["reach"]}, axis, None, grown, full)
+        for sp in spokes.values():
+            rib = sp["rib"]
+            if not rib.get("ghost"):
+                owner = self.covering({"members": final}, sp["a"])
+                wrote |= self.lay_rib(rib["place"], {"x0": lay.r3(sp["a"]), "x1": lay.r3(sp["x1"]), "s": lay.r3(sp["a"])}, axis, owner["road"], grown, full)
+        for place in sorted(moved):  # the side lines that start on a circle that moved
+            for lid, other in list(self.lines.items()):
+                if other["parent"] is not None and other["parent"]["line"] == line_id and other["parent"]["member"] == place:
+                    wrote |= self.lay_line(lid, full=full)
+        return wrote
+
+    def lay_rib(self, rib_place: str, fields: dict, axis: float, spoke_road: str | None, grown: str | None, full: bool) -> bool:
+        """Write the geometry of a live rib (`fields`: x0, x1, s and for a band reach) into its street, and the position of its lots when the rib moved or has new lots. For a
+        rib along the spoke `spoke_road` is the road of the member that carries it."""
+        street = self.places.get(rib_place)
+        rib = street["rib"]
+        moved = rib["x0"] != fields["x0"] or rib["s"] != fields["s"]
+        wrote = False
+        if any(rib[k] != v for k, v in fields.items()):
+            rib = self.places.mut(rib_place)["rib"]
+            rib.update(fields)
+            wrote = True
+        if spoke_road is not None:
+            key = "lane" if street["shape"] == "trunk" else "road"
+            wrote |= self.set_fields(self.places, rib_place, {key: spoke_road})
+        if moved or full or grown == rib_place:
+            lots = {p["slot"]: p for p in self.by_road().get(street.get("lane_of", rib_place), ()) if p["parent"] == rib_place}
+            for slot in range(rib["slots"]):
+                xz, facing = self.cell(rib, axis, slot)
+                pos = {"x": lay.r3(xz[0]), "z": lay.r3(xz[1])}
+                lot = lots.get(slot)
+                if lot is not None:
+                    if lot["position"] != pos or lot["facing"] != lay.r3(facing % 360):
+                        mine = self.places.mut(lay.article_place(lot["article"]))
+                        mine["position"], mine["facing"] = pos, lay.r3(facing % 360)
+                        wrote = True
+                    continue
+                key = lay.reserved_place(rib["block"], slot)
+                held = self.places.get(key)
+                if held is None:
+                    self.places.put(key, lay.reserved_record(rib_place, slot, "tail", xz, facing))
+                    wrote = True
+                elif held["position"] != pos or held["facing"] != lay.r3(facing % 360):
+                    mine = self.places.mut(key)
+                    mine["position"], mine["facing"] = pos, lay.r3(facing % 360)
+                    wrote = True
+            if wrote:
+                self._by_road = None  # (a lot moved: the index of the lots holds the old records)
+        return wrote
+
+    def ghost_rib(self, rib_place: str, line_id: str) -> None:
+        """A rib whose street was taken away (its road moved) stays in the log of its line as a ghost, with its width: the ground it claimed stays claimed, and its road stays."""
+        if self.lines.get(line_id) is None:  # (the line is gone too: an avenue that gave up its direction takes its whole line away)
+            return
+        line = self.lines.mut(line_id)
+        for e in line["log"]:
+            for rib in (e["rib"],) if e["kind"] == "spoke" else [r for side in e["ribs"] for r in side] if e["kind"] == "band" else ():
+                if rib["place"] == rib_place and not rib.get("ghost"):
+                    rib["ghost"] = True
+
+    def lay_all(self, *, full: bool = True) -> bool:
+        """Every line laid again from its log, a line before the side lines that hang on it. True when anything was written."""
+        order = sorted(self.lines.items(), key=lambda kv: (self.line_depth(kv[1]), kv[0]))
+        wrote = False
+        for lid, _line in order:
+            wrote |= self.lay_line(lid, full=full)
+        return wrote
+
+    def line_depth(self, line: dict) -> int:
+        n = 0
+        while line["parent"] is not None:
+            line, n = self.lines.get(line["parent"]["line"]), n + 1
+        return n
 
     # ---- houses
     def active_rib(self, spec: StreetSpec) -> str:

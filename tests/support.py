@@ -329,9 +329,27 @@ def send(plan, tree, doc, arrivals, event_id=None):
     return after, res
 
 
+def lay_problems(doc, plan, tree, *, full=True, world=None):
+    """Idempotence of the laying (invariant 8): a fresh `World` over the document lays every line from its log (`World.lay_all`) and writes nothing. Returns what it wrote
+    that differs from the document, as (store, record, {field: (was, now)}), empty when the document is what its log lays. `world` is a working copy of a kind other than
+    `zw.World` (a world built by hand: `HandWorld`), made over the same document."""
+    w = world if world is not None else zw.World(zw.PlanView(plan), tree if isinstance(tree, TreeView) else TreeView(tree), doc)
+    w.lay_all(full=full)
+    bad = []
+    for name, store in (("places", w.places), ("roads", w.roads), ("lines", w.lines)):
+        for key, now in store.new.items():
+            was = doc[name].get(key)
+            if now is None or was is None:
+                bad.append((name, key, "deleted" if now is None else "made"))
+            elif now != was:
+                bad.append((name, key, {k: (was.get(k), v) if not isinstance(v, (list, dict)) else "differs" for k, v in now.items() if was.get(k) != v}))
+    return bad
+
+
 def sound(doc, plan, tree):
     assert checks.all_problems(doc) == {}
     assert district_problems(doc, plan, tree) == []
+    assert lay_problems(doc, plan, tree) == []
 
 
 class Town:
@@ -599,6 +617,9 @@ def simulate_districts(seed, *, max_houses=12, min_houses=4, trunk_min=40, batch
         found = district_problems(doc, plan, tv)
         if found:
             problems.append((seed, step, f"{label} (districts)", found[:4]))
+        found = lay_problems(doc, plan, tv)
+        if found:
+            problems.append((seed, step, f"{label} (laid again)", found[:4]))
         if len(zw.houses(doc)) != placed:
             problems.append((seed, step, label, f"{len(zw.houses(doc))} lots for {placed} houses"))
 

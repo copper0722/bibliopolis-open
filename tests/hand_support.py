@@ -17,7 +17,8 @@ from bibliopolis import layout as lay
 from bibliopolis import world as zw
 from bibliopolis.events import Refusal, standing
 from bibliopolis.hand import State, fold
-from support import bearing_of_direction, capacity, cells_table, fill_order_of, first_free, gates_of, laps_of, radius_for
+from support import bearing_of_direction, capacity, cells_table, fill_order_of, first_free, gates_of, laps_of, lay_problems, radius_for
+from bibliopolis.hand import HandWorld
 from bibliopolis.journal import Journal
 from bibliopolis.suggest import suggest_merge, suggest_road
 
@@ -385,6 +386,13 @@ def hand_problems(state: State, *, coast: bool = False) -> list:
     found = checks.all_problems(doc)
     if found:
         bad.append(("geometry", {k: v[:3] for k, v in found.items()}))
+    try:
+        again = HandWorld(zw.PlanView(state.plan), state.tree, doc, event_id=0)
+    except ValueError:  # (a plan the engine refuses: the checks below say what is wrong with it)
+        again = None
+    found = lay_problems(doc, state.plan, state.tree, world=again) if again is not None else []
+    if found:
+        bad.append(("laid again", found[:3]))
     city = state.city(with_coast=coast)
     found = checks.document_problems(city)
     if found:
