@@ -140,7 +140,7 @@ def concept() -> str:
     life = [p for p in places.values() if p["kind"] == "lot" and picture.ring1_place(places, p["parent"]) == "place:tag:life"]
     east = max(life, key=lambda p: (p["position"]["x"], p["article"]))  # the house farthest east: no name stands on it
     notes = [  # (the place it names, in cells; the side of the picture; the words: English, Chinese, ...)
-        (along(roads["road:place:lane:networks:2"]["points"], 0.9), "left", ["a sub-topic = a branch road", "子主題＝岔路"]),
+        (along(roads["road:place:tag:networks"]["points"], 0.9), "left", ["a sub-topic = a branch road", "子主題＝岔路"]),
         ((-radius * 0.72, -radius * 0.72), "left", ["the town hall = the root", "市政廳＝根"]),
         ((0.0, ring_radius), "left", ["the ring road", "articles with no topic yet", "環形大道：還沒有主題的文獻"]),
         (along(roads["road:place:tag:history"]["points"], 0.45), "right", ["a topic = a road", "主題＝路"]),

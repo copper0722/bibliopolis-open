@@ -23,9 +23,9 @@ TABLE = [(0, "0"), (-0.0, "0"), (1, "1"), (-1, "-1"), (40, "40"), (6.0, "6"), (1
          (2026, "2026"), (-189.97, "-189.97"), (0.30000000000000004, "0.30000000000000004")]
 
 # the sha256 of the text of the city that the sample makes (examples/tree.json + library.json); change them on purpose, with the engine
-PINS = {"grow": "0bb1815f387c353232ad6180ef6f1d6e7b72844dcb6cd3eb06493b92818b2a11",
-        "mirror": "216b9ab337211491e65971449971652e9f669adae5a5fa17f0c02e80207d6a17",
-        "grow, first 41": "fbc769afb64c1fab80509178322bb7ecda5e9e70c807d2f88d1a1eb0b76b1ce9"}
+PINS = {"grow": "76369f8f09d0dfb596ea8ef61362e8cf789e1b2a305ce6453814c8217657e9ea",
+        "mirror": "ecc5082941d292abeef9bf26163d21ee61e1f06d3aa36d8c8d5b8a519cdb588b",
+        "grow, first 41": "2db2f3066f1819de9ad51f630334f03d19835096c93bf225cad6c78318be9af4"}
 
 
 @pytest.fixture(scope="module")
@@ -164,12 +164,29 @@ def test_a_picture_drawn_from_the_text_of_a_city_is_the_picture_of_the_city(samp
     assert picture.render(city_from_text(city)) == picture.render(city)
 
 
-def test_the_grown_sample_has_a_measure_that_is_a_whole_number_so_that_the_check_above_means_something(sample):
+def a_replay_with_a_whole_measure(sample):
+    """The first replay of the grown sample (from 41 houses on) whose picture line has a measure that is a whole number, as (the city, the key of the measure). The grown
+    sample itself has none since the ribs grow in place: its farthest house, its mean walk and its longest walk all have a fraction."""
     tree, library = sample
-    city = bibliopolis.build_city(library, tree)
-    assert city["composition"]["measure"]["walk_longest"] == 55.0 and ", the longest 55.0;" in picture.render(city)
+    for n in range(41, 400):
+        measure = bibliopolis.build_city(library, tree, first=n, with_coast=False)["composition"]["measure"]
+        whole = [k for k in ("max_radius", "walk_mean", "walk_longest") if float(measure[k]).is_integer()]
+        if whole:
+            return bibliopolis.build_city(library, tree, first=n), whole[0]
+    raise AssertionError("no replay of the sample has a whole measure in its picture line")
+
+
+def test_a_picture_drawn_from_the_text_of_a_replay_with_a_whole_measure_is_the_picture_of_the_city(sample):
+    city, _key = a_replay_with_a_whole_measure(sample)
+    assert picture.render(city_from_text(city)) == picture.render(city)
+
+
+def test_a_replay_of_the_grown_sample_has_a_measure_that_is_a_whole_number_so_that_the_check_above_means_something(sample):
+    city, key = a_replay_with_a_whole_measure(sample)
+    value = city["composition"]["measure"][key]
+    assert isinstance(value, float) and value == int(value) and f"{value}" in picture.stats_line(city, (0, 0)) and f"{value}" in picture.render(city)
     text = lay.render(city)
-    assert '"walk_longest": 55,' in text and '"walk_longest": 55.0' not in text  # (the text of the city has 55, where the city has 55.0)
+    assert f'"{key}": {int(value)},' in text and f'"{key}": {value},' not in text  # (the text of the city has 34, where the city has 34.0)
 
 
 def test_a_picture_drawn_from_the_text_of_a_hand_built_city_is_the_picture_of_the_city():
