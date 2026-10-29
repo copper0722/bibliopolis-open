@@ -235,10 +235,10 @@ def test_the_shape_of_a_rename_allows_a_null_road_and_nothing_else_that_is_not_t
 
 # ----------------------------------------------------------------------------------------- a new radius ----
 def scene(rule=None):
-    """A town with an avenue, a road below it, a continuation rib, holes in front of houses, and a second lap on the ring: the world that a resize must put again."""
+    """A town with an avenue, a road below it, a rib that grew, holes in front of houses, and a second lap on the ring: the world that a resize must put again."""
     h = Hand(rule or {"max": 30, "min": 5, "auto": False})
     h.add(130, topic(1, 1, 1, 1))
-    h.open("a", "Alpha", None, houses(1, 36))  # 36 houses: a first rib and a continuation
+    h.open("a", "Alpha", None, houses(1, 36))  # 36 houses: a first rib of the rule's max and the rest, grown in place
     h.open("b", "Beta", None, houses(40, 60))
     h.open("a1", "Alpha one", "a", houses(5, 14))
     h.file(hid(2), "b")  # holes
@@ -258,9 +258,8 @@ def test_a_max_that_the_first_lap_cannot_hold_lays_the_world_out_again_in_the_or
     assert expansion_violations(kept, state) == []
     assert order_along(state) == kept[0]  # no house passed another, on the ring or on any road
     lots = lot_snapshot(state)
-    stayed = {x for x in lots if lots[x] == before_lots[x]}
-    assert stayed == {x for x in lots if state.road_of[x] == "a1"} and stayed  # every house stands on another lot but those of the road below the avenue a: the radius moved the avenues and the cells
-    assert before_lots["h0005"]["parent"] == lots["h0005"]["parent"] == "place:tag:a1"  # (a1 lies on the spoke beyond the ribs of a, which end 41 cells out before (13 + 15, then 12 more) and after (21 + 20))
+    assert not {x for x in lots if lots[x] == before_lots[x]}  # every house stands in another place: the radius moved the avenues and the cells
+    assert (before_lots["h0005"]["parent"], before_lots["h0005"]["slot"]) == (lots["h0005"]["parent"], lots["h0005"]["slot"]) == ("place:tag:a1", 0)  # (on the same lot of the same rib)
     assert state.doc["roads"]["road:place:tag:a"]["s0"] == want + 0.5
     assert all(b["s"] >= want + 3.0 for line in state.doc["lines"].values() for b in line["bands"])
     first, second = state.city()["world"]["chronicle"][-2:]

@@ -73,7 +73,7 @@ def test_the_check_is_red_when_opening_a_road_packs_the_houses_that_stay_onto_th
 
     monkeypatch.setattr(hand.HandWorld, "open_road", packing)
     found = stability_violations(h.journal.events, h.journal.rule)
-    assert found and all("(open_road)" in line and "moved the house" in line for line in found), found
+    assert found and all("(open_road)" in line and ("moved the house" in line or "broke invariant 2 (a house changed its lot)" in line) for line in found), found  # (the same fault, seen by both checks)
     monkeypatch.undo()
     assert stability_violations(h.journal.events, h.journal.rule) == []
 

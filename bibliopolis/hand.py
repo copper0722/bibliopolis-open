@@ -225,21 +225,19 @@ class HandWorld(zw.World):
 
     def put_again(self, keys: list[str], trigger: str) -> list[str]:
         """The roads `keys` (in the order they were opened) have moved: they stand below their new parents in the tree already. Their street records, ribs and lots go
-        whole (their roads stay in the world as ghost roads, and the ground they claimed stays claimed), and their houses are put again, a road at a time and in the order
-        they arrived. Returns the ids of those houses. A house of any other road keeps its lot."""
+        whole (their roads stay in the world as ghost roads, their ribs in the logs of their lines as ghosts: the ground they claimed stays claimed), and their houses are put
+        again, a road at a time and in the order they arrived. Returns the ids of those houses. A house of any other road keeps its lot."""
         places = {lay.tag_place(k) for k in keys}
         lots = sorted((lot for place in sorted(places) for lot in self.by_road().get(place, ())), key=lambda lot: lot["seq"])
         for place in sorted(places):
             rec = self.places.get(place)
             if rec is None:  # a road that never had a house, or lost them all in an earlier move
                 continue
-            for carrier in ([place] if "rib" in rec else []) + list(rec.get("lanes", [])):
-                rib = self.places.get(carrier)["rib"]
-                self.ghost_rib(carrier, rib["line"])
+            if "rib" in rec:
+                rib = rec["rib"]
+                self.ghost_rib(place, rib["line"])  # (the rib stays in the log of its line, with its width: the ground it claimed stays claimed)
                 for slot in range(rib["slots"]):
                     self.places.delete(lay.reserved_place(rib["block"], slot))
-                if carrier != place:
-                    self.places.delete(carrier)
             self.places.delete(place)
         for lot in lots:
             self.places.delete(lay.article_place(lot["article"]))
@@ -296,9 +294,6 @@ class HandWorld(zw.World):
             rec["address"] = list(spec.address)
             if "label" in rec or place not in self.plan.streets:
                 rec["label"] = spec.label
-            for lane in rec.get("lanes", []):
-                lane_rec = self.places.mut(lane)
-                lane_rec["address"], lane_rec["label"] = list(spec.address), spec.label
 
 
 # --------------------------------------------------------------------------------------------------- the state ----

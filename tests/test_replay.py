@@ -37,8 +37,9 @@ def case():
 
 
 def keeps_its_place(part, full, label):
-    """Assert what a replay keeps of the full city: the bearing of every street that has one, and of every spoke its bearing and its start, and that it
-    only grows longer. Returns the spokes checked."""
+    """Assert what a replay keeps of the full city: the bearing of every street that has one; of every spoke its bearing, and that it starts and ends no nearer the plaza in the
+    full city than in the replay (a rib that grows moves what lies beyond it outward, nothing inward); of a ring-1 spoke, which hangs on nothing, its start. Returns the spokes
+    checked."""
     for pid, street in part["places"].items():
         if street["kind"] == "street" and street.get("axis") is not None:
             assert full["places"][pid]["axis"] == street["axis"], (label, pid)
@@ -46,7 +47,8 @@ def keeps_its_place(part, full, label):
     for rid, road in part["roads"].items():
         if road["kind"] == "spoke":
             later = full["roads"][rid]
-            assert later["axis"] == road["axis"] and later["points"][0] == road["points"][0] and later["length"] >= road["length"], (label, rid)
+            assert later["axis"] == road["axis"] and later["s0"] >= road["s0"] and later["s_end"] >= road["s_end"], (label, rid)
+            assert road["parent"] is not None or later["points"][0] == road["points"][0], (label, rid)
             spokes.add(rid)
     return spokes
 
@@ -75,7 +77,7 @@ def test_the_case_sits_on_trunk_min_c_is_a_trunk_of_its_own_at_its_weight_and_no
 
 @pytest.mark.parametrize("mode", ["grow", "mirror"])
 @pytest.mark.parametrize("above", [0, 1])
-def test_every_spoke_of_a_replay_keeps_its_bearing_and_its_start_and_only_grows_longer(case, mode, above):
+def test_every_spoke_of_a_replay_keeps_its_bearing_and_only_moves_outward_and_a_ring_one_spoke_keeps_its_start(case, mode, above):
     library, weight = case
     trunk_min = weight + above  # above = 0: c is a trunk; 1: c is not (its weight is one short of trunk_min)
     full = bibliopolis.build_city(library, TREE, mode=mode, trunk_min=trunk_min)
@@ -89,7 +91,7 @@ def test_every_spoke_of_a_replay_keeps_its_bearing_and_its_start_and_only_grows_
 
 
 @pytest.mark.parametrize("mode", ["grow", "mirror"])
-def test_every_spoke_of_a_replay_of_the_sample_keeps_its_bearing_and_its_start(mode):
+def test_every_spoke_of_a_replay_of_the_sample_keeps_its_bearing_and_only_moves_outward(mode):
     tree, library = sample()
     full = bibliopolis.build_city(library, tree, mode=mode)
     checked = set()
@@ -98,19 +100,17 @@ def test_every_spoke_of_a_replay_of_the_sample_keeps_its_bearing_and_its_start(m
     assert len(checked) >= 5
 
 
-def test_the_control_completing_a_replay_early_puts_the_late_road_nearer_the_plaza_than_the_full_city_does(case):
-    """What a replay used to do: take the last step of the build as well. The check above would see it: c starts nearer the plaza than it does in the full city."""
+def test_the_control_completing_a_replay_early_puts_the_late_road_nearer_the_plaza_than_it_opens_when_its_first_house_arrives(case):
+    """What a replay must not do: take the last step of the build as well. The road that opens late would open at the frontier of its trunk before the houses that push the
+    frontier outward have arrived, nearer the plaza than where the build opens it at its first house (the replay of 201 items)."""
     library, weight = case
-    full = bibliopolis.build_city(library, TREE, mode="mirror", trunk_min=weight)
-    late = full["roads"][ROAD_C]["points"][0]
+    opens = bibliopolis.build_city(library, TREE, mode="mirror", trunk_min=weight, first=201)["roads"][ROAD_C]["points"][0]
     for n in (0, 50, 100):
         plan, tv, world, _items = city.build_world(library, TREE, mode="mirror", trunk_min=weight, first=n)
         assert "place:tag:c" not in world["places"]  # the replay itself has no such road yet ...
         world = world_mod.apply_delta(world, world_mod.complete(plan, tv, world)["delta"])  # ... the early completion makes it, near the plaza
         early = document.world_layout(world)["roads"][ROAD_C]["points"][0]
-        assert early != late and math.hypot(*early) < math.hypot(*late), (n, early, late)
-        with pytest.raises(AssertionError):
-            keeps_its_place(document.world_layout(world), full, n)  # and the check refuses it
+        assert early != opens and math.hypot(*early) < math.hypot(*opens), (n, early, opens)
 
 
 # ------------------------------------------------------------------------------- a mirror replay ----
@@ -124,13 +124,13 @@ def test_a_mirror_replay_has_no_road_that_no_house_stands_on_or_below(case):
         assert roads == standing, (n, sorted(roads ^ standing))  # the roads of the replay are exactly the streets a house stands on or below (the ring road stands from day one)
 
 
-def test_a_road_that_opens_late_is_not_in_a_replay_before_its_first_house_and_is_where_the_full_city_has_it_after(case):
+def test_a_road_that_opens_late_is_not_in_a_replay_before_its_first_house_and_starts_farther_out_as_the_ribs_before_it_grow(case):
     library, weight = case
     full = bibliopolis.build_city(library, TREE, mode="mirror", trunk_min=weight)
     for n in (0, 100, 200):
         assert ROAD_C not in bibliopolis.build_city(library, TREE, mode="mirror", trunk_min=weight, first=n)["roads"]
-    for n in (201, 300, 669):
-        assert bibliopolis.build_city(library, TREE, mode="mirror", trunk_min=weight, first=n)["roads"][ROAD_C]["points"][0] == full["roads"][ROAD_C]["points"][0]
+    starts = [bibliopolis.build_city(library, TREE, mode="mirror", trunk_min=weight, first=n)["roads"][ROAD_C]["s0"] for n in (201, 300, 669)] + [full["roads"][ROAD_C]["s0"]]
+    assert starts == sorted(starts) and starts[0] < starts[-1]  # it opens at the frontier of its trunk, and the ribs of the roads before it have grown since: it lies farther out
 
 
 def test_a_topic_an_item_is_filed_under_while_its_house_stands_elsewhere_is_a_road_only_in_the_complete_city():
@@ -159,8 +159,14 @@ def test_a_later_split_repacks_the_houses_that_stay_so_a_lot_can_stand_elsewhere
     assert moved  # the same house, on the same road, in another cell
 
 
-def test_a_continuation_rib_that_a_later_split_empties_is_in_the_replay_and_not_in_the_full_city():
+def test_a_rib_that_grows_later_has_fewer_lots_in_a_replay_and_every_house_it_had_stands_on_the_same_lot():
+    """The road is one rib for ever: it grows at its end, the houses it had keep their slots (unless the road splits later: it packs the houses that stay)."""
     tree, library = sample()
-    full, part = bibliopolis.build_city(library, tree), bibliopolis.build_city(library, tree, first=150)
-    gone = [rid for rid, road in part["roads"].items() if road["kind"] == "lane" and rid not in full["roads"]]
-    assert gone and all(part["roads"][rid]["street"] not in full["places"] for rid in gone)
+    full, part = bibliopolis.build_city(library, tree), bibliopolis.build_city(library, tree, first=400)
+    splitting = {e["from"] for e in full["world"]["chronicle"][len(part["world"]["chronicle"]):] if "from" in e}
+    grown = [pid for pid, p in part["places"].items() if p["kind"] == "street" and "rib" in p and full["places"][pid]["rib"]["slots"] > p["rib"]["slots"] and pid not in splitting]
+    assert len(grown) >= 4
+    for pid in grown:
+        assert "lanes" not in full["places"][pid] and not [q for q in full["places"].values() if q["kind"] == "street" and q.get("lane_of") == pid]  # (one rib, the road is not continued)
+    stand = [(pid, p) for pid, p in part["places"].items() if p["kind"] == "lot" and p["parent"] in grown]
+    assert stand and all((full["places"][pid]["parent"], full["places"][pid]["slot"]) == (p["parent"], p["slot"]) for pid, p in stand)

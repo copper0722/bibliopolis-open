@@ -257,7 +257,7 @@ def road_record(street: str, kind: str, ring: int, parent: str | None, at: float
 KIND_NOTES = {
     "plaza": "the town hall plaza at the origin: the root of the topic tree (a virtual root over the topic roots when the tree has several)",
     "street": "a road of the city: a topic that has houses on it or below it. shape trunk: a spoke with bands of streets and a wedge; rib: a "
-              "street (or a continuation of it) that is a stretch of a band on the trunk of `carrier`; group: a road with roads below it, "
+              "street that is a stretch of a band on the trunk of `carrier`; group: a road with roads below it, "
               "its roads hang on the bands of `carrier`; ring: the ring road round the plaza (the root of the road tree) or one of its laps, a concentric "
               "ring road outside it, with lots on both sides of its lane",
     "lot": "one item's house: one cell, id place:article:<item id>",
@@ -273,8 +273,8 @@ GEOMETRY = {
     "unit": "cell", "x": "east", "z": "south", "angle": "degrees clockwise from north (may be negative or above 360)",
     "origin": "the centre of the town hall plaza", "position": "centre of the cell",
     "band": f"{BAND} cells (a row of lots, a lane, a row of lots) and {RIB_GAP} empty between bands",
-    "reserve": "a rib is laid out for the houses its road holds when it opens and max(4, ceil(n / 2)) empty lots after them, in whole cells and "
-               "never above the limit of a road; a full road continues as a further rib of the same road",
+    "reserve": "a road has one rib, laid out for the houses its road holds when it opens and max(4, ceil(n / 2)) empty lots after them, in whole cells and "
+               "never above the limit of a road; a full rib grows at its end, in place, and what lies beyond it moves outward",
 }
 
 
@@ -357,7 +357,7 @@ def place_root(places: dict[str, dict], pid: str) -> str:
 
 
 def measure(layout: dict) -> dict:
-    """The numbers of a city, read back from the document alone. Every house is on the surface; a rib that continues a road (`continued`) is the road it continues.
+    """The numbers of a city, read back from the document alone. Every house is on the surface; a lap of the ring road (`continued`) is the ring road it continues.
     `ring_lots` counts the houses on every lap of the ring road, and the ring counts as one 大道 (its laps are continuations)."""
     places, roads = layout["places"], layout["roads"]
     lots = [p for p in places.values() if p["kind"] == "lot"]

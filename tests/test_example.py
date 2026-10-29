@@ -72,7 +72,7 @@ def test_the_growing_city_opens_its_first_road_at_house_41_and_shows_a_split_an_
     assert "Humanities・History" in labels  # a chain of topics, one road
     streets = grown["composition"]["streets"]
     assert streets["total"] == len([p for p in grown["places"].values() if p["kind"] == "street" and "lane_of" not in p]) >= 20
-    assert streets["continuations"] > 0 and streets["ring"] == 1 and "underground" not in streets
+    assert streets["continuations"] == 0 and streets["ring"] == 1 and "underground" not in streets  # (a road is one stretch: only a lap of the ring road continues a street)
     assert 0 < grown["composition"]["measure"]["ring_lots"] < 40  # the houses of topics too thin for a road, and those with no topic: they stand on the ring road
     assert sum(1 for e in chronicle if "from" in e) >= 20 and [e["n"] for e in chronicle] == list(range(1, len(chronicle) + 1))
 

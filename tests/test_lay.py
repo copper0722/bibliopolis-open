@@ -142,10 +142,10 @@ def test_the_ghosts_of_roads_that_moved_and_merged_lay_as_they_stood(seed):
 
 
 def test_a_span_that_starts_in_the_lead_of_a_member_is_laid_after_the_member_and_neither_moves_when_the_line_is_laid_again():
-    """Seed 7 has a band, seed 1 a rib along the spoke, that starts below the start of a member and overlaps its lead: the member opened at the frontier of what stood, the
-    span came later, so it is laid after the member. A line laid with the span before the member would open the member beyond the span."""
-    for seed, kind in ((7, "band"), (1, "spoke")):
-        _problems, doc, _steps, plan, tv = simulate_districts(seed, check_every=1000)
+    """Seed 7 has a band, seed 1 of a mirror world a rib along the spoke, that starts below the start of a member and overlaps its lead: the member opened at the frontier of
+    what stood, the span came later, so it is laid after the member. A line laid with the span before the member would open the member beyond the span."""
+    for seed, kw, kind in ((7, {}, "band"), (1, {"mode": "mirror"}, "spoke")):
+        _problems, doc, _steps, plan, tv = simulate_districts(seed, check_every=1000, **kw)
         found = []
         for lid, line in doc["lines"].items():
             members = {m["place"]: m for m in line["members"]}

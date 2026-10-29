@@ -20,6 +20,10 @@ heavy chain: one axis, one frontier, one set of bands. A side child of a trunk s
             BAND (an arc round the plaza across the line): first fit by radius: the open end of a band side that has room, else a new band
             at the smallest free radius that fits the wedge. Where a band would end clearly farther out (a narrow sector) the rib lies along
             the SPOKE instead, lots on both sides of the axis. The land grows outward without bound.
+  log       a line keeps what was DECIDED, in radial order, inner to outer: its members, their branch circles, its bands (with the ribs of each side in order
+            and their widths) and the ribs along its spoke. Which line, which band and side, where along the side, band or spoke: decided when a rib opens, never
+            undone. Every radius and every record that holds one is DERIVED from the log by `lay_line`, which sweeps it outward through the operations first placement
+            uses; a rib that grows is laid again from itself outward. A road that moves leaves its rib in the log as a ghost: the ground it claimed stays claimed.
 
 Determinism: same plan, tree, world and arrivals give the same bytes (sorted iteration, integer angles, coordinates rounded to 3 decimals).
 
@@ -40,12 +44,11 @@ directions (the ring-1 wedges, the trunks and their sides); which topics are roa
              houses of the call that stay take the first free slots of the fill order after it; the new road is checked in turn. No group reaches `min`: the street
              record says `over`. Ring 1 is the plan's: the ring road opens the plan's ring-1 street of a root topic (the wedges are pinned; its
              record's `parent` stays the plaza), and collapse works below it.
-  rib        a rib is sized to the houses its road holds when it opens plus headroom, `min(max, even(n + max(4, ceil(n / 2))))`, n counting
-             the arrivals of the call (a split group, the survivors, or 1). A full road opens a CONTINUATION rib that holds what the whole road
-             needs and its ribs do not hold yet, `district_road_need(n) - held` (the need of the road is its houses and the same headroom in
-             whole cells, at most `max` while the road is not over; the rib has at least 1 lot and, as every rib, at most `max`): a lane record
-             that adds `continued: true` and has the road's own label, level and address: one road everywhere. `over` is independent of it.
-             A house takes the lowest free lot.
+  rib        a road has ONE rib. It is sized to the houses its road holds when it opens plus headroom, `min(max, even(n + max(4, ceil(n / 2))))`, n counting
+             the arrivals of the call (a split group, the survivors, or 1). A rib with no empty lot GROWS in place, at its end, by `max(need - held, 1)` lots: `need`
+             is `district_road_need(n)` (the road's houses and the same headroom in whole cells, at most `max` while the road is not over, no cap once it is) and
+             `held` the lots of the rib. The line is then laid again from the rib outward (`lay_line`): what lies beyond it moves out, nothing moves in, and no house
+             changes its lot. A road is one stretch of one street everywhere; `over` is independent of its size. A house takes the lowest free lot.
   chronicle  every split and every road that became over is an entry of the document's `world.chronicle`, in the order it happened:
              `{n, event_id, seq, trigger, from, to, label, houses, count_before, count_after}` or `{n, event_id, seq, trigger, over, count}`.
   no merge   a road that falls under `min` (the survivors of a split) stays open.
@@ -114,14 +117,15 @@ def district_rib_size(n: int, max_houses: int) -> int:
     return min(max_houses, want + want % 2)
 
 
+def same_bearing(a: float, b: float) -> bool:
+    """Whether two bearings in degrees are the same direction. A facing is stored as `r3(bearing % 360)`: a bearing a hair under a whole turn is written 360, and the lot that
+    stood on that cell and was freed (a reserved lot copies the facing of the house, taken mod 360 again) 0. The two are one direction, and a lot is not written over for it."""
+    return abs((a - b + 180.0) % 360.0 - 180.0) < 1e-6
+
+
 def ceil3(v: float) -> float:
     """`v` rounded up to a millimetre: a band radius is stored with three decimals, and must still satisfy the bound it was computed from."""
     return math.ceil(v * 1000 - 1e-7) / 1000
-
-
-def rib_block_key(street_key: str, ordinal: int) -> str:
-    """Block key of the reserved ids of a rib: the topic id for the road itself, `lane:<key>:<k>` for rib k >= 2."""
-    return street_key if ordinal == 1 else f"lane:{street_key}:{ordinal}"
 
 
 # ------------------------------------------------------------------------------------------ views ----
@@ -297,7 +301,7 @@ class World:
         self.seq = doc.get("seq", 0)
         self.specs: dict[str, StreetSpec] = {}
         self.placements: dict[str, dict] = {}
-        self.stats = {"houses": 0, "ribs": 0, "members": 0, "bands": 0, "spoke_ribs": 0, "splits": 0, "overs": 0, "blocked": 0, "continuations": 0}
+        self.stats = {"houses": 0, "ribs": 0, "grown": 0, "members": 0, "bands": 0, "spoke_ribs": 0, "splits": 0, "overs": 0, "blocked": 0}
         if doc["places"].get(ROOT_PLACE, {}).get("shape") != "ring":
             raise ValueError("a world starts with the ring road its plan carries: make it with bibliopolis.world.new_world(plan)")
         self.stats["laps"] = 0
@@ -616,7 +620,7 @@ class World:
     def split(self, road: str, found: dict, pending: list[dict], trigger: str) -> None:
         """Open the road of `found`, move the group onto it and pack the houses that stay onto the first lots of the road in arrival order.
         `pending` are houses about to be put on the road: they take part. The group arrives on the new, empty road as any houses arrive (a group larger
-        than `max` splits again at once, before any of it is placed: no continuation rib opens on a road that is not over), and then the houses that stay arrive
+        than `max` splits again at once, before any of it is placed: no rib grows on a road that is not over), and then the houses that stay arrive
         on the emptied road, which may split again; the chronicle has the entries in that order."""
         existing = self.lots_on(road)
         everyone = sorted(existing + pending, key=lambda h: h["seq"])
@@ -911,38 +915,29 @@ class World:
         spoke = self.spoke_room(line, carrier, width)
         return spoke if spoke["x1"] + SPOKE_MARGIN < band["s"] + BAND / 2 else band
 
-    def rib_slots(self, spec: StreetSpec, ordinal: int) -> int:
-        """The lots of rib `ordinal` of a road. The first rib is sized to the houses the road holds when it opens, with the arrivals of the call (`hold`: a
-        split group, the survivors, or 1), plus headroom (`district_rib_size`). A continuation rib (`ordinal` >= 2) holds what the whole road needs and its
-        ribs do not hold yet, `district_road_need(n) - held`: at least 1 lot and, as every rib, at most `max` (a road that needs more opens the next one when
-        this one is full). When one opens for a road of `max` houses or fewer, the ribs hold `max` lots together at most. (The clause before sized it
-        on the road's whole count: a road reached `max` lots at its second rib, and took `max` more for its first house over `max`.)"""
+    def rib_slots(self, spec: StreetSpec) -> int:
+        """The lots of the rib of a road when it opens: sized to the houses the road holds then, with the arrivals of the call (`hold`: a split group, the survivors, or 1),
+        plus headroom (`district_rib_size`)."""
         n = self.hold.get(spec.place)
         if n is None:  # (no batch is being put on the road: the next house)
             n = len(self.lots_on(spec.place)) + 1
-        if ordinal == 1:
-            return district_rib_size(n, self.max)
-        rec = self.places.get(spec.place)
-        held = sum(self.places.get(c)["rib"]["slots"] for c in ([spec.place] if "rib" in rec else []) + list(rec.get("lanes", [])))
-        return min(self.max, max(district_road_need(n, self.max) - held, 1))
+        return district_rib_size(n, self.max)
 
-    def open_rib(self, spec: StreetSpec, ordinal: int) -> str:
-        """Give a road its first rib (ordinal 1) or its next one: a stretch of a band of the line of its carrier, or of its spoke.
-        Returns the place that carries the rib (the road itself, or the continuation)."""
+    def open_rib(self, spec: StreetSpec) -> str:
+        """Give a road its rib: a stretch of a band of the line of its carrier, or of its spoke. A road has this one rib for ever; it grows in place (`grow_rib`)."""
         self.ensure_street(spec.place)
         self.open_member(spec.carrier)
         line_id = self.plan.trunks[spec.carrier]["line"]
         line = self.lines.mut(line_id)
-        slots = self.rib_slots(spec, ordinal)
+        slots = self.rib_slots(spec)
         width = math.ceil(slots / 2)
         st = self.find_room(line, spec.carrier, width)
         axis, s, mode = line["axis"], st["s"], st["mode"]
-        rib_place = spec.place if ordinal == 1 else lay.lane_place(spec.key, ordinal)
-        ring = spec.ring  # (a continuation is the road itself: its road has the class of the road)
+        rib_place, ring = spec.place, spec.ring
         parent_member = self.covering(line, s)
         wedge = self.plan.wedge(spec.carrier)
         rib = {"trunk": spec.carrier, "line": line_id, "mode": mode, "x0": lay.r3(st["x0"]), "x1": lay.r3(st["x1"]), "s": lay.r3(s), "slots": slots,
-               "next": 0, "block": rib_block_key(spec.key, ordinal), "wedge": [lay.r3(wedge[0] / lay.UNIT), lay.r3(wedge[1] / lay.UNIT)]}
+               "next": 0, "block": spec.key, "wedge": [lay.r3(wedge[0] / lay.UNIT), lay.r3(wedge[1] / lay.UNIT)]}
         entry = {"place": rib_place, "road": None, "width": width, "carrier": spec.carrier}  # what the line's log keeps of this rib: the rest is derived (`lay_line`)
         if mode == "spoke":  # the lane of the street is the spoke itself; the rib stands in its own stretch of radii
             line["log"].insert(self.log_index(line, s, st["x1"] + ITEM_GAP), {"kind": "spoke", "spoke": len(line["spokes"]), "rib": entry})
@@ -967,7 +962,7 @@ class World:
                 at = self.roads.get(parent)["length"]
             a0 = axis + side * math.degrees(st["start"] / s)
             a1 = axis + side * math.degrees(st["x1"] / s)
-            rid = self.fresh_road(f"road:{rib_place}" + (":lane" if spec.trunk and ordinal == 1 else ""))
+            rid = self.fresh_road(f"road:{rib_place}" + (":lane" if spec.trunk else ""))
             self.put_road(rid, rib_place, "lane", ring, parent, at, lay.arc_points(s, a0, a1), st["x1"] - st["start"], trunk=line_id,
                           band=st["band"], side=side, off=lay.r3(st["start"]), radius=lay.r3(s), bearings=[lay.r3(a0), lay.r3(a1)])
             band["used"][i] = lay.r3(st["x1"])
@@ -975,18 +970,10 @@ class World:
             entry["road"] = rid
             next(e for e in line["log"] if e["kind"] == "band" and e["band"] == st["band"])["ribs"][i].append(entry)
             rib.update({"band": st["band"], "side": side, "reach": lay.r3(st["reach"])})
-        if ordinal == 1:
-            street = self.places.mut(spec.place)
-            street["rib"] = rib
-            street["lane" if spec.trunk else "road"] = rid
-            street["reserved"] = slots
-        else:  # a CONTINUATION rib: one road everywhere, so the record has the road's own label, level, class and address
-            lane = {"kind": "street", "shape": "rib", "lane_of": spec.place, "ordinal": ordinal, "continued": True, "level": spec.ring,
-                    "class": lay.class_of(spec.ring), "parent": spec.place, "label": spec.label, "address": list(spec.address),
-                    "carrier": spec.carrier, "lots": 0, "reserved": slots, "road": rid, "rib": rib}
-            self.places.put(rib_place, lane)
-            self.places.mut(spec.place).setdefault("lanes", []).append(rib_place)
-            self.stats["continuations"] += 1
+        street = self.places.mut(spec.place)
+        street["rib"] = rib
+        street["lane" if spec.trunk else "road"] = rid
+        street["reserved"] = slots
         for slot in range(slots):
             xz, facing = self.cell(rib, axis, slot)
             self.places.put(lay.reserved_place(rib["block"], slot), lay.reserved_record(rib_place, slot, "tail", xz, facing))
@@ -1224,12 +1211,12 @@ class World:
             lots = {p["slot"]: p for p in self.by_road().get(street.get("lane_of", rib_place), ()) if p["parent"] == rib_place}
             for slot in range(rib["slots"]):
                 xz, facing = self.cell(rib, axis, slot)
-                pos = {"x": lay.r3(xz[0]), "z": lay.r3(xz[1])}
+                pos, face = {"x": lay.r3(xz[0]), "z": lay.r3(xz[1])}, lay.r3(facing % 360)
                 lot = lots.get(slot)
                 if lot is not None:
-                    if lot["position"] != pos or lot["facing"] != lay.r3(facing % 360):
+                    if lot["position"] != pos or not same_bearing(lot["facing"], face):
                         mine = self.places.mut(lay.article_place(lot["article"]))
-                        mine["position"], mine["facing"] = pos, lay.r3(facing % 360)
+                        mine["position"], mine["facing"] = pos, face
                         wrote = True
                     continue
                 key = lay.reserved_place(rib["block"], slot)
@@ -1237,9 +1224,9 @@ class World:
                 if held is None:
                     self.places.put(key, lay.reserved_record(rib_place, slot, "tail", xz, facing))
                     wrote = True
-                elif held["position"] != pos or held["facing"] != lay.r3(facing % 360):
+                elif held["position"] != pos or not same_bearing(held["facing"], face):
                     mine = self.places.mut(key)
-                    mine["position"], mine["facing"] = pos, lay.r3(facing % 360)
+                    mine["position"], mine["facing"] = pos, face
                     wrote = True
             if wrote:
                 self._by_road = None  # (a lot moved: the index of the lots holds the old records)
@@ -1271,15 +1258,36 @@ class World:
 
     # ---- houses
     def active_rib(self, spec: StreetSpec) -> str:
-        """The rib that takes the next house of a road: the first one that has an empty lot (a split leaves empty lots in front of the cursor),
-        else the next continuation (opened here)."""
+        """The rib that takes the next house of a road: its one rib, opened here for the first house and grown here when it has no empty lot (a split leaves empty lots in
+        front of the cursor, and the house takes the lowest of them)."""
         rec = self.ensure_street(spec.place)
-        carriers = ([spec.place] if "rib" in rec else []) + list(rec.get("lanes", []))
-        for carrier in carriers:
-            held = self.places.get(carrier)
-            if held["lots"] < held["rib"]["slots"]:
-                return carrier
-        return self.open_rib(spec, len(carriers) + 1)
+        if "rib" not in rec:
+            return self.open_rib(spec)
+        if rec["lots"] < rec["rib"]["slots"]:
+            return spec.place
+        return self.grow_rib(spec)
+
+    def grow_rib(self, spec: StreetSpec) -> str:
+        """Give the full rib of a road `max(need - held, 1)` more lots, at its end: `need` is what the whole road needs, `district_road_need(n)` for the `n` houses it holds with the
+        arrivals of the call (its houses and the headroom in whole cells, at most `max` while the road is not over, no cap once it is), `held` the lots the rib has. The rib stays
+        where it is and the line is laid again from it outward (`lay_line`): what lies beyond it moves out, nothing moves in, and no house changes its lot."""
+        n = self.hold.get(spec.place)
+        if n is None:  # (no batch is being put on the road: the next house)
+            n = len(self.lots_on(spec.place)) + 1
+        street = self.places.mut(spec.place)
+        rib = street["rib"]
+        more = max(district_road_need(n, self.max) - rib["slots"], 1)
+        rib["slots"] += more
+        street["reserved"] += more
+        line_id = rib["line"]
+        line = self.lines.mut(line_id)
+        for e in line["log"]:
+            for entry in (e["rib"],) if e["kind"] == "spoke" else [r for side in e["ribs"] for r in side] if e["kind"] == "band" else ():
+                if entry["place"] == spec.place and not entry.get("ghost"):
+                    entry["width"] = math.ceil(rib["slots"] / 2)
+        self.lay_line(line_id, grown=spec.place)
+        self.stats["grown"] += 1
+        return spec.place
 
     def free_slot(self, rib: dict) -> int:
         """The lowest empty lot of a rib."""

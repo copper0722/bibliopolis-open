@@ -21,10 +21,10 @@ def real_city():
 
 
 def worlds(mode):
-    """A city of 72 houses with every kind of place the engine makes: roads on two levels, continuation ribs, an inner trunk, splits, roads that are over, and
+    """A city of 179 houses with every kind of place the engine makes: roads on two levels, a lap of the ring road, an inner trunk, splits, roads that are over, and
     houses with no topic on the ring road. The rule is small (12 houses to a road) to get all of that from few houses."""
     tree, items = make_tree({"r": T(0, a=T(3, c=T(0, c1=T(14), c2=T(14)), d=T(10)), b=T(8, e=T(6), f=T(14)))})
-    items += [art(900 + k, []) for k in range(3)]
+    items += [art(900 + k, []) for k in range(110)]
     doc = bibliopolis.build_city({"items": items}, tree, mode=mode, max_houses=12, min_houses=4, trunk_min=20)
     return json.loads(json.dumps(doc))
 
@@ -378,7 +378,7 @@ def test_no_single_wrong_field_gets_past_the_reader_to_crash_a_picture_or_the_ch
     base = worlds(mode)
     assert inputs.read_city(copy.deepcopy(base))
     kinds = {(p["kind"], p.get("shape"), "lane_of" in p) for p in base["places"].values()}
-    assert {("lot", None, False), ("street", "rib", True), ("street", "rib", False), ("street", "trunk", False), ("street", "ring", False)} <= kinds
+    assert {("lot", None, False), ("street", "ring", True), ("street", "rib", False), ("street", "trunk", False), ("street", "ring", False)} <= kinds
     assert not [p for p in base["places"].values() if p.get("underground")]  # (no house, no street under the town hall: the ring road is on the surface)
     failures, tally = fuzz(base, inputs.read_city)
     assert failures == [], failures[:5]

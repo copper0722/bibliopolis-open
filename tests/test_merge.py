@@ -724,7 +724,7 @@ def test_the_stability_check_is_red_when_a_merge_puts_a_house_of_another_avenue_
 
     monkeypatch.setattr(hand.HandWorld, "merge_roads", careless)
     found = stability_violations(h.journal.events, h.journal.rule)
-    assert found and all("(merge_roads)" in line and "moved the house" in line for line in found), found
+    assert found and all("(merge_roads)" in line and ("moved the house" in line or "broke invariant 2 (a house changed its lot)" in line) for line in found), found  # (the same fault, seen by both checks)
     monkeypatch.undo()
     assert stability_violations(h.journal.events, h.journal.rule) == []
 

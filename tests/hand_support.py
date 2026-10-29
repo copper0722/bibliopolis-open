@@ -17,7 +17,7 @@ from bibliopolis import layout as lay
 from bibliopolis import world as zw
 from bibliopolis.events import Refusal, standing
 from bibliopolis.hand import State, fold
-from support import bearing_of_direction, capacity, cells_table, fill_order_of, first_free, gates_of, laps_of, lay_problems, radius_for
+from support import bearing_of_direction, capacity, cells_table, fill_order_of, first_free, gates_of, laps_of, lay_problems, radius_for, step_problems
 from bibliopolis.hand import HandWorld
 from bibliopolis.journal import Journal
 from bibliopolis.suggest import suggest_merge, suggest_road
@@ -617,6 +617,12 @@ def lot_snapshot(state: State) -> dict[str, dict]:
     return {p["article"]: p for p in state.city(with_coast=False)["places"].values() if p["kind"] == "lot"}
 
 
+def where(lot: dict) -> dict:
+    """The lot of a house as a street knows it: its rib and its slot and the rest of its record, not where the rib stands. The position and the facing are derived: a rib that
+    grows moves what lies beyond it (bibliopolis.world, `lay_line`), and the house stays on its lot."""
+    return {k: v for k, v in lot.items() if k not in ("position", "facing")}
+
+
 def moved_by(event: dict, before: State) -> set[str]:
     """The houses that the event moves, read from the event and the world before it (not from the engine's own account of what it did)."""
     p = event["payload"]
@@ -646,7 +652,7 @@ def stability_violations(events: list[dict], rule: dict) -> list[str]:
         if e["kind"] == "undo":
             state = fold(seen, rule)
             continue
-        before_lots, before_roads, auto, before_nodes = lot_snapshot(state), dict(state.road_of), state.rule["auto"], set(state.nodes)
+        before_lots, before_roads, auto, before_nodes, before_doc = lot_snapshot(state), dict(state.road_of), state.rule["auto"], set(state.nodes), state.doc
         expected = moved_by(e, state)
         kept, was_ring, chron = ring_snapshot(state), ring_of(state), len(state.doc["chronicle"])
         cells_before, laps_before = ring_cells(state), lap_slots(state)
@@ -655,8 +661,13 @@ def stability_violations(events: list[dict], rule: dict) -> list[str]:
         except Refusal as why:
             bad.append(f"event {e['seq']} ({e['kind']}) was refused: {why}")
             return bad
+        if e is events[-1] or len(seen) % 3 == 0:  # (the geometry of the whole world is the dear check: every third event and the last)
+            bad += [f"event {e['seq']} ({e['kind']}) left the world with a fault of geometry: {name}: {found[:2]}" for name, found in checks.all_problems(state.doc).items()]
+        again = HandWorld(zw.PlanView(state.plan), state.tree, state.doc, event_id=e["seq"])
+        bad += [f"event {e['seq']} ({e['kind']}) left a world that is not what its log lays: {found}" for found in lay_problems(state.doc, state.plan, state.tree, world=again)[:2]]
         if e["kind"] == "set_rule" and ring_of(state) != was_ring:  # the one event that may put every house again: it keeps the order, the roads and the directions
             bad += [f"event {e['seq']} (set_rule) put the world out again and {why}" for why in expansion_violations(kept, state)]
+            bad += [f"event {e['seq']} (set_rule) broke invariant {n} ({what}): {detail}" for n, what, detail in step_problems(before_doc, state.doc, lambda lot, now: True, laid_out_again=True)]
             continue
         after_lots = lot_snapshot(state)
         changed = {h for h, road in before_roads.items() if state.road_of[h] != road}
@@ -685,8 +696,13 @@ def stability_violations(events: list[dict], rule: dict) -> list[str]:
         elif changed:
             bad.append(f"event {e['seq']} ({e['kind']}) changed the road of {sorted(changed)}")
         for h, lot in before_lots.items():
-            if h not in expected and after_lots[h] != lot:
+            if h not in expected and where(after_lots[h]) != where(lot):
                 bad.append(f"event {e['seq']} ({e['kind']}) moved the house {h}, which it did not move: {lot['parent']}/{lot['slot']} -> {after_lots[h]['parent']}/{after_lots[h]['slot']}")
+        arrived = {a for a in after_lots if a not in before_lots}  # (a house new to the world is no house that moved)
+        merged_away = e["kind"] in ("move_road", "merge_roads") or (e["kind"] == "add_item" and any("merged" in entry for entry in state.doc["chronicle"][chron:]))
+        re_ribbed = {before_doc["places"][lay.article_place(h)]["street"] for h in expected if h in before_lots} if merged_away else set()  # (the roads that moved have a new rib; the old one is a ghost)
+        bad += [f"event {e['seq']} ({e['kind']}) broke invariant {n} ({what}): {detail}" for n, what, detail in step_problems(
+            before_doc, state.doc, lambda lot, now: lot["article"] in expected or lot["article"] in arrived, re_ribbed=re_ribbed)]
     return bad
 
 

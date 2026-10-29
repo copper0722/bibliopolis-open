@@ -81,4 +81,6 @@ def test_items_at_every_level_of_a_long_chain():
 @pytest.mark.parametrize("mode", ["grow", "mirror"])
 def test_one_topic_of_four_hundred_items(mode):
     doc, s = build(tree(("a", None), ("b", None)), [art(i, ["a"]) for i in range(1, 401)], mode)
-    assert s["roads"] == 1 + 1 and s["over"] == 1 and doc["composition"]["streets"]["continuations"] >= 9  # 400 houses in ribs of at most 40 lots
+    rib = doc["places"]["place:tag:a"]["rib"]["slots"]
+    assert s["roads"] == 1 + 1 and s["over"] == 1 and doc["composition"]["streets"]["continuations"] == 0  # 400 houses in one road: one rib, which grew in place
+    assert 400 <= rib <= 600 and "lanes" not in doc["places"]["place:tag:a"]  # (the need of a road of 400 houses is 600 lots: its houses and half as many again)

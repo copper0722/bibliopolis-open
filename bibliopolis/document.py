@@ -19,9 +19,9 @@ Keys:
               the last house, `houses` the lots in this document, `unbuilt` the empty lots the world holds (in or out of `places`). `districts`
               is the rule (max, min, extract, count) and `chronicle` has one entry per split and one per road that became over, in the order
               they happened (bibliopolis.world, "Roads"); a chronicle entry made by `bibliopolis.city` also says `at`, the `added_at` of the item
-              whose arrival caused it. A full road continues as a rib of the SAME road: a lane record with `continued: true`, the road's own label,
-              level, class and address; the counts `composition.streets` count the road once (`continuations` is an extra key). The root is one of two things:
-                The root is the RING ROAD. The street `place:root` ({shape "ring", level 1, class 大道, label, address [label], parent plaza, lots, reserved 0,
+              whose arrival caused it. A road has ONE rib, which grows in place when it is full; only a lap of the ring road continues another street (a street record
+              with `continued: true`, the road's own label, level, class and address); the counts `composition.streets` count the road once (`continuations` is an extra key,
+              the laps). The root is the RING ROAD. The street `place:root` ({shape "ring", level 1, class 大道, label, address [label], parent plaza, lots, reserved 0,
                 road "road:place:root", ring {lap 1, radius, slots, gaps}, [lanes]}) is a closed circular road round the plaza and stands from day one, with
                 its road (kind "ring", parent null, `radius`, a closed polyline from north clockwise). Its houses are ordinary surface lots on both sides of
                 it: lots with parent the lap, `slot` within the lap (even: the inner row, odd: the outer row) and no empty-lot records (the cell of a slot is a
@@ -37,7 +37,7 @@ Keys:
                 trunk  address axis bands class kind level lots open order parent reserved road s0 s_end shape wedge weight
                        [carrier collapsed heavy label lane lanes rib tag over]
                 group  address carrier class kind level lots order parent reserved shape weight [collapsed label lanes rib road tag over]
-                rib    as group; a continuation of a road is a rib with lane_of, ordinal, continued, the road's label and no order, weight or tag
+                rib    as group; a lap of the ring road is a street of shape ring with lane_of, ordinal, continued, the ring's label and no order, weight or tag
               and `rib` {trunk band side x0 x1 s slots} (band null: laid along the spoke of `trunk`, lots on both sides of its axis).
               `lot.seq` is the arrival number (orders the growth). A street's `lots` counts its built lots, `reserved` the lots it holds empty.
   roads       spoke {at axis class kind length open parent points s0 s_end street wedge}; arc {at class kind length parent points side
@@ -66,7 +66,7 @@ NOTES_DISTRICTS = {
     "world.chronicle": "every split and every road that became over, in the order it happened (the arrival number that caused it and, when the library "
                        "gives one, its date `at`)",
     "street.over": "the road holds more than `max` houses directly and no group of at least `min` can open a road: the topic tree needs sorting",
-    "street.continued": "a rib that continues a full road: the same road (its label, level, class and address), not a road of its own",
+    "street.continued": "a lap of the ring road, which continues the ring when it is full: the same road (its label, level, class and address), not a road of its own",
     "street.ring": "the ring road round the town hall (the root of the road tree) or one of its laps: a closed circular road with houses on both sides; a lap "
                    "(`lane_of`, `continued`) is the same road, a concentric ring outside the first when it is full; `ring` = {lap, radius, slots, gaps}",
     "road.ring": "a closed circle round the plaza, from north clockwise (the last point is the first), radius `radius`; it has no parent",
@@ -149,9 +149,8 @@ def street_view(pid: str, rec: dict, roads: dict, streets: set[str], heavy_of: d
 
 
 def street_counts(places: dict[str, dict]) -> dict:
-    """The `composition.streets` counts of a document (the streets in it). A road is counted once whatever the ribs it has (`continuations` are its
-    ribs after the first). The ring road is a street like any: `total` counts it once (a lap is a continuation) and `ring` is the number of street records of shape
-    ring, laps included."""
+    """The `composition.streets` counts of a document (the streets in it). A road has one rib. The ring road is a street like any: `total` counts it once (a lap is a
+    continuation, and the one street that continues another: `continuations`) and `ring` is the number of street records of shape ring, laps included."""
     recs = [p for p in places.values() if p["kind"] == "street"]
     own = [p for p in recs if "lane_of" not in p]
     out = {"total": len(own), "containers": sum(1 for p in own if p["shape"] in ("trunk", "group")), "leaves": sum(1 for p in own if p["shape"] == "rib"),

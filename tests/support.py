@@ -326,6 +326,7 @@ def send(plan, tree, doc, arrivals, event_id=None):
     res = zw.assign(plan, tree, doc, arrivals, event_id=event_id)
     after = zw.apply_delta(doc, res["delta"])
     sound(after, plan, tree)
+    assert step_problems(doc, after, may_change_after(plan, doc, after)) == []
     return after, res
 
 
@@ -363,10 +364,12 @@ class Town:
         sound(self.doc, self.plan, self.tv)
 
     def send(self, arrivals, event_id=None, check=True):
+        before = self.doc
         res = zw.assign(self.plan, self.tv, self.doc, arrivals, event_id=event_id)
         self.doc = zw.apply_delta(self.doc, res["delta"])
         if check:
             self.check()
+            assert step_problems(before, self.doc, may_change_after(self.plan, before, self.doc)) == []
         return res
 
     def one_by_one(self, arrivals, check=True):
@@ -415,8 +418,7 @@ def ring_root_problems(places, plan):
 
 def district_problems(doc, plan, tree):
     """Violations of the rule in a world with districts (empty: sound), read from the world document alone and from a fresh `World` (the lookup
-    of the road of a topic is asked again, not remembered). A world only grows here, so the ribs of a road fill in order: a rib has houses only
-    when every rib before it is full."""
+    of the road of a topic is asked again, not remembered)."""
     pv = zw.PlanView(plan)
     tv = tree if isinstance(tree, TreeView) else TreeView(tree)
     rule = pv.districts
@@ -469,24 +471,14 @@ def district_problems(doc, plan, tree):
             bad.append((pid, f"over with {n} houses"))
         if over and not mirror and fresh.find_split(pid, fresh.lots_on(pid)) is not None:
             bad.append((pid, "over although a group could open a road"))
-    # the ribs of a road: none above `max` lots; a continuation is the road itself; a road that was never over holds `max` lots at most in its ribs
+    # one stretch (invariant 3): a road has one rib and no street continues another but the laps of the ring road; a road that was never over holds `max` lots at most
     ever_over = {e["over"] for e in doc["chronicle"] if "over" in e}
+    for pid, p in places.items():
+        if p["kind"] == "street" and ("lane_of" in p or "continued" in p or "lanes" in p) and not (p.get("shape") == "ring" and (pid == root or pid.startswith(f"{root}:lap:"))):
+            bad.append((pid, "a street that continues another, or has a second rib: a road is one stretch"))
     for pid, road in roads.items():
-        carriers = ([pid] if "rib" in road else []) + list(road.get("lanes", []))
-        label = road.get("label") or road["address"][-1]
-        slots = 0
-        for k, carrier in enumerate(carriers):
-            c = places[carrier]
-            slots += c["rib"]["slots"]
-            if c["rib"]["slots"] > mx:
-                bad.append((carrier, f"a rib of {c['rib']['slots']} lots, over {mx}"))
-            if k:
-                same = {"lane_of": pid, "continued": True, "label": label, "level": road["level"], "class": road["class"], "address": road["address"], "parent": pid}
-                bad += [(carrier, f"a continuation has {j} {c.get(j)!r}, not {v!r}") for j, v in same.items() if c.get(j) != v]
-            if k and c["lots"] and any(places[e]["lots"] < places[e]["rib"]["slots"] for e in carriers[:k]):
-                bad.append((carrier, "a rib has houses while a rib before it is not full"))
-        if pid not in ever_over and slots > mx:
-            bad.append((pid, f"ribs of {slots} lots on a road that was never over"))
+        if pid not in ever_over and road.get("rib", {}).get("slots", 0) > mx:
+            bad.append((pid, f"a rib of {road['rib']['slots']} lots on a road that was never over"))
     # the chronicle: one numbered line per event, the numbers of a split add up
     chron = doc["chronicle"]
     if [e["n"] for e in chron] != list(range(1, len(chron) + 1)):
@@ -512,9 +504,8 @@ def rib_need(n, max_houses):
 
 
 def frontage(doc, road):
-    """The ribs of a road in order: its own rib (when it has one), then its continuation ribs by ordinal."""
-    rec = doc["places"][road]
-    return ([road] if "rib" in rec else []) + sorted(rec.get("lanes", []), key=lambda r: doc["places"][r].get("ordinal", 0))
+    """The ribs of a road: its one rib, when it has one."""
+    return [road] if "rib" in doc["places"][road] else []
 
 
 def on_the_ring(doc):
@@ -525,17 +516,17 @@ def on_the_ring(doc):
 def land_waste(before, after, max_houses):
     """The land that one step of a world laid beyond need, as a list of (what, place, detail): empty when there is none. `before` and `after` are the world on either
     side of one call.
-      rib  a rib laid in this step (a street record with a rib that is new, or whose lots changed) leaves its road holding more lots than rib_need(n). n is the houses of
-           the road after the step. A call of one arrival is read exactly: the arrival is the last thing that happens to its road, so a rib that it lays (also for the
-           survivors of a split, or for the group of a split that splits again at once) is laid for the houses the road holds after the step. A call of several arrivals
+      rib  a rib laid or grown in this step (a street record with a rib that is new, or whose lots changed) leaves its road holding more lots than rib_need(n). n is the
+           houses of the road after the step. A call of one arrival is read exactly: the arrival is the last thing that happens to its road, so a rib that it lays or grows (also
+           for the survivors of a split, or for the group of a split that splits again at once) is laid for the houses the road holds after the step. A call of several arrivals
            is read leniently, since a rib may have been laid before a split of the same call: n then counts the houses that a split of this step took from the road too;
+      grow a rib grows only when it is full: the houses that came to its road in this step outnumber the empty lots it had before the step; and it grows by
+           max(rib_need(n) - held, 1) lots (read exactly for a call of one arrival). A step in which a split took houses from the road is excused (it frees lots as it goes);
       lap  a lap of the ring opened in this step although the laps that stood had free slots that the houses this step put on the ring did not fill: the step put fewer
            houses on the ring than the free slots plus the one that opened the lap. The houses that came to the ring and left it again in a split of the same call count;
       lot  a house placed in this step (it came, or a split put it on another lot) stands farther along its road than a lot the step left free: farther than its
            road's houses need (a house takes the lowest free lot, and a split packs the houses that stay onto the first lots). The ring road keeps its own fill order
-           and is no such road;
-      cont a continuation rib that is new in this step while the ribs before it, which its road had before the step, still have free lots after it (a road continues
-           only when it is full), unless a split of this step took houses from the road (in a call of several arrivals)."""
+           and is no such road."""
     bad = []
     places, prev = after["places"], before["places"]
     new = after["chronicle"][len(before["chronicle"]):]  # what happened in this step
@@ -544,34 +535,42 @@ def land_waste(before, after, max_houses):
         if "from" in e:
             left[e["from"]] += len(e["houses"])
     held = Counter(p["street"] for p in places.values() if p["kind"] == "lot")
-    arrivals = sum(held.values()) - sum(1 for p in prev.values() if p["kind"] == "lot")
-    laid = {}  # road -> the ribs laid for it in this step
+    was_lots = {p["article"] for p in prev.values() if p["kind"] == "lot"}
+    came = Counter(p["street"] for p in places.values() if p["kind"] == "lot" and p["article"] not in was_lots)  # houses new to the world, by the road they stand on
+    arrivals = sum(came.values())
+    laid = {}  # road -> the ribs laid or grown for it in this step
     for pid, rec in places.items():
         if rec["kind"] == "street" and "rib" in rec:
             old = prev.get(pid)
             if old is None or "rib" not in old or old["rib"]["slots"] != rec["rib"]["slots"]:
                 laid.setdefault(rec.get("lane_of", pid), []).append(pid)
-    on_rib = Counter(p["parent"] for p in places.values() if p["kind"] == "lot")
+    on_rib = Counter(p["parent"] for p in prev.values() if p["kind"] == "lot")
     for road, ribs in laid.items():
         lots = sum(places[r]["rib"]["slots"] for r in frontage(after, road))
         n = held[road] + (left[road] if arrivals > 1 else 0)
         if lots > rib_need(n, max_houses):
             bad.append(("rib", road, f"{lots} lots for {n} houses, need {rib_need(n, max_houses)} (laid: {', '.join(sorted(ribs))})"))
-        if arrivals == 1 or not left[road]:
-            order = frontage(after, road)
-            for lane in (r for r in order if r in ribs and "lane_of" in places[r] and r not in prev):  # a continuation rib that is new
-                free = sum(places[r]["rib"]["slots"] - on_rib[r] for r in order[:order.index(lane)] if r in prev)  # on the ribs before it
-                if free:
-                    bad.append(("cont", road, f"{lane} opened while the ribs before it had {free} free lot(s)"))
+        if left[road]:
+            continue
+        for pid in ribs:
+            old = prev.get(pid)
+            if old is None or "rib" not in old:
+                continue  # (a rib that opened in this step is sized by the check above)
+            slots, free = old["rib"]["slots"], old["rib"]["slots"] - on_rib[pid]
+            if came[road] <= free:
+                bad.append(("grow", road, f"{pid} grew from {slots} lots with {free} empty, and {came[road]} house(s) came to the road"))
+            want = slots + max(rib_need(held[road], max_houses) - slots, 1)
+            if arrivals == 1 and places[pid]["rib"]["slots"] != want:
+                bad.append(("grow", road, f"{pid} grew from {slots} to {places[pid]['rib']['slots']} lots, not to {want} (max(need - held, 1) for {held[road]} houses)"))
     if ROOT in prev and prev[ROOT].get("shape") == "ring":
         laps = [ROOT, *prev[ROOT].get("lanes", [])]
         opened = [k for k in places[ROOT].get("lanes", []) if k not in laps]
         if opened:
             free = sum(prev[k]["ring"]["slots"] - prev[k]["lots"] for k in laps)
             gone = {h for e in new if e.get("from") == ROOT for h in e["houses"]}  # came to the ring in this call and left it again in a split
-            came = len((on_the_ring(after) | gone) - on_the_ring(before))
-            if came < free + 1:
-                bad += [("lap", k, f"opened with {free} free slots on the laps before it, {came} house(s) came to the ring") for k in opened]
+            ring_came = len((on_the_ring(after) | gone) - on_the_ring(before))
+            if ring_came < free + 1:
+                bad += [("lap", k, f"opened with {free} free slots on the laps before it, {ring_came} house(s) came to the ring") for k in opened]
     was = {p["article"]: (p["parent"], p["slot"]) for p in prev.values() if p["kind"] == "lot"}
     placed, taken = {}, {}
     for p in places.values():
@@ -581,7 +580,7 @@ def land_waste(before, after, max_houses):
                 placed.setdefault(p["street"], set()).add((p["parent"], p["slot"]))
     for road, now in placed.items():
         rec = places.get(road, {})
-        if rec.get("shape") == "ring" or not ("rib" in rec or rec.get("lanes")):
+        if rec.get("shape") == "ring" or "rib" not in rec:
             continue
         order = [(r, s) for r in frontage(after, road) for s in range(places[r]["rib"]["slots"])]
         first_free = next((i for i, lot in enumerate(order) if lot not in taken[road]), len(order))
@@ -589,6 +588,131 @@ def land_waste(before, after, max_houses):
         if beyond:
             bad.append(("lot", road, f"{len(beyond)} house(s) placed beyond lot {first_free}, which the step left free"))
     return bad
+
+
+# ---------------------------------------------------------------------------------------- one step, between two worlds ----
+# What a step of a world may change, and what it may not. A rib that grows moves what lies beyond it and nothing else: no house changes its address or its lot, a rib keeps
+# its mode, its row and its side, the spans of a line keep their order and none of them moves inward. Each check reads two worlds, the one before a step and the one after.
+def lot_key(p):
+    """What a house is to its street: the road, the topic, the rib and the slot, and where it came in the order of arrival. Not where the rib stands: that is derived."""
+    return (p["street"], p["tag"], p["parent"], p["slot"], p["order"], p["seq"])
+
+
+def row_and_side(doc, p):
+    """(row, side) of a house, read from where it stands: on a band the row (inner, nearer the plaza than the lane of the band, or outer) and the side of the axis of its line;
+    along the spoke the side of the axis."""
+    rib = doc["places"][p["parent"]]["rib"]
+    axis = doc["lines"][rib["line"]]["axis"]
+    x, z = p["position"]["x"], p["position"]["z"]
+    if rib["mode"] == "spoke":
+        return "spoke", "left" if x * math.cos(math.radians(axis)) + z * math.sin(math.radians(axis)) < 0 else "right"
+    turn = (math.degrees(math.atan2(x, -z)) - axis + 180.0) % 360.0 - 180.0
+    return "inner" if math.hypot(x, z) < rib["s"] else "outer", "left" if turn < 0 else "right"
+
+
+def spans_of(line):
+    """The spans of a line in radial order, as (lo, kind, key): bands, branch circles and ribs along the spoke."""
+    out = [(b["s"] - 1.5, "band", k) for k, b in enumerate(line["bands"])] + [(sp[0], "spoke", k) for k, sp in enumerate(line["spokes"])]
+    out += [(m["r1"] - 1.0, "branch", m["place"]) for m in line["members"] if m["r1"] is not None]
+    return [(kind, key) for _lo, kind, key in sorted(out)]
+
+
+def streets_along(doc, lid, band, side):
+    """The streets of the ribs along one side of a band, nearest the axis first, ghosts too: read from the roads, which a move leaves where they are."""
+    lanes = [r for r in doc["roads"].values() if r["kind"] == "lane" and r.get("trunk") == lid and r["band"] == band and r["side"] == side]
+    return [r["street"] for r in sorted(lanes, key=lambda r: r["off"])]
+
+
+def step_problems(before, after, may_change=lambda lot_before, lot_after: False, *, re_ribbed=frozenset(), laid_out_again=False):
+    """What one step did that it may not (empty: nothing), as (invariant, what, detail). `may_change(lot_before, lot_after)` is True for a house that the step may put on
+    another road or lot (a split, a move, a merge, a filing). `re_ribbed`: the streets of roads that the step moved, whose rib is a new one (the old rib stays in the line as a
+    ghost). `laid_out_again`: the step laid the whole world out afresh (a new ring road), so that only the first two hold.
+      1 address  every house keeps its road and its topic;
+      2 lot      every house keeps its rib and its slot;
+      4 row      a rib keeps its mode, its band and its side; a house keeps its row (inner or outer) and its side of the axis, read from where it stands;
+      6 order    the spans of a line keep their radial order (new ones are put among them), and the streets along a side of a band keep theirs (new ones come last);
+      7 monotone no span of a line, no road of a band and no rib moves inward or gets fewer lots."""
+    bad = []
+    was, now = {p["article"]: p for p in before["places"].values() if p["kind"] == "lot"}, {p["article"]: p for p in after["places"].values() if p["kind"] == "lot"}
+    for aid, lot in was.items():
+        if aid not in now:
+            bad.append((1, "a house is gone", aid))
+        elif lot_key(lot) != lot_key(now[aid]) and not may_change(lot, now[aid]):
+            what = (1, "a house changed its road or topic") if lot["street"] != now[aid]["street"] or lot["tag"] != now[aid]["tag"] else (2, "a house changed its lot")
+            bad.append((*what, f"{aid}: {lot_key(lot)} -> {lot_key(now[aid])}"))
+    if laid_out_again:
+        return bad
+    for pid, rec in before["places"].items():
+        later = after["places"].get(pid)
+        if rec["kind"] != "street" or "rib" not in rec or later is None or "rib" not in later:
+            continue
+        if pid in re_ribbed:
+            continue
+        old, new = rec["rib"], later["rib"]
+        for key in ("mode", "line", "band", "side", "trunk"):
+            if old[key] != new[key]:
+                bad.append((4, f"a rib changed its {key}", f"{pid}: {old[key]!r} -> {new[key]!r}"))
+        if new["slots"] < old["slots"]:
+            bad.append((7, "a rib lost lots", f"{pid}: {old['slots']} -> {new['slots']}"))
+    for aid, lot in was.items():
+        later = now.get(aid)
+        if later is None or (lot["parent"], lot["slot"]) != (later["parent"], later["slot"]) or "rib" not in after["places"][lot["parent"]] or lot["street"] in re_ribbed:
+            continue  # (gone, or put on another lot: said above; a house of the ring road has no rib)
+        if row_and_side(before, lot) != row_and_side(after, later):
+            bad.append((4, "a house changed its row or its side", f"{aid}: {row_and_side(before, lot)} -> {row_and_side(after, later)}"))
+    for lid, line in before["lines"].items():
+        later = after["lines"].get(lid)
+        if later is None:
+            continue
+        order_before, order_after = spans_of(line), spans_of(later)
+        if [x for x in order_after if x in set(order_before)] != order_before:
+            bad.append((6, "the spans of a line changed their order", f"{lid}: {order_before} -> {order_after}"))
+        for k, band in enumerate(line["bands"]):
+            for side in (-1, 1):
+                a, b = streets_along(before, lid, k, side), streets_along(after, lid, k, side)
+                if b[:len(a)] != a:
+                    bad.append((6, "the streets along a side of a band changed their order", f"{lid} band {k} side {side}: {a} -> {b}"))
+            if later["bands"][k]["s"] < band["s"] - 1e-9 or any(y < x - 1e-9 for x, y in zip(band["used"], later["bands"][k]["used"])):
+                bad.append((7, "a band moved inward or got shorter", f"{lid} band {k}: {band['s']} {band['used']} -> {later['bands'][k]['s']} {later['bands'][k]['used']}"))
+        for k, span in enumerate(line["spokes"]):
+            if later["spokes"][k][0] < span[0] - 1e-9 or later["spokes"][k][1] < span[1] - 1e-9:
+                bad.append((7, "a rib along the spoke moved inward or got shorter", f"{lid} spoke {k}: {span} -> {later['spokes'][k]}"))
+        for m, n in zip(line["members"], later["members"]):
+            if n["s0"] < m["s0"] - 1e-9 or (m["r1"] is not None and n["r1"] < m["r1"] - 1e-9):
+                bad.append((7, "a member or a branch circle moved inward", f"{lid} {m['place']}: {m['s0']} {m['r1']} -> {n['s0']} {n['r1']}"))
+    for rid, road in before["roads"].items():
+        later = after["roads"].get(rid)
+        if later is not None and road["kind"] == "lane" and later.get("trunk") == road["trunk"] and road["trunk"] in after["lines"] and (
+                later["radius"] < road["radius"] - 1e-9 or later["off"] < road["off"] - 1e-9 or later["length"] < road["length"] - 1e-9):
+            bad.append((7, "a road of a band moved inward or got shorter", f"{rid}: {road['radius']} {road['off']} {road['length']} -> {later['radius']} {later['off']} {later['length']}"))
+    return bad
+
+
+def grow_by(more_of):
+    """A planted fault: a rib that grows by `more_of(need, held, max)` lots instead of max(need - held, 1)."""
+    def grow(self, spec):
+        n = self.hold.get(spec.place)
+        if n is None:
+            n = len(self.lots_on(spec.place)) + 1
+        street = self.places.mut(spec.place)
+        more = more_of(zw.district_road_need(n, self.max), street["rib"]["slots"], self.max)
+        street["rib"]["slots"] += more
+        street["reserved"] += more
+        line = self.lines.mut(street["rib"]["line"])
+        for e in line["log"]:
+            for entry in (e["rib"],) if e["kind"] == "spoke" else [r for side in e["ribs"] for r in side] if e["kind"] == "band" else ():
+                if entry["place"] == spec.place:
+                    entry["width"] = math.ceil(street["rib"]["slots"] / 2)
+        self.lay_line(street["rib"]["line"], grown=spec.place)
+        return spec.place
+    return grow
+
+
+def may_change_after(plan, before, after):
+    """Which houses a call may put on another road or lot: those of a road that split in it, except the survivors of the ring road, which stand."""
+    splitting = {e["from"] for e in after["chronicle"][len(before["chronicle"]):] if "from" in e}
+    ring = plan["params"].get("ring")
+    return lambda lot, now: lot["street"] in splitting and not (ring and lot["street"] == zw.ROOT_PLACE == now["street"])
 
 
 def simulate_districts(seed, *, max_houses=12, min_houses=4, trunk_min=40, batch_max=15, order="shuffle", check_every=1, mode="grow"):
@@ -628,18 +752,13 @@ def simulate_districts(seed, *, max_houses=12, min_houses=4, trunk_min=40, batch
         i += len(batch)
         step += 1
         event += 1
-        before, chron0, world_before = zw.houses(doc), len(doc["chronicle"]), doc
+        chron0, world_before = len(doc["chronicle"]), doc
         res = zw.assign(plan, tv, doc, batch, event_id=event)
         doc = zw.apply_delta(doc, res["delta"])
         problems += [(seed, step, "land laid beyond need", w) for w in land_waste(world_before, doc, max_houses)]
+        problems += [(seed, step, f"invariant {n}: {what}", detail) for n, what, detail in step_problems(world_before, doc, may_change_after(plan, world_before, doc))]
         placed += len(batch)
         after = zw.houses(doc)
-        splitting = {e["from"] for e in doc["chronicle"][chron0:] if "from" in e}  # the houses of a road that split may change lot
-
-        def may_change(lot, now):  # a house of a road that split may change lot, except a survivor of the ring road
-            return lot["street"] in splitting and not (plan["params"].get("ring") and lot["street"] == zw.ROOT_PLACE == now["street"])
-
-        problems += [(seed, step, "a house moved with no split of its road", aid) for aid, lot in before.items() if after[aid] != lot and not may_change(lot, after[aid])]
         if set(res["placements"]) != {a["id"] for a in batch} or any(res["placements"][a] != after[a] for a in res["placements"]):
             problems.append((seed, step, "placements are not the arrivals as they stand", sorted(res["placements"])[:3]))
         if any(e["event_id"] != event for e in doc["chronicle"][chron0:]):

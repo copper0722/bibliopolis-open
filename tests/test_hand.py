@@ -18,6 +18,7 @@ from support import cells_table, fill_order_of
 import bibliopolis
 from bibliopolis import hand, inputs, picture, plan
 from bibliopolis import layout as lay
+from bibliopolis import world as zw
 from bibliopolis.city import chronicle_lines, summary
 from bibliopolis.events import Refusal
 from bibliopolis.hand import GOLDEN, bearing, fold, sector_table
@@ -278,31 +279,35 @@ def test_the_least_a_road_takes_is_the_rule_in_force():
     sound(h)
 
 
-def test_more_houses_than_max_may_be_chosen_the_road_opens_continuation_ribs_and_is_not_marked_over():
+def test_more_houses_than_max_may_be_chosen_the_rib_of_the_road_grows_and_the_road_is_not_marked_over():
     h = town(70, {"max": 20, "min": 5, "auto": False})
     h.open("a", "A", None, houses(1, 60))
     state = sound(h)
     street = the_street(h, "a")
-    assert street["lots"] + sum(state.doc["places"][lane]["lots"] for lane in street["lanes"]) == 60 and len(street["lanes"]) >= 2
+    assert street["lots"] == 60 and "lanes" not in street and street["rib"]["slots"] == zw.district_road_need(60, 20) == 90  # one rib: 60 houses and half as many again, no cap
     assert "over" not in street and len(state.city()["world"]["chronicle"]) == 1
-    assert [state.doc["places"][lane]["address"] for lane in street["lanes"]] == [["A"]] * len(street["lanes"])
+    assert not [p for p in state.doc["places"].values() if p["kind"] == "street" and "lane_of" in p and p.get("shape") != "ring"]
 
 
-def test_a_continuation_rib_of_a_road_built_by_hand_holds_what_the_road_needs_less_its_ribs_and_has_no_cap_once_the_road_passes_max():
-    def ribs(h):
+def test_the_rib_of_a_road_built_by_hand_grows_by_what_the_road_needs_less_what_it_holds_and_has_no_cap_once_the_road_passes_max():
+    def rib(h):
         street = the_street(h, "a")
-        return [street["rib"]["slots"]] + [h.state.doc["places"][lane]["rib"]["slots"] for lane in street["lanes"]]
+        assert "lanes" not in street
+        return street["rib"]["slots"]
 
     h = town(70, {"max": 20, "min": 5, "auto": False})
     h.open("a", "A", None, houses(1, 22))
     sound(h)
-    assert ribs(h) == [20, 14]  # 22 houses need 34 lots (a road built by hand is never over, so there is no cap): the first rib is max lots, the second the rest
+    assert rib(h) == 34  # 22 houses need 34 lots (a road built by hand is never over, so there is no cap): the first rib is max lots, and it grows by the rest at the 21st house
     h = town(70, {"max": 20, "min": 5, "auto": False})
     h.open("a", "A", None, houses(1, 6))
+    sizes = {6: rib(h)}
     for k in range(7, 30):  # one house at a time
         h.file(hid(k), "a")
+        sizes[k] = rib(h)
     sound(h)
-    assert ribs(h) == [10, 8, 2, 12]  # the need of 6 houses is 10 lots, of 11 houses 18, of 19 houses 30 but at most max = 20 (2 more), of 21 houses 32 with no cap (12 more)
+    assert {k: v for k, v in sizes.items() if v != sizes.get(k - 1)} == {6: 10, 11: 18, 19: 20, 21: 32}
+    # the need of 6 houses is 10 lots, of 11 houses 18, of 19 houses 30 but at most max = 20 (2 more), of 21 houses 32 with no cap (12 more)
 
 
 def test_the_fourteenth_road_of_the_first_ring_is_refused_and_a_road_below_a_road_still_opens():
@@ -374,13 +379,14 @@ def test_a_road_is_renamed_with_the_addresses_below_it_and_no_house_moves():
     assert [chronicle_lines(state.city())[i].split(": ", 1)[1] for i in (2, 3)] == ["Alpha is renamed Omega.", "Beta is renamed Gamma."]
 
 
-def test_the_continuation_ribs_of_a_renamed_road_carry_the_new_name():
+def test_the_grown_rib_of_a_renamed_road_carries_the_new_name():
     h = town(70, {"max": 20, "min": 5, "auto": False})
     h.open("a", "Alpha", None, houses(1, 60))
-    assert the_street(h, "a")["lanes"]
+    assert the_street(h, "a")["rib"]["slots"] == 90
     h.rename("a", "Omega")
     state = sound(h)
-    assert all(state.doc["places"][lane]["label"] == "Omega" and state.doc["places"][lane]["address"] == ["Omega"] for lane in the_street(h, "a")["lanes"])
+    street = the_street(h, "a")
+    assert street["address"] == ["Omega"] and (street.get("label") or street["address"][-1]) == "Omega" and "lanes" not in street
 
 
 def test_a_road_is_not_renamed_to_its_own_name_nor_a_road_that_is_not_there():

@@ -1,5 +1,5 @@
 """What docs/format.md says is true of the program: its examples load through the reader, its chronicle entries have the keys the engine writes, and its
-reading of `lots` and `reserved` (one segment each; a whole road is its record plus its continuation lanes) gives the houses of every road of the sample."""
+reading of `lots` and `reserved` (a road is one record with one rib) gives the houses of every road of the sample."""
 
 import json
 import re
@@ -66,7 +66,7 @@ def test_the_chronicle_entries_of_the_format_page_have_the_keys_the_engine_write
 
 
 @pytest.mark.parametrize("mode", ["grow", "mirror"])
-def test_a_whole_road_is_its_record_plus_its_continuation_lanes_and_not_the_roads_below_it(sample, mode):
+def test_a_whole_road_is_its_one_record_and_not_the_roads_below_it(sample, mode):
     tree, library = sample
     _plan, _tv, world, _items = bibliopolis.build_world(library, tree, mode=mode)
     doc = world_layout(world)
@@ -84,14 +84,12 @@ def test_a_whole_road_is_its_record_plus_its_continuation_lanes_and_not_the_road
     assert sum(direct.values()) == doc["world"]["houses"] == 600
 
 
-def test_ecology_of_the_sample_is_eighteen_in_its_record_and_twelve_and_five_in_its_continuations(sample):
+def test_ecology_of_the_sample_is_one_record_of_thirty_five_houses_in_one_rib_of_forty_lots(sample):
     tree, library = sample
     doc = bibliopolis.build_city(library, tree, mode="grow")
     road = doc["places"]["place:tag:ecology"]
-    lanes = [doc["places"][lane_id] for lane_id in road["lanes"]]
-    assert (road["lots"], [lane["lots"] for lane in lanes], road["lots"] + sum(lane["lots"] for lane in lanes)) == (18, [12, 5], 35)
-    assert [lane["rib"]["slots"] for lane in lanes] == [12, 10]  # the second rib holds what the road needs (30 lots for 19 houses) less its 18; the third, 40 less 30, at the 31st house
-    assert all(lane["continued"] is True and lane["lane_of"] == "place:tag:ecology" and lane["label"] == road["address"][-1] == "Ecology" for lane in lanes)
+    assert (road["lots"], road["reserved"], road["rib"]["slots"]) == (35, 5, 40) and "lanes" not in road  # the rib opened with 18 lots (12 houses and headroom), grew to 30 at the 19th house and to 40 at the 31st
+    assert not [p for p in doc["places"].values() if p["kind"] == "street" and p.get("lane_of") == "place:tag:ecology"] and road["address"][-1] == "Ecology"
 
 
 def test_the_houses_of_the_roads_below_a_road_are_not_its_own(sample):

@@ -62,7 +62,7 @@ def test_nothing_splits_and_a_road_over_max_is_over_with_an_entry_in_the_chronic
     assert t.doc["places"][tag_street("ml")]["over"] is True and count(t.doc, tag_street("ml")) == 13
     t.send(ml[13:], event_id=3)  # more houses: over stays, no second entry
     assert len(t.doc["chronicle"]) == 1 and count(t.doc, tag_street("ml")) == 30
-    assert ribs_of(t.doc, tag_street("ml"))[0] <= 12 and len(ribs_of(t.doc, tag_street("ml"))) >= 2  # a full road continues as the same road
+    assert len(ribs_of(t.doc, tag_street("ml"))) == 1 and 30 <= ribs_of(t.doc, tag_street("ml"))[0] <= zw.district_road_need(30, 12)  # a full road grows its rib: one stretch
     for p, rec in roads_of(t.doc).items():  # a road is over exactly when it holds more than max
         assert bool(rec.get("over")) == (count(t.doc, p) > 12)
 
