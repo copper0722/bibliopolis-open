@@ -25,7 +25,7 @@ from bibliopolis.events import BRANCHES_LIMIT, RULE_LIMIT, Refusal
 from bibliopolis.journal import Journal
 
 ROOT = Path(__file__).resolve().parents[1]
-CODEX = {"max": 100_000, "min": 10, "auto": False, "branches": 13}  # the rule of the review: a ring road of radius 7961.5, a grid of 254 million cells
+HUGE_RULE = {"max": 100_000, "min": 10, "auto": False, "branches": 13}  # a rule far above the range: a ring road of radius 7961.5, a grid of 254 million cells
 WIDEST = {"max": RULE_LIMIT, "min": 10, "auto": False, "branches": BRANCHES_LIMIT}
 
 
@@ -58,10 +58,10 @@ def test_the_widest_ring_road_a_rule_can_ask_for_is_the_one_of_the_most_branches
         assert hand.ring_radius({"max": RULE_LIMIT, "branches": n}) <= 1073.5, n
 
 
-def test_the_grid_of_the_widest_valid_city_is_a_little_over_half_of_the_budget_and_the_rule_of_the_review_is_far_over_it():
+def test_the_grid_of_the_widest_valid_city_is_a_little_over_half_of_the_budget_and_a_rule_far_above_the_range_is_far_over_it():
     assert grid_cells(1073.5) == 2161**2 == 4_669_921 and COAST_GRID_BUDGET == 2**23 == 8_388_608
     assert 1.7 < COAST_GRID_BUDGET / grid_cells(1073.5) < 1.9
-    assert grid_cells(7961.5) > 250_000_000 > COAST_GRID_BUDGET  # (the 254 million cells of the review)
+    assert grid_cells(7961.5) > 250_000_000 > COAST_GRID_BUDGET  # (the 254 million cells of a rule far above the range)
     edge = lambda farthest: (2 * math.ceil(farthest + coast.COAST_BUFFER + 2) + 1) ** 2  # noqa: E731
     assert edge(1441) <= COAST_GRID_BUDGET < edge(1441.01)  # the budget is a city whose farthest lot or road is 1441 cells from the town hall
 
@@ -77,14 +77,14 @@ def test_the_pages_give_the_budget_and_the_range_of_the_rule_that_the_program_ha
 
 
 # ----------------------------------------------------------------------------------- the range of the rule ----
-def test_the_rule_of_the_review_is_refused_by_the_rule_and_not_by_the_memory():
+def test_a_rule_far_above_the_range_is_refused_by_the_rule_and_not_by_the_memory():
     with pytest.raises(Refusal) as why:
-        Journal(CODEX)
+        Journal(HUGE_RULE)
     (problem,) = why.value.params["problems"]
     assert (why.value.code, problem["where"], problem["code"], problem["params"]["name"], problem["params"]["limit"]) == ("invalid", "rule.max", "rule_number_bad", "max", RULE_LIMIT)
     with pytest.raises(Refusal):
-        Journal({**CODEX, "max": RULE_LIMIT + 1})
-    assert Journal({**CODEX, "max": RULE_LIMIT}).state.plan["params"]["ring"]["radius"] == 799.5
+        Journal({**HUGE_RULE, "max": RULE_LIMIT + 1})
+    assert Journal({**HUGE_RULE, "max": RULE_LIMIT}).state.plan["params"]["ring"]["radius"] == 799.5
 
 
 @pytest.mark.parametrize("branches", [2, 13, 89, BRANCHES_LIMIT])
@@ -104,7 +104,7 @@ def test_a_valid_rule_at_the_edge_of_the_range_gives_a_city_that_is_drawn_with_i
 
 # -------------------------------------------------------------------------------------------- the refusal ----
 def test_a_city_beyond_the_budget_is_refused_before_the_grid_is_made_and_with_an_id():
-    layout = a_ring_road(7961.5)  # the ring road of the rule of the review
+    layout = a_ring_road(7961.5)  # the ring road of a rule far above the range
     tracemalloc.start()
     start = time.perf_counter()
     with pytest.raises(CityTooLarge) as why:

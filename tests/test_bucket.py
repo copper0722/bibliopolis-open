@@ -9,10 +9,11 @@ bucket houses alone, the laps), the command line, and that no name of a bucket i
 
 import ast
 import json
+import random
 from pathlib import Path
 
 import pytest
-from support import T, art, laps_of, make_tree, on_ring, roads_of, stamp
+from support import T, art, first_free, laps_of, make_tree, on_ring, roads_of, stamp
 
 import bibliopolis
 from bibliopolis import cli, inputs
@@ -20,6 +21,7 @@ from bibliopolis import layout as lay
 from bibliopolis import plan as plan_mod
 from bibliopolis import world as zw
 from bibliopolis.city import build_world
+from bibliopolis.document import world_layout
 from bibliopolis.tree import TreeView, address_of, major_tag
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -247,6 +249,87 @@ def test_the_build_command_reads_a_tree_that_names_a_bucket_and_refuses_one_that
     assert cli.main(["build", "--library", str(tmp_path / "library.json"), "--tree", str(tmp_path / "bad.json"), "--out", str(tmp_path / "x.json")]) == 2
     assert "tree.bucket: 'nowhere' is not the id of a node" in capsys.readouterr().err
     assert not (tmp_path / "x.json").exists()
+
+
+# ------------------------------------------------------------------ cities the first tests do not reach ----
+@pytest.mark.parametrize("mode", [plan_mod.GROW, plan_mod.MIRROR])
+def test_a_tree_whose_only_root_is_the_bucket_holds_no_place_and_the_city_is_the_ring_road_alone(mode):
+    tree = {"nodes": [{"id": "inbox", "label": "To sort", "parent": None}, {"id": "later", "label": "Later", "parent": "inbox"}], "bucket": "inbox"}
+    tv = TreeView(inputs.read_tree(tree))
+    assert (tv.ids(), tv.roots(), len(tv), tv.bucket) == ([], [], 0, "inbox"), "nothing is held: every node of the file is the bucket or below it"
+    items = [art(i, ["inbox"] if i % 2 else ["later"]) for i in range(1, 61)]
+    filed = bibliopolis.build_city(library(items), tree, mode=mode)
+    unfiled = bibliopolis.build_city(library([{**a, "topics": []} for a in items]), {"nodes": []}, mode=mode)
+    assert lay.render(filed) == lay.render(unfiled), "the city of a tree with nothing in it but the bucket is the city of a tree with nothing in it"
+    assert filed["composition"]["measure"]["ring_lots"] == filed["world"]["houses"] == 60 and filed["composition"]["streets"]["total"] == 1
+    assert plan_mod.build_plan(tv, inputs.read_library(library(items), inputs.read_tree(tree)), mode=mode)["params"]["centre_tag"] is None
+
+
+def test_the_city_does_not_depend_on_the_order_of_the_files_or_on_how_the_arrivals_are_cut_into_calls():
+    """Every topic is too thin to open a road, so only the ring is used and the world cannot depend on the size of a call (a rib that opens is sized to its call; the ring has none)."""
+    tree, items = make_tree({"med": T(0, a=T(4), b=T(3)), "x": T(3)})
+    marked = with_bucket(tree)
+    everyone = [*items, *bucket_items(70)]
+    want = lay.render(bibliopolis.build_city(library(everyone), marked, with_coast=False))
+    rng = random.Random(34)
+    orders = [list(reversed(marked["nodes"]))]  # the children of the bucket before their parents, then three shuffles
+    for _ in range(3):
+        orders.append(list(marked["nodes"]))
+        rng.shuffle(orders[-1])
+    for nodes in orders:  # the order of the items and of the nodes in the files does not matter
+        files = list(everyone)
+        rng.shuffle(files)
+        assert lay.render(bibliopolis.build_city(library(files), {**marked, "nodes": nodes}, with_coast=False)) == want
+    checked = inputs.read_tree(marked)
+    arrivals, tv = inputs.read_library(library(everyone), checked), TreeView(checked)
+    plan = plan_mod.build_plan(tv, arrivals)
+    for size in (1, 7, 40, len(arrivals)):  # the arrivals as calls of one, of seven, of forty, and one call
+        world = zw.new_world(plan)
+        for start in range(0, len(arrivals), size):
+            world = zw.apply_delta(world, zw.assign(plan, tv, world, arrivals[start:start + size])["delta"])
+        for entry in world["chronicle"]:  # (what build_world adds)
+            entry["at"] = arrivals[entry["seq"] - 1]["added_at"]
+        assert lay.render(world_layout(world, with_coast=False)) == want, size
+    assert [e["over"] for e in json.loads(want)["world"]["chronicle"]] == [zw.ROOT_PLACE], "the ring was over, and nothing opened"
+
+
+def test_a_later_bucket_house_takes_the_first_free_slot_in_fill_order_and_the_first_slots_are_the_ones_the_split_freed():
+    """The ring keeps the houses that stay where they are and frees only the lots of the group that leaves; a slot a split freed is taken again in the fill order, here by the houses
+    that arrive after the 41st, filed only under the bucket."""
+    tree, items = make_tree(SPEC)
+    early = bucket_items(30, early=True)
+    late = [art(9500 + k, ["maybe"], added_at=stamp(11 + (k + 1) / 10)) for k in range(5)]  # after the 41st house (the 11th item of the topic `a`), before the 12th
+    marked, everyone = with_bucket(tree), [*items, *early, *late]
+    _p, _tv, at_forty, _i = city(everyone, marked, first=40)
+    _p, _tv, at_41, _i = city(everyone, marked, first=41)
+    freed = {lots(at_forty)[a["id"]]["slot"] for a in items[:10]}
+    taken = {lot["slot"] for lot in lots(at_41).values() if lot["street"] == zw.ROOT_PLACE}
+    assert len(freed) == 10 and not freed & taken and len(taken) == 30, "ten slots stand free on lap 1 after the split"
+    slots = at_41["places"][zw.ROOT_PLACE]["ring"]["slots"]
+    took = []
+    for k, a in enumerate(late):
+        _p, _tv, world, _i = city(everyone, marked, first=42 + k)
+        want = first_free([slots], {(0, s) for s in taken})[1]  # stated apart from the engine (tests/support.py)
+        got = lots(world)[a["id"]]
+        assert (got["street"], got["parent"], got["slot"], got["tag"]) == (zw.ROOT_PLACE, zw.ROOT_PLACE, want, "unclassified"), k
+        taken.add(want)
+        took.append(want)
+    assert set(took) <= freed and len(set(took)) == 5, "the five houses stand in five of the ten slots the topic houses left"
+
+
+@pytest.mark.parametrize("mode", [plan_mod.GROW, plan_mod.MIRROR])
+def test_a_bucket_of_null_makes_the_same_city_as_no_key_whole_city_in_every_replay(mode):
+    tree, items = make_tree(SPEC)
+    everyone = library(items, [{**a, "topics": []} for a in bucket_items(40)])
+    for first in (None, 0, 41, 60):
+        kept = bibliopolis.build_city(everyone, tree, mode=mode, first=first)
+        null = bibliopolis.build_city(everyone, {**tree, "bucket": None}, mode=mode, first=first)
+        assert lay.render(kept) == lay.render(null), first
+
+
+def test_the_format_page_limits_the_address_and_the_mirror_road_to_the_topics_outside_the_bucket():
+    row = next(line for line in (ROOT / "docs" / "format.md").read_text(encoding="utf-8").splitlines() if line.startswith("| `topics` |"))
+    assert "the deepest of the topics outside the root bucket" in row and "every topic outside the root bucket" in row
 
 
 # ----------------------------------------------------------------------------------- the name is data ----

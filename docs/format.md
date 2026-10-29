@@ -28,7 +28,7 @@ JSON Schema files for the two inputs are in `schema/`. A schema cannot say every
 | `added_at` | string | ISO 8601: a date (`2026-04-06`), or a date and time with or without an offset (`2026-04-06T09:30:00+08:00`, `2026-04-06 09:30:00`). A time without an offset is read as UTC. Items arrive in this order, ties by `id` in code-point order. |
 | `type` | string, not empty | the kind of document: `article`, `review`, `editorial`, `letter`, `news`, `erratum`, `retraction notice`, and so on. Not read by the engine. |
 | `tags` | list of strings | free tags: the residents of the house. Not read by the engine. |
-| `topics` | list of strings | ids of nodes of the tree: the topics the item is filed under. The address of the house is the deepest of them (a root is depth 1; ties: the lower id), and the house stands once, there. In `mirror` mode every topic listed is also a road (see below). Empty, or only in the root bucket of the tree (below): the house stands on the ring road, round the town hall. |
+| `topics` | list of strings | ids of nodes of the tree: the topics the item is filed under. The address of the house is the deepest of the topics outside the root bucket of the tree (a root is depth 1; ties: the lower id), and the house stands once, there. In `mirror` mode every topic outside the root bucket that is listed is also a road (see below). With no such topic (the list is empty, or names only nodes of the root bucket, below) the house stands on the ring road, round the town hall. |
 
 The order of the items in the file does not matter: only `added_at` and `id` do. Other keys are ignored.
 
