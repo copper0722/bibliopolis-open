@@ -22,7 +22,9 @@ inputs ──> plan (directions, from the whole library) ──> world (the arri
 ## Arrival and address
 
 Items arrive in `added_at` order, ties by `id`. The n-th item to arrive has `seq` = n. The address of an item is its deepest topic (a root is depth 1,
-ties go to the lower id); an item with no topic has none.
+ties go to the lower id); an item with no topic has none. A tree may name a **root bucket** (see [format.md](format.md)): that root and everything below it are not places, so no
+road, street or sector is ever made for them. An item that has no topic outside the bucket and is filed under it, or under a node below it, has the bucket for its address; one
+topic of the tree settles the address whatever else the item is filed under. A house with no address, or with the bucket for its address, stands on the ring road.
 
 **Replay.** `build_city(..., first=n)` and `build --first n` stop the build after the first `n` items of the arrival order. The plan is still cut from the whole
 library, so the sectors of ring 1 do not move: the document is the city that the whole library makes, at an earlier moment, and its chronicle is the start of
@@ -82,13 +84,13 @@ A world starts as the town hall plaza and the ring road round it, with no house.
 checked before the next, because the road of a house depends on the splits the houses before it caused.
 
 1. **The ring road.** One street, `place:root` (label `Knowledge`), a closed circular road round the town hall, on the surface, with a lot on each side of its lane
-   (see "The ring road" below). It takes every house no open road takes: the first houses, the houses of topics too thin for a road, the items with no topic.
+   (see "The ring road" below). It takes every house no open road takes: the first houses, the houses of topics too thin for a road, the items with no topic, the items filed only under the bucket.
 2. **Roads.** A house stands on the nearest open road at or above its address; none: the ring road. A road covers the subtree of its key and, alone, each
    topic collapsed into it.
 3. **The count.** A road's count is the houses standing on the road itself. The houses of the roads below it do not count (counting them would keep a
    parent over for ever).
 4. **The split.** Before a house is placed on a road, the road's count is decided: if it would be more than `max`, the road's houses and the arriving one
-   are grouped by the child topic of the road's key on each house's path (a house whose address is the key itself, or a collapsed topic, is in no group).
+   are grouped by the child topic of the road's key on each house's path (a house whose address is the key itself, or a collapsed topic, is in no group, and neither is a house whose address is no topic of the tree: the bucket).
    The largest group of at least `min` houses (ties: the lower child id) opens a road of its own, below this one, and moves there. Then the houses
    that stay are packed again onto the first lots of the road in arrival order (on the ring road they stay where they are: only the lots of the group that leaves
    are freed, and the houses of the call that stay take the first free slots of the fill order), and the new road is checked in turn (a group larger than `max` splits
@@ -156,7 +158,7 @@ The topic tree is the street plan.
   ring-1 road of this kind has its wedge and its spoke. A topic that nothing is filed under, directly or below, is no road.
 - There is no split: `min` has no effect (it stays in `world.districts`). A road that holds more than `max` houses is marked `over`, and the chronicle records
   when it became so. Over is a hint that a collection is crowded.
-- An item with no topic, and an item whose address is the centre, stand on the ring road.
+- An item with no topic, an item filed only under the bucket, and an item whose address is the centre, stand on the ring road.
 - Houses are placed exactly as in `grow`: arrival order, the lowest empty lot, continuation ribs.
 - A mirror road that no house stands on or below (a topic an item is filed under while the house stands elsewhere) has no street record until the world is
   completed (`bibliopolis.world.complete`): it appears in the document only then. `build_city`, and so the command line, completes the world after the last
@@ -203,6 +205,7 @@ them again and compares them with the committed files byte for byte.
 | the 41st house, packing, a split in the middle of a call, again at once, ribs, continuation, the measure of waste (land laid beyond need, read step by step), over, no merge back, chains, ring 1 | `tests/test_districts.py` |
 | the ring road: the radius, the gates, the cells of a lap, the fill order and its spread, day one, the first forty houses, the survivors of a split, the avenues, the laps (and the measure of waste for a lap), the walks | `tests/test_ring.py` |
 | mirror, items filed under several topics, `complete` | `tests/test_mirror.py` |
+| the root bucket: the key of the tree and its checks, the tree view that does not hold it, the address of an item, the plan that it does not weigh on, its houses on the ring road in both modes (the 41st house, a ring of nothing else, the laps) | `tests/test_bucket.py` |
 | the cut and the plan: leaf and container streets, chains, the sectors of ring 1, the heavy path and the sides | `tests/test_plan.py` |
 | angles, geometry, records, measures, the stable text, the coast | `tests/test_layout.py` |
 | the budget of the grid of the coast, the range of the rule that keeps a valid rule drawable, a city too large to draw, the flood of the sea (its order, and its memory in a child process under a limit) | `tests/test_budget.py` |

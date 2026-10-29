@@ -19,13 +19,14 @@ def test_the_schemas_name_the_same_required_and_optional_fields_as_the_program()
     assert tuple(sorted(item["properties"])) == tuple(sorted((*inputs.LIBRARY_REQUIRED, *inputs.LIBRARY_OPTIONAL)))
     node = TREE["$defs"]["node"]
     assert tuple(node["required"]) == inputs.TREE_REQUIRED and tuple(sorted(node["properties"])) == tuple(sorted(inputs.TREE_REQUIRED))
+    assert tuple(sorted(TREE["properties"])) == tuple(sorted(("nodes", *inputs.TREE_OPTIONAL))), "the keys of the tree document itself"
 
 
 def test_the_schemas_are_json_schema_documents_and_the_format_page_names_every_field():
     for schema in (LIBRARY, TREE):
         assert schema["$schema"].startswith("https://json-schema.org/") and schema["type"] == "object"
     page = (ROOT / "docs" / "format.md").read_text(encoding="utf-8")
-    for name in (*inputs.LIBRARY_REQUIRED, *inputs.LIBRARY_OPTIONAL, *inputs.TREE_REQUIRED):
+    for name in (*inputs.LIBRARY_REQUIRED, *inputs.LIBRARY_OPTIONAL, *inputs.TREE_REQUIRED, *inputs.TREE_OPTIONAL):
         assert f"`{name}`" in page, name
 
 
@@ -38,6 +39,8 @@ def test_the_example_files_satisfy_the_schemas_and_a_wrong_file_does_not():
     for bad in ({"items": [{"id": "a"}]}, {"items": "x"}, {"items": [{**library["items"][0], "year": "2020"}]}, {"items": [{**library["items"][0], "topics": "a"}]}):
         with pytest.raises(jsonschema.ValidationError):
             jsonschema.validate(bad, LIBRARY)
-    for bad in ({"nodes": [{"id": "a", "label": "A"}]}, {"nodes": [{"id": "a", "label": "", "parent": None}]}, {"nodes": {}}):
+    for bad in ({"nodes": [{"id": "a", "label": "A"}]}, {"nodes": [{"id": "a", "label": "", "parent": None}]}, {"nodes": {}}, {**tree, "bucket": 5}, {**tree, "bucket": ""}):
         with pytest.raises(jsonschema.ValidationError):
             jsonschema.validate(bad, TREE)
+    jsonschema.validate({**tree, "bucket": tree["nodes"][0]["id"]}, TREE)  # (whether the id is the id of a root node is for the program to check, not the schema)
+    jsonschema.validate({**tree, "bucket": None}, TREE)

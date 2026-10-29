@@ -1,11 +1,12 @@
 """Reading and checking the input documents: the library and the topic tree (docs/format.md, schema/), and the city that `picture` and `chronicle` read.
 
     library  {"items": [{"id", "title", "authors", "year", "doi"?, "added_at", "type", "tags", "topics"}, ...]}
-    tree     {"nodes": [{"id", "label", "parent"}, ...]}
+    tree     {"nodes": [{"id", "label", "parent"}, ...], "bucket"?: <id of a root node>}
     city     the layout v4 document that `build` writes (docs/format.md, The city): only what a picture and the chronicle read is checked
 
 `topics` are ids of tree nodes. The address of a house is its item's deepest topic (ties in code-point order of the id); an item with no
-topic lives on the ring road. Items arrive in `added_at` order, ties by id.
+topic lives on the ring road, and so does an item filed only under the root bucket of the tree (the root node that `bucket` names, and everything below it: they are nodes of the
+file and no places of the tree, see bibliopolis.tree). Items arrive in `added_at` order, ties by id.
 
 The checks are strict on purpose: a library that names a topic the tree does not have is a mistake worth stopping for, not a house to place
 somewhere. Every problem found is reported at once (up to MAX_PROBLEMS), each with the place it was found at.
@@ -25,6 +26,7 @@ MAX_DEPTH = 64  # the engine walks the tree recursively; a tree deeper than this
 LIBRARY_REQUIRED = ("id", "title", "authors", "year", "added_at", "type", "tags", "topics")
 LIBRARY_OPTIONAL = ("doi",)
 TREE_REQUIRED = ("id", "label", "parent")
+TREE_OPTIONAL = ("bucket",)  # a key of the tree document itself, beside "nodes"
 
 # an id that looks like the block key of a continuation rib (`lane:<id>:<n>`) would share reserved ids with that rib
 _LANE_LIKE = re.compile(r"^lane:.*:\d+$")
@@ -91,7 +93,8 @@ def _text(problems: _Problems, where: str, value, *, nonempty: bool = True, plai
 
 # ---------------------------------------------------------------------------------------------------- tree ----
 def read_tree(doc) -> dict:
-    """The tree document, checked and reduced to `{"nodes": [{"id", "label", "parent"}, ...]}` (input order kept, other keys dropped)."""
+    """The tree document, checked and reduced to `{"nodes": [{"id", "label", "parent"}, ...]}` (input order kept, other keys dropped), plus `"bucket": <id>` when the document
+    names a root bucket: the id of a node that is a root (null, like no key, is no bucket)."""
     problems = _Problems()
     if not isinstance(doc, dict) or not isinstance(doc.get("nodes"), list):
         raise InputError('tree: must be an object with a list "nodes"')
@@ -126,8 +129,14 @@ def read_tree(doc) -> dict:
         if isinstance(n, dict) and isinstance(n.get("parent"), str) and isinstance(n.get("id"), str) and n["id"] in ids:
             if n["parent"] not in ids:
                 problems.add(f"tree.nodes[{i}].parent", f"{n['parent']!r} is not the id of a node")
-    problems.raise_if_any()
     parent_of = {n["id"]: n["parent"] for n in nodes}
+    bucket = doc.get("bucket")
+    if bucket is not None and _text(problems, "tree.bucket", bucket, plain=True):
+        if bucket not in ids:
+            problems.add("tree.bucket", f"{bucket!r} is not the id of a node")
+        elif parent_of[bucket] is not None:
+            problems.add("tree.bucket", f"{bucket!r} is not a root (its parent is {parent_of[bucket]!r}): the bucket is a root of the tree")
+    problems.raise_if_any()
     depth: dict[str, int] = {}
     for n in nodes:
         chain: list[str] = []
@@ -146,7 +155,7 @@ def read_tree(doc) -> dict:
             if depth[n["id"]] > MAX_DEPTH:
                 problems.add("tree", f"{n['id']!r} is {depth[n['id']]} levels deep; the most the engine takes is {MAX_DEPTH}")
     problems.raise_if_any()
-    return {"nodes": nodes}
+    return {"nodes": nodes, **({"bucket": bucket} if bucket is not None else {})}
 
 
 # ------------------------------------------------------------------------------------------------- library ----

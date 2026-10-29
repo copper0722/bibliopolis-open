@@ -28,7 +28,7 @@ JSON Schema files for the two inputs are in `schema/`. A schema cannot say every
 | `added_at` | string | ISO 8601: a date (`2026-04-06`), or a date and time with or without an offset (`2026-04-06T09:30:00+08:00`, `2026-04-06 09:30:00`). A time without an offset is read as UTC. Items arrive in this order, ties by `id` in code-point order. |
 | `type` | string, not empty | the kind of document: `article`, `review`, `editorial`, `letter`, `news`, `erratum`, `retraction notice`, and so on. Not read by the engine. |
 | `tags` | list of strings | free tags: the residents of the house. Not read by the engine. |
-| `topics` | list of strings | ids of nodes of the tree: the topics the item is filed under. The address of the house is the deepest of them (a root is depth 1; ties: the lower id), and the house stands once, there. In `mirror` mode every topic listed is also a road (see below). Empty: the house stands in the root zone, under the town hall. |
+| `topics` | list of strings | ids of nodes of the tree: the topics the item is filed under. The address of the house is the deepest of them (a root is depth 1; ties: the lower id), and the house stands once, there. In `mirror` mode every topic listed is also a road (see below). Empty, or only in the root bucket of the tree (below): the house stands on the ring road, round the town hall. |
 
 The order of the items in the file does not matter: only `added_at` and `id` do. Other keys are ignored.
 
@@ -51,10 +51,30 @@ The order of the items in the file does not matter: only `added_at` and `id` do.
 A tree may have several roots. A tree with exactly one root has that root as its centre: the root is the town hall, its children are the
 ring-1 roads, and a house whose address is the root itself stands on the ring road.
 
+The tree document may also name a **root bucket**, the home of what you have not sorted yet (an inbox, a pile to read, a tag you give to everything new):
+
+```json
+{"nodes": [
+  {"id": "computing", "label": "Computing", "parent": null},
+  {"id": "systems", "label": "Systems", "parent": "computing"},
+  {"id": "networks", "label": "Networks", "parent": "systems"},
+  {"id": "inbox", "label": "To sort", "parent": null},
+  {"id": "maybe-ai", "label": "Maybe AI", "parent": "inbox"}
+], "bucket": "inbox"}
+```
+
+| key | type | meaning |
+|---|---|---|
+| `bucket` | string or null, optional | the id of a node that is a root. That node and everything below it are not places of the tree: they get no road, no sector and no mirror road, however many items are filed there, and a tree with one real root plus a bucket still has that root for its centre. They are nodes of the file all the same, so an item may name any of them in `topics`. An item whose only topics are in the bucket stands on the ring road, as an item with no topic does. An item that is also filed under a topic outside the bucket stands at that topic (the deepest one, as always). Null or no key: no bucket. |
+
+The bucket is called what you call it: the engine knows no name for it. Houses of the bucket never form a group that opens a road, so a ring road that holds only them is marked
+`over` and goes on as a lap when it is full (see [engine.md](engine.md)); the roads of the topics they are later filed under open as usual.
+
 ## What the program checks beyond the schemas
 
 - every `id` of the library is used once, every `id` of the tree is used once;
-- every `topics` entry is the id of a node of the tree (a topic the tree does not have is a mistake, not a house placed somewhere);
+- every `topics` entry is the id of a node of the tree (a topic the tree does not have is a mistake, not a house placed somewhere; the nodes of the bucket are nodes);
+- `bucket`, if it is given, is the id of a node, and that node is a root;
 - every `parent` is the id of a node, the parents lead to a root (no cycle), and no branch is deeper than 64 levels;
 - `added_at` parses;
 - every string can be written as UTF-8.

@@ -86,7 +86,7 @@ from . import layout as lay
 from . import ring as ring_mod
 from .plan import HAND, MIRROR, MODES, check_districts
 from .ring import ROOT_PLACE, lap_place, lap_road, ring_fill_order, ring_slot
-from .tree import TreeView, major_tag
+from .tree import TreeView, address_of
 
 WORLD_VERSION = "world/1"
 PLAZA_PLACE, PLAZA_RADIUS, PLAZA_LABEL = lay.PLAZA_PLACE, lay.PLAZA_RADIUS, lay.PLAZA_LABEL
@@ -1057,8 +1057,8 @@ class World:
 def assign(plan: dict | PlanView, tree: dict | TreeView, placed: dict, arrivals: list[dict], *, event_id: int | None = None) -> dict:
     """Place the arrivals, in the order given, in the world `placed`; return what to add (see the module docstring).
 
-    An arrival is `{"id", "topics"}`: its address is its deepest topic of the tree (`bibliopolis.tree.major_tag`), None when it has none (the root
-    zone). The arrivals are resolved, placed and checked one at a time, in this order, because the road of the next house depends on the splits the
+    An arrival is `{"id", "topics"}`: its address is its deepest topic of the tree, else the root bucket when it is filed under it, else None
+    (`bibliopolis.tree.address_of`): a house with no address, or with the bucket for its address, stands on the ring road. The arrivals are resolved, placed and checked one at a time, in this order, because the road of the next house depends on the splits the
     houses before it caused. `event_id` is the event the call belongs to: the chronicle entries it causes carry it (None: no events)."""
     pv = plan if isinstance(plan, PlanView) else PlanView(plan)
     tv = tree if isinstance(tree, TreeView) else TreeView(tree)
@@ -1070,7 +1070,7 @@ def assign(plan: dict | PlanView, tree: dict | TreeView, placed: dict, arrivals:
     if clash:
         raise ValueError(f"already placed: {clash[:3]}")
     for a in arrivals:
-        tag = major_tag(tv, a)
+        tag = address_of(tv, a)
         w.seq += 1
         house = {"article": a["id"], "tag": tag, "seq": w.seq}
         w.arrival_ids.add(a["id"])

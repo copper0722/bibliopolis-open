@@ -143,7 +143,8 @@ same file, byte for byte. `picture` draws a city as one SVG file that opens in a
 
 Your own files: a library `{"items": [...]}` in which every item has `id`, `title`, `authors`, `year`, `added_at`, `type`, `tags` and
 `topics` (and, if you like, `doi`), and a tree `{"nodes": [{"id", "label", "parent"}, ...]}`. A wrong file is refused, with the place
-of each problem. JSON Schema files are in `schema/`.
+of each problem. JSON Schema files are in `schema/`. The tree may also name a root bucket, `"bucket": "<id of a root node>"`, for what you have not sorted yet: it and what is below it get
+no road, and an item filed only there stands on the ring road.
 
 ## Tests
 
@@ -307,7 +308,7 @@ wrote city.json: 600 houses on 23 roads, 15 on the ring road, 22 splits, 1 over 
 
 用你自己的檔案：文獻庫 `{"items": [...]}`，每筆文獻要有 `id`、`title`、`authors`、`year`、`added_at`、`type`、`tags`、`topics`
 （`doi` 可有可無）；主題樹 `{"nodes": [{"id", "label", "parent"}, ...]}`。檔案有誤時，指令會拒絕執行，並指出每個問題在哪裡。
-`schema/` 裡有 JSON Schema 檔。
+`schema/` 裡有 JSON Schema 檔。主題樹也可以用 `"bucket": "<某個根節點的 id>"` 指定一個「還沒整理」的收納處：它和它底下的節點不會有路，只歸在那裡的文獻，房子會蓋在環路上。
 
 ## 測試
 
