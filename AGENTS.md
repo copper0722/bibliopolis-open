@@ -6,8 +6,8 @@ split as they grow).
 
 ## Owner and flow
 
-- Canonical development happens in a private repository; changes arrive here as re-extractions that pass the scrub gate. Do not
-  develop a feature here that the private engine lacks without saying so in the commit.
+- This repository is the one source of the city engine: engine features are developed here first and the private repository
+  takes them from a release tag (`v0.x.y`). Every change passes its tests, the scrub gate and a code review before it is pushed.
 - Everything here is public the moment it is pushed. Nothing private enters: no personal data, no host names, paths, service
   names, database names, task or card numbers, credentials, private conversations, or content derived from paywalled full text.
 - Journal names appear only descriptively in data or docs, never in a product name, identifier, logo or package name.
