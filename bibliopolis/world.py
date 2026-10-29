@@ -1191,6 +1191,8 @@ class World:
             for lid, other in list(self.lines.items()):
                 if other["parent"] is not None and other["parent"]["line"] == line_id and other["parent"]["member"] == place:
                     wrote |= self.lay_line(lid, full=full)
+        if wrote:
+            self._by_road = None  # (a lot may have moved: the index of the lots holds the old records)
         return wrote
 
     def lay_rib(self, rib_place: str, fields: dict, axis: float, spoke_road: str | None, grown: str | None, full: bool) -> bool:
@@ -1228,8 +1230,6 @@ class World:
                     mine = self.places.mut(key)
                     mine["position"], mine["facing"] = pos, face
                     wrote = True
-            if wrote:
-                self._by_road = None  # (a lot moved: the index of the lots holds the old records)
         return wrote
 
     def ghost_rib(self, rib_place: str, line_id: str) -> None:
