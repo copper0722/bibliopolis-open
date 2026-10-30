@@ -30,7 +30,7 @@ the event, writes it into the chronicle, and never reads the clock; `at` does no
 | `undo` | `{seq}` | the named event no longer counts; an undo of an undo gives it back |
 | `set_rule` | `{max, min, auto, branches}` | the rule from here on; a new `branches`, or a `max` that asks the ring road for another radius, lays the whole world out again (see "A new radius") |
 
-A road id is text chosen by whoever appends the event (not empty, no control characters, not of the form `lane:<id>:<n>`, not starting with `auto:`); it names one road, so a road
+A road id is text chosen by whoever appends the event (not empty, no control characters, not starting with `auto:`, and not of the form `lane:<id>:<n>`: that is the block key of a continuation rib, which only a city file from before version 0.4 has); it names one road, so a road
 is not opened twice under one id while it stands. A house id is the id of its item, and likewise names one house. (An event that an undo takes back leaves its ids free.) Road ids and
 house ids are two kinds of name.
 
@@ -305,7 +305,7 @@ A city that grows beyond the budget is refused when it is drawn (`State.city()`,
 | `rule_number_bad` | `name`, `least`, `limit`, `got` | `max`, `min` or `branches` of a rule is not a whole number from `least` (1; 2 for `branches`) to `limit` (10000; 1000 for `branches`); `name` says which | world.rule.max: must be a whole number from 1 to 10000, got 0 |
 | `not_a_boolean` | `got` | `auto` of a rule is not true or false | world.rule.auto: must be true or false, got 'yes' |
 | `rule_min_over_max` | `min`, `max` | a rule whose `min` is more than its `max` | world.rule: min (9) is more than max (5) |
-| `road_id_lane_like` | `road` | a new road id of the form `lane:<id>:<n>` | event.payload.road: 'lane:x:2' looks like the block key of a continuation rib (lane:<id>:<n>); use another id |
+| `road_id_lane_like` | `road` | a new road id of the form `lane:<id>:<n>` | event.payload.road: 'lane:x:2' looks like the block key of a continuation rib (lane:<id>:<n>), which only a city file from before version 0.4 has; use another id |
 | `road_id_reserved` | `road`, `prefix` | a new road id that starts with `prefix`, which is for the roads that the rule opens | event.payload.road: 'auto:7' starts with 'auto:', which is for the roads that the rule opens by itself |
 | `undo_seq_bad` | `got` | `seq` of an undo is not the number of an event | event.payload.seq: must be the number of an event (1 or more), got 0 |
 | `houses_empty` | none | `houses` of an `open_road` is not a list, or is empty | event.payload.houses: must be a list of house ids, not empty |

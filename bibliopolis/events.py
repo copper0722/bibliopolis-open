@@ -324,11 +324,11 @@ def check_node(value, where: str, problems: Problems) -> tuple[bool, dict | None
 
 
 def _road_id(problems: Problems, where: str, value, *, new: bool = False) -> bool:
-    """A road id: text without control characters. A new road may not look like the id of a continuation rib (lane:<id>:<n>) nor start with `auto:`."""
+    """A road id: text without control characters. A new road may not look like the id of a continuation rib (lane:<id>:<n>; only a city file from before version 0.4 has such ribs) nor start with `auto:`."""
     if not text(problems, where, value, plain=True):
         return False
     if new and _LANE_LIKE.match(value):
-        problems.add(where, f"{value!r} looks like the block key of a continuation rib (lane:<id>:<n>); use another id", "road_id_lane_like", road=value)
+        problems.add(where, f"{value!r} looks like the block key of a continuation rib (lane:<id>:<n>), which only a city file from before version 0.4 has; use another id", "road_id_lane_like", road=value)
         return False
     if new and value.startswith(AUTO_PREFIX):
         problems.add(where, f"{value!r} starts with {AUTO_PREFIX!r}, which is for the roads that the rule opens by itself", "road_id_reserved", road=value, prefix=AUTO_PREFIX)

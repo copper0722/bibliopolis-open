@@ -28,7 +28,7 @@ LIBRARY_OPTIONAL = ("doi",)
 TREE_REQUIRED = ("id", "label", "parent")
 TREE_OPTIONAL = ("bucket",)  # a key of the tree document itself, beside "nodes"
 
-# an id that looks like the block key of a continuation rib (`lane:<id>:<n>`) would share reserved ids with that rib
+# an id that looks like the block key of a continuation rib (`lane:<id>:<n>`: only a city file from before version 0.4 has such ribs) would share reserved ids with that rib
 _LANE_LIKE = re.compile(r"^lane:.*:\d+$")
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 
@@ -118,7 +118,7 @@ def read_tree(doc) -> dict:
         if not ok:
             continue
         if _LANE_LIKE.match(n["id"]):
-            problems.add(f"{where}.id", f"{n['id']!r} looks like the block key of a continuation rib (lane:<id>:<n>); use another id")
+            problems.add(f"{where}.id", f"{n['id']!r} looks like the block key of a continuation rib (lane:<id>:<n>), which only a city file from before version 0.4 has; use another id")
             continue
         if n["id"] in ids:
             problems.add(f"{where}.id", f"{n['id']!r} is used twice (first at tree.nodes[{ids[n['id']]}])")
