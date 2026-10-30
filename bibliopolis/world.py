@@ -873,7 +873,7 @@ class World:
 
     def band_room(self, line: dict, carrier: str, width: int) -> dict:
         """Where a street `width` cells long goes on a band: the open end of the band side with the smallest radius that has room, else a
-        new band at the smallest free radius at which it fits the wedge. Returns the stretch: band index, side, radius, x0, x1, start, reach."""
+        new band at the smallest free radius at which it fits the wedge. Returns the stretch: band index, side, radius, x0, x1, start."""
         best = None
         for k, b in enumerate(line["bands"]):
             s = b["s"]
@@ -885,7 +885,7 @@ class World:
                 if x0 + width <= reach + EPS:
                     if best is None or s < best["s"] - EPS:
                         best = {"mode": "band", "band": k, "side": -1 if i == 0 else +1, "s": s, "x0": x0, "x1": x0 + width,
-                                "start": used if gap else 0.0, "reach": reach, "new": False}
+                                "start": used if gap else 0.0, "new": False}
                     break
         s = line["members"][0]["s0"] + LEAD + BAND / 2
         for _ in range(64):
@@ -896,8 +896,7 @@ class World:
             s = nxt
         if best is not None and best["s"] <= s + EPS:
             return best
-        return {"mode": "band", "band": len(line["bands"]), "side": -1, "s": s, "x0": TRUNK_LANE, "x1": TRUNK_LANE + width, "start": 0.0,
-                "reach": self.reach_at(line, carrier, s, width), "new": True}
+        return {"mode": "band", "band": len(line["bands"]), "side": -1, "s": s, "x0": TRUNK_LANE, "x1": TRUNK_LANE + width, "start": 0.0, "new": True}
 
     def spoke_room(self, line: dict, carrier: str, width: int) -> dict:
         """Where a street `width` cells long goes along the spoke (its lots on both sides of the axis): the smallest radius from which the lots fit
@@ -971,7 +970,7 @@ class World:
             band["last"][i] = rid
             entry["road"] = rid
             next(e for e in line["log"] if e["kind"] == "band" and e["band"] == st["band"])["ribs"][i].append(entry)
-            rib.update({"band": st["band"], "side": side, "reach": lay.r3(st["reach"])})
+            rib.update({"band": st["band"], "side": side})
         street = self.places.mut(spec.place)
         street["rib"] = rib
         street["lane" if spec.trunk else "road"] = rid
@@ -1072,9 +1071,6 @@ class World:
                         break
                     s = nxt
                 s = lay.r3(s)
-                for side in ribs:
-                    for r in side:
-                        r["reach"] = lay.r3(self.reach_at(scratch, r["rib"]["carrier"], s, r["rib"]["width"]))
                 laid["bands"][e["band"]] = {"s": s, "used": used, "ribs": ribs}
                 scratch["bands"].append({"s": s})
                 cursor = s + BAND / 2
@@ -1183,7 +1179,7 @@ class World:
                                                                       "bearings": [lay.r3(a0), lay.r3(a1)], "points": lay.arc_points(s, a0, a1)})
                     before = rib["road"]
                     if not rib.get("ghost"):
-                        wrote |= self.lay_rib(rib["place"], {"x0": lay.r3(x0), "x1": lay.r3(x1), "s": s, "reach": r["reach"]}, axis, None, grown, full)
+                        wrote |= self.lay_rib(rib["place"], {"x0": lay.r3(x0), "x1": lay.r3(x1), "s": s}, axis, None, grown, full)
         for sp in spokes.values():
             rib = sp["rib"]
             if not rib.get("ghost"):
@@ -1198,7 +1194,7 @@ class World:
         return wrote
 
     def lay_rib(self, rib_place: str, fields: dict, axis: float, spoke_road: str | None, grown: str | None, full: bool) -> bool:
-        """Write the geometry of a live rib (`fields`: x0, x1, s and for a band reach) into its street, and the position of its lots when the rib moved or has new lots. For a
+        """Write the geometry of a live rib (`fields`: x0, x1 and s) into its street, and the position of its lots when the rib moved or has new lots. For a
         rib along the spoke `spoke_road` is the road of the member that carries it."""
         street = self.places.get(rib_place)
         rib = street["rib"]

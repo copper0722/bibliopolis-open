@@ -196,7 +196,6 @@ def mutations(doc):
     yield "the span of a rib along the spoke", bump(("lines", line_id, "spokes", 0, 0), 0.001)
     yield "the start of a rib on a band", bump(("places", on_band, "rib", "x0"), 0.5)
     yield "the end of a rib on a band", bump(("places", on_band, "rib", "x1"), 0.5)
-    yield "the reach of a rib on a band", bump(("places", on_band, "rib", "reach"), 0.001)
     yield "the start of a rib along the spoke", bump(("places", on_spoke, "rib", "s"), 0.001)
     yield "the position of a house", bump(("places", lot, "position", "x"), 0.001)
     yield "the position of an empty lot", bump(("places", empty, "position", "z"), 0.001)
@@ -225,4 +224,4 @@ def test_the_instrument_finds_a_world_that_is_not_what_its_log_lays():
         damage(bad)
         assert lay_problems(bad, plan, tv), what
         made += 1
-    assert made == 17
+    assert made == 16

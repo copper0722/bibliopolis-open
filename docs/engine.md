@@ -139,7 +139,7 @@ an interval past every lap span; a rib along the spoke likewise from `max(s0 + 1
 width + 1. Along a side, `x0 = used + gap`, `gap = 1` once the side holds a rib and 0 before, `x1 = x0 + width`, `used = r3(x1)`. Nothing is laid inward of the end of the entry
 before it: that is what keeps the radial order. A radius is `ceil3` of what the iteration gives, a thousandth up, and stored with three decimals. The records that hold a
 radius follow: the spoke roads (a member's ends where the next begins; the last, at the farthest of its lead, its circle, its bands and its ribs), the arcs, the roads of the
-ribs (the first of a side hangs on the road of the member that covers it, the next on the road before it), the ribs (`x0`, `x1`, `s`, `reach`) and the lots (`cell`). A line
+ribs (the first of a side hangs on the road of the member that covers it, the next on the road before it), the ribs (`x0`, `x1`, `s`) and the lots (`cell`). A line
 laid again as it stands writes nothing.
 
 **Growth.** A rib with no empty lot gains `max(need - held, 1)` lots; the width of its entry is `ceil(slots / 2)`; its new empty lots are made; and the line is laid again.
