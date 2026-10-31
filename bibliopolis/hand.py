@@ -40,7 +40,7 @@ There is no library to plan from, so the plan grows with the world and never cha
   an annex        an item that exists for another item (`annex_of` and `annex_form` of an item, or the event `annex`) is no house: it has no lot and no road, and stands beside its
                   house as a wing or a mailbox (bibliopolis.world: `put_annex`). An item whose house stands is an annex at once; one whose house has not arrived is an ordinary
                   house that waits (its item says `annex_of`), and when the house arrives every house that waited for it is ABSORBED: it leaves its lot (a lot of a road stays
-                  reserved, a lot of the ring leaves nothing) and becomes an annex, and every other house keeps its lot. The lots of the houses that waited are freed FIRST, in the
+                  reserved, a lot of the ring leaves nothing) and becomes an annex, and absorbing moves no other house (the arriving house is placed like any house, and may grow its road when it has no empty lot). The lots of the houses that waited are freed FIRST, in the
                   order they arrived, then the house is placed (the lowest empty lot of its road, the first free slot of the ring in fill order: one of the lots just freed, when it is
                   the first), then each annex record and its entry `absorbed` are written, and only then is the place looked at under the rule `auto`: a road that is full does not grow,
                   nor a ring open a lap, for a house that takes the place of one that leaves. The event `annex` does the same for a link learned later.
@@ -556,7 +556,7 @@ class State:
         w.arrival_ids.add(item["id"])
         # The houses that waited leave their lots FIRST, then this house is placed, then they stand beside it: the house may take a lot that one of them leaves (the lowest empty lot of its
         # road, the first free slot of the ring in fill order), and a road that is full does not grow, nor a ring open a lap, nor do the roads beyond move, for a house that only takes the
-        # place of one that leaves. Every other house keeps its lot.
+        # place of one that leaves. Absorbing moves no other house.
         left = {h: w.leave(h) for h in waited}
         w.add_houses(zw.ROOT_PLACE if land is None else lay.tag_place(land), [{"article": item["id"], "tag": land, "seq": w.seq}], "add_item")
         for h in waited:
