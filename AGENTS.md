@@ -35,7 +35,7 @@ split as they grow).
   `build` and `picture` replace their own output. Threat model: several runs of this tool by one user at once, a wrong name, a fault or an interrupt in the middle of a call and a disk with no hard
   links are in scope; a hostile process with write access to the same folder is out (it could delete or replace the world itself, and no way of publishing stops that). See `docs/world.md`, "The files".
 - `tests/`: `python3 -m pytest` from the repository root. Every test is offline and synthetic. `tests/test_legacy_bytes.py` holds the sha256 of what the version of 0.4.0 made for the sample,
-  random libraries and worlds built by hand (with no annex), made from a snapshot of that version: an input with no annex key must give those bytes.
+  random libraries and worlds built by hand (with no annex), made from a snapshot of that version: an input with no annex key must give those bytes (the version that a city names is read as 0.4.0).
 - The plan, the world of `grow` mode (roads, direct counts, the ring road, chronicle, lots, ribs, lines) and the document it makes (places, roads, coast,
   measures) are an extraction of the private engine. A parity test in the private repository compares them with it on random libraries and on the
   sample (the whole document against a private plan without the journal sector). Not compared, because the private engine has nothing to compare

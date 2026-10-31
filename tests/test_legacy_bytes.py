@@ -1,9 +1,15 @@
 """An input with no annex key gives the bytes it gave before the engine knew annexes (version 0.4.0): the cities that `build` makes, the world built by `assign` in calls, the
 worlds built by hand, their world files, documents, chronicles and pictures. The sha256 below were made from a snapshot of the commit of version 0.4.0 (`legacy_bytes.artifacts()`
-run on it), so a change that moves one of them is a change to what an old input gives, and is read as that."""
+run on it), so a change that moves one of them is a change to what an old input gives, and is read as that. The one word that a new version changes in every city, the version of the
+generator that it names, is read as 0.4.0 (`legacy_bytes.as_made_by_the_old_version`); the pins of the sample and of the scripted worlds that move with the version are re-pinned in
+tests/test_canonical.py and tests/test_world_file.py."""
 
 import pytest
-from legacy_bytes import artifacts, digest
+from legacy_bytes import LEGACY_VERSION, artifacts, as_made_by_the_old_version, digest
+from support import sample
+
+import bibliopolis
+from bibliopolis import layout as lay
 
 PINS = {
     "sample grow first=None": "8e3d6772298d46693a6cde120b5a12f298789fa7c43c4d15bef121ee71b4fcd9",
@@ -90,3 +96,14 @@ def test_every_case_has_a_text_of_its_own(made):
 @pytest.mark.parametrize("name", list(PINS))
 def test_an_input_with_no_annex_key_gives_the_bytes_of_version_0_4_0(made, name):
     assert made[name] == PINS[name]
+
+
+def test_the_only_thing_that_is_read_back_as_the_old_version_is_the_version_a_city_names():
+    tree, library = sample()
+    text = lay.render(bibliopolis.build_city(library, tree, first=41))
+    read = as_made_by_the_old_version(text)
+    differing = [(a, b) for a, b in zip(text.splitlines(), read.splitlines()) if a != b]
+    assert text.count(f'"version": "{bibliopolis.__version__}"') == 1 and len(read.splitlines()) == len(text.splitlines())
+    assert (read == text) == (bibliopolis.__version__ == LEGACY_VERSION) and len(differing) == (bibliopolis.__version__ != LEGACY_VERSION)
+    assert all(b.strip().startswith('"version": ') and LEGACY_VERSION in b for _a, b in differing)  # the one line that differs is the version, and it reads as the old one's
+    assert as_made_by_the_old_version("no version here") == "no version here" and as_made_by_the_old_version('{"version": 1}') == '{"version": 1}'  # (the version of a world file is a number)

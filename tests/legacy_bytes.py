@@ -2,7 +2,8 @@
 
 The hashes were made by running this module on a snapshot of the commit of version 0.4.0, before the engine knew annexes, so that "no annex key, the same bytes" is proved against
 the old code and not against the new code itself. The cases are written out here and do not call a helper that a later change may make richer (`every_entry` has a copy of its own,
-and `play` is used as it was). Not collected by pytest (the name has no test_ prefix)."""
+and `play` is used as it was). Every city document names the version of the generator, and a new version changes that one word in every city on purpose: `artifacts()` reads the version a
+city names as 0.4.0 (`as_made_by_the_old_version`), so the pins stay what the old code made and nothing else is hidden. Not collected by pytest (the name has no test_ prefix)."""
 
 import hashlib
 import json
@@ -11,7 +12,7 @@ from hand_support import Hand, hid, houses, play, scripted, scripted_branches, s
 from support import random_world, sample
 
 import bibliopolis
-from bibliopolis import inputs, picture
+from bibliopolis import __version__, inputs, picture
 from bibliopolis import layout as lay
 from bibliopolis import plan as plan_mod
 from bibliopolis import world as zw
@@ -20,8 +21,17 @@ from bibliopolis.journal import dumps_world, world_document
 from bibliopolis.tree import TreeView
 
 
+LEGACY_VERSION = "0.4.0"  # the version that made the pins
+
+
 def digest(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def as_made_by_the_old_version(text: str) -> str:
+    """`text` with the version of the generator that a city document names (`"version": "<the version of the package>"`) read as the old version's: the one word that a new version changes in every city, and
+    that is re-pinned with the version (tests/test_canonical.py, tests/test_world_file.py). Nothing else is read back, so any other difference is not what the old version made."""
+    return text.replace(f'"version": "{__version__}"', f'"version": "{LEGACY_VERSION}"')
 
 
 def log_every_entry() -> Hand:
@@ -102,4 +112,4 @@ def by_hand() -> dict[str, str]:
 
 
 def artifacts() -> dict[str, str]:
-    return {**built(), **batched(), **by_hand()}
+    return {name: as_made_by_the_old_version(text) for name, text in {**built(), **batched(), **by_hand()}.items()}
