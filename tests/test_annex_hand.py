@@ -6,16 +6,17 @@ import json
 
 import pytest
 import refusal_cases as rc
-from hand_support import (Hand, every_entry, hand_problems, hid, houses, item, journal_value, lap_slots, lot_snapshot, play_annexes, ring_cells, stability_violations, stamp,
+from hand_support import (Hand, every_entry, hand_problems, hid, houses, item, journal_value, lap_slots, lot_snapshot, node, play_annexes, ring_cells, stability_violations, stamp,
                           text_problems, topic)
-from support import first_free
+from support import first_free, laps_of
 
 from bibliopolis import events as ev
 from bibliopolis import layout as lay
 from bibliopolis.events import Refusal
 from bibliopolis.hand import State, fold
 from bibliopolis.journal import Journal, dumps_world, read_world, world_document
-from bibliopolis.suggest import crowded, suggest_file, suggest_merge, suggest_road
+from bibliopolis.suggest import crowded, landing, suggest_file, suggest_merge, suggest_road
+from bibliopolis.world import ROOT_PLACE
 
 
 def town(n=3, rule=None):
@@ -120,16 +121,19 @@ def test_an_item_whose_house_has_not_arrived_is_an_ordinary_house_that_waits_and
     assert state.effects[9] == {"houses": [hid(9), hid(6)], "roads": []} and hand_problems(state) == [] and text_problems(state) == []
 
 
-def test_the_lot_that_an_absorbed_house_leaves_is_free_for_the_next_house_on_the_ring_road():
+def test_the_house_takes_the_slot_that_a_house_that_waited_for_it_leaves_when_that_is_the_first_free_slot_of_the_ring_in_fill_order():
     h = town(5)
     h.add(1, annex_of=hid(8), annex_form="wing")  # h0006 waits
     h.add(1)
-    freed = ring_cells(h.state)[hid(6)]
-    h.add(1)  # h0008 arrives: h0006 is absorbed, and the first free slot of the ring in fill order is the one it left or one that is earlier in the order
-    assert hid(6) not in ring_cells(h.state) and freed not in set(ring_cells(h.state).values())
-    want = first_free(lap_slots(h.state), set(ring_cells(h.state).values()))
+    before = ring_cells(h.state)
+    freed = before[hid(6)]
+    h.add(1)  # h0008 arrives: h0006 leaves its slot first, and h0008 takes the first free slot in fill order, which is that one
+    cells = ring_cells(h.state)
+    assert hid(6) not in cells and cells[hid(8)] == freed
+    assert {k: v for k, v in cells.items() if k != hid(8)} == {k: v for k, v in before.items() if k != hid(6)}  # every other house stands where it stood
+    want = first_free(lap_slots(h.state), set(cells.values()))
     h.add(1)
-    assert ring_cells(h.state)[hid(9)] == want and want[0] == 0
+    assert ring_cells(h.state)[hid(9)] == want and want[0] == 0 and want != freed
     assert stability_violations(h.journal.events, h.journal.rule) == []
 
 
@@ -189,6 +193,176 @@ def test_a_house_that_waits_is_no_house_for_another_to_stand_beside_while_it_wai
     assert (made.code, made.params) == ("annex_of_annex", {"house": hid(4), "parent": hid(3), "above": hid(9)})
     made = rc.raised(lambda: h.event("annex", {"house": hid(1), "parent": hid(3), "form": "wing"}))
     assert (made.code, made.params) == ("annex_of_annex", {"house": hid(1), "parent": hid(3), "above": hid(9)})
+
+
+# --------------------------------------------------------------------------- the order of an arrival that absorbs ----
+real_add_item = State.do_add_item
+
+
+def placed_first(self, e, p):
+    """`State.do_add_item` for an item with no `annex_of`, in the order of the version before the fix: the house is placed FIRST, and only then do the houses that waited for it leave their
+    lots. The control of the tests below, which it must make fail: a road that is full grows for the house, and a ring that is full opens a lap, for a house that only takes the place of
+    one that leaves (and the roads beyond move for it)."""
+    it = p["item"]
+    if it.get("annex_of") is not None or it["id"] in self.items or it["id"] in self.annexes:
+        return real_add_item(self, e, p)
+    land = landing(self, it) if self.rule["auto"] else None
+    waited = self.waiting_for(it)
+    w, before = self.world(e), len(self.doc["chronicle"])
+    w.seq += 1
+    w.arrival_ids.add(it["id"])
+    w.add_houses(ROOT_PLACE if land is None else lay.tag_place(land), [{"article": it["id"], "tag": land, "seq": w.seq}], "add_item")  # the house first ...
+    for h in waited:  # ... and then each house that waited leaves its lot
+        form = self.items[h]["annex_form"]
+        w.stand_beside(h, it["id"], form, w.leave(h), "add_item")
+        del self.items[h], self.road_of[h]
+        self.annexes[h] = {"parent": it["id"], "form": form}
+    self.items[it["id"]] = it
+    self.road_of[it["id"]] = land
+    touched, opened = [it["id"], *waited], []
+    self.settle(w, e, land, touched, opened)
+    self.commit(w, e, before)
+    self.effects[e["seq"]] = {"houses": touched, "roads": opened}
+
+
+def road_a_is_full(waiting=(3,), parent=10):
+    """Rule max 6, min 3. An avenue t (domain 1) with two roads below it, on its line: a (field 1.1) holds six houses, which are all the six lots of its rib, and b (field 1.2) holds three. The
+    houses of a whose numbers are in `waiting` wait for the house number `parent`, which has not arrived. The rule auto is on at the end, so that the next house of field 1.1 lands on a."""
+    h = Hand({"max": 6, "min": 3, "auto": False})
+    for k in range(1, 7):
+        h.add(1, topic(1, 1, 1, 1), **({"annex_of": hid(parent), "annex_form": "wing" if k % 2 else "mailbox"} if k in waiting else {}))
+    h.add(3, topic(1, 2, 1, 1))
+    h.open("t", "T", None, houses(1, 9), node("domain", 1))
+    h.open("a", "A", "t", houses(1, 6), node("field", 1, 1))
+    h.open("b", "B", "t", houses(7, 9), node("field", 1, 2))
+    h.rule(6, 3, True)
+    return h
+
+
+def lot_records(state):
+    """house id -> the full record of its lot in the world, as text (its rib, slot, position, facing, road, topic and arrival number: all of it)."""
+    return {p["article"]: json.dumps(p, sort_keys=True) for p in state.doc["places"].values() if p["kind"] == "lot"}
+
+
+def road(state, key):
+    return state.doc["places"][lay.tag_place(key)]
+
+
+def test_a_full_road_does_not_grow_for_a_house_that_takes_the_place_of_one_that_leaves_and_no_other_lot_moves():
+    h = road_a_is_full()
+    before, left = lot_records(h.state), dict(h.state.doc["places"][lay.article_place(hid(3))])
+    assert (road(h.state, "a")["lots"], road(h.state, "a")["reserved"], road(h.state, "a")["rib"]["slots"]) == (6, 0, 6)  # no empty lot on a
+    h.add(1, topic(1, 1, 1, 1))  # h0010 lands on a, and h0003, which waited for it, is absorbed
+    state, event = h.state, len(h.journal.events)
+    assert state.road_of[hid(10)] == "a" and state.annexes == {hid(3): {"parent": hid(10), "form": "wing"}}
+    assert (road(state, "a")["lots"], road(state, "a")["reserved"], road(state, "a")["rib"]["slots"]) == (6, 0, 6)  # six houses on six lots: the rib did not grow
+    after = lot_records(state)
+    assert {k: v for k, v in after.items() if k != hid(10)} == {k: v for k, v in before.items() if k != hid(3)}  # every other house: its full record, byte for byte
+    taken = state.doc["places"][lay.article_place(hid(10))]
+    assert {k: taken[k] for k in ("parent", "slot", "position", "facing", "street")} == {k: left[k] for k in ("parent", "slot", "position", "facing", "street")}  # it stands where h0003 stood
+    assert [{k: e[k] for k in e if k in ("absorbed", "left", "from", "over")} for e in state.doc["chronicle"] if e["event_id"] == event] == [{"absorbed": hid(3), "left": "place:tag:a"}]
+    assert hand_problems(state) == [] and text_problems(state) == [] and stability_violations(h.journal.events, h.journal.rule) == []
+
+
+def test_the_old_order_grows_the_road_and_moves_lots_that_have_nothing_to_do_with_the_house_the_control_of_the_test_above(monkeypatch):
+    """The same arrival with the house placed first (`placed_first`, which gives the bytes of the version before the fix): the road grows to twelve lots for a seventh house that is not
+    there at the end, the three houses of the road beyond it are farther out, and so are the houses of the road itself; the end state is six houses on the road and no split."""
+    before = lot_records(road_a_is_full().state)
+    kept, moved = road_a_is_full(), road_a_is_full()
+    kept.add(1, topic(1, 1, 1, 1))
+    with monkeypatch.context() as old:
+        old.setattr(State, "do_add_item", placed_first)
+        moved.add(1, topic(1, 1, 1, 1))
+    changed = {k for k, v in lot_records(moved.state).items() if k in before and k != hid(3) and v != before[k]}
+    assert {k for k, v in lot_records(kept.state).items() if k in before and k != hid(3) and v != before[k]} == set()  # the new order moves nothing
+    assert road(moved.state, "a")["rib"]["slots"] == 12 and {hid(7), hid(8), hid(9)} <= changed and len(changed) == 8  # a grew by six lots, and the lots beyond it moved out
+    assert (road(moved.state, "a")["lots"], road(moved.state, "a")["reserved"]) == (6, 6) and moved.state.annexes == kept.state.annexes
+    assert not [e for e in moved.state.doc["chronicle"] if "from" in e and e["event_id"] == len(moved.journal.events)]  # six houses, no split: the growth was for nothing
+
+
+def test_the_house_takes_the_lowest_empty_lot_of_its_road_so_the_other_lots_that_were_freed_stay_reserved():
+    h = road_a_is_full(waiting=(2, 5))  # h0002 (a mailbox) and h0005 (a wing) wait for h0010: slots 1 and 4 of a
+    slots = {k: h.state.doc["places"][lay.article_place(hid(k))]["slot"] for k in (2, 5)}
+    before = lot_records(h.state)
+    h.add(1, topic(1, 1, 1, 1))
+    state, event = h.state, len(h.journal.events)
+    assert slots == {2: 1, 5: 4} and state.doc["places"][lay.article_place(hid(10))]["slot"] == 1  # the lowest of the two lots that were freed
+    assert state.doc["places"][lay.reserved_place(road(state, "a")["rib"]["block"], 4)]["kind"] == "reserved"  # ... and the other one stays reserved
+    assert (road(state, "a")["lots"], road(state, "a")["reserved"], road(state, "a")["rib"]["slots"]) == (5, 1, 6)
+    assert {k: v for k, v in lot_records(state).items() if k != hid(10)} == {k: v for k, v in before.items() if k not in (hid(2), hid(5))}
+    entries = [e for e in state.doc["chronicle"] if e["event_id"] == event]
+    assert [(e["absorbed"], e["form"], e["left"]) for e in entries] == [(hid(2), "mailbox", "place:tag:a"), (hid(5), "wing", "place:tag:a")]  # in the order they arrived
+    assert [(annex_record(state, a)["form"], annex_record(state, a)["rank"]) for a in state.annexes] == [("mailbox", 1), ("wing", 1)] and hand_problems(state) == []
+
+
+def test_the_house_takes_an_earlier_hole_of_its_road_before_the_lot_that_a_house_that_waited_leaves():
+    h = road_a_is_full()
+    h.file(hid(1), "b")  # h0001 leaves slot 0 of a: a has an empty lot at the front, and h0003 stands on slot 2
+    before = lot_records(h.state)
+    assert (road(h.state, "a")["lots"], road(h.state, "a")["reserved"]) == (5, 1)
+    h.add(1, topic(1, 1, 1, 1))
+    state = h.state
+    assert state.doc["places"][lay.article_place(hid(10))]["slot"] == 0  # the lowest empty lot of the road, which is not the one that h0003 left
+    assert state.doc["places"][lay.reserved_place(road(state, "a")["rib"]["block"], 2)]["kind"] == "reserved"
+    assert (road(state, "a")["lots"], road(state, "a")["reserved"], road(state, "a")["rib"]["slots"]) == (5, 1, 6)
+    assert {k: v for k, v in lot_records(state).items() if k != hid(10)} == {k: v for k, v in before.items() if k != hid(3)} and hand_problems(state) == []
+
+
+@pytest.mark.parametrize("hole", [None, 4])
+@pytest.mark.parametrize("waiting", [(1,), (3,), (6,), (2, 5), (1, 6), (1, 2, 3)])
+def test_whichever_houses_of_the_road_wait_and_wherever_its_holes_are_the_house_takes_the_lowest_empty_lot_and_nothing_else_moves(waiting, hole):
+    h = road_a_is_full(waiting=waiting)
+    if hole is not None:
+        h.file(hid(hole), "b")  # a house that does not wait leaves a, which has an empty lot in front of the lots that will be freed
+    before, rib = lot_records(h.state), road(h.state, "a")["rib"]["slots"]
+    reserved = {q["slot"] for q in h.state.doc["places"].values() if q["kind"] == "reserved" and q["parent"] == "place:tag:a"}
+    freed = {h.state.doc["places"][lay.article_place(hid(k))]["slot"] for k in waiting}
+    h.add(1, topic(1, 1, 1, 1))
+    state = h.state
+    assert state.doc["places"][lay.article_place(hid(10))]["slot"] == min(reserved | freed) and road(state, "a")["rib"]["slots"] == rib == 6
+    assert {k: v for k, v in lot_records(state).items() if k != hid(10)} == {k: v for k, v in before.items() if k not in {hid(n) for n in waiting}}
+    assert set(state.annexes) == {hid(n) for n in waiting} and hand_problems(state) == [] and stability_violations(h.journal.events, h.journal.rule) == []
+
+
+def test_a_full_ring_does_not_open_a_lap_for_a_house_that_takes_the_place_of_one_that_leaves(monkeypatch):
+    def run(old):
+        h = Hand()
+        slots = h.state.doc["places"]["place:root"]["ring"]["slots"]
+        h.add(10)
+        h.add(1, annex_of=hid(slots + 1), annex_form="mailbox")  # h0011 waits for the house that comes after the ring is full
+        h.add(slots - 11)
+        full = (h, ring_cells(h.state), lot_records(h.state))
+        assert len(full[1]) == slots and laps_of(h.state.doc) == ["place:root"] and not [c for c in full[1].values() if c[0] != 0]  # the first lap is full
+        with monkeypatch.context() as patch:
+            if old:
+                patch.setattr(State, "do_add_item", placed_first)
+            h.add(1)
+        return full, h.state
+
+    (h, cells, before), state = run(old=False)
+    assert laps_of(state.doc) == ["place:root"] and ring_cells(state)[hid(len(cells) + 1)] == cells[hid(11)]  # no lap: the house stands in the slot of h0011
+    assert {k: v for k, v in lot_records(state).items() if k != hid(len(cells) + 1)} == {k: v for k, v in before.items() if k != hid(11)}
+    assert hand_problems(state) == [] and stability_violations(h.journal.events, h.journal.rule) == []
+    (_h, cells, _before), state = run(old=True)
+    assert len(laps_of(state.doc)) == 2 and ring_cells(state)[hid(len(cells) + 1)] == (1, 0)  # the control: a lap opens for a house that only takes the place of one that leaves
+
+
+def test_the_order_changes_nothing_when_the_house_that_waited_is_not_on_the_road_the_house_lands_on(monkeypatch):
+    def run(old):
+        h = road_a_is_full(waiting=())
+        h.add(1, topic(2, 1, 1, 1), annex_of=hid(11), annex_form="wing")  # h0010 waits on the ring road, where no road takes it
+        with monkeypatch.context() as patch:
+            if old:
+                patch.setattr(State, "do_add_item", placed_first)
+            h.add(1, topic(1, 1, 1, 1))  # h0011 lands on a, which is full, and h0010 is absorbed
+        return h.state
+
+    new, old = run(old=False), run(old=True)
+    assert lay.render(new.city()) == lay.render(old.city())
+    assert road(new, "a")["rib"]["slots"] == 12 and new.annexes == {hid(10): {"parent": hid(11), "form": "wing"}}  # (a grows for the seventh house, as it always did)
+    absorbed = next(e for e in new.doc["chronicle"] if "absorbed" in e)
+    opened = [e for e in new.doc["chronicle"] if "from" in e and e["event_id"] == absorbed["event_id"]]
+    assert opened and all(e["n"] > absorbed["n"] for e in opened)  # the roads that the rule opens for the seven houses of a are entries after the absorption: it is part of the arrival
 
 
 # --------------------------------------------------------------------------------------- a link learned later ----

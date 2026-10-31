@@ -40,7 +40,10 @@ There is no library to plan from, so the plan grows with the world and never cha
   an annex        an item that exists for another item (`annex_of` and `annex_form` of an item, or the event `annex`) is no house: it has no lot and no road, and stands beside its
                   house as a wing or a mailbox (bibliopolis.world: `put_annex`). An item whose house stands is an annex at once; one whose house has not arrived is an ordinary
                   house that waits (its item says `annex_of`), and when the house arrives every house that waited for it is ABSORBED: it leaves its lot (a lot of a road stays
-                  reserved, a lot of the ring leaves nothing) and becomes an annex, and every other house keeps its lot. The event `annex` does the same for a link learned later.
+                  reserved, a lot of the ring leaves nothing) and becomes an annex, and every other house keeps its lot. The lots of the houses that waited are freed FIRST, in the
+                  order they arrived, then the house is placed (the lowest empty lot of its road, the first free slot of the ring in fill order: one of the lots just freed, when it is
+                  the first), then each annex record and its entry `absorbed` are written, and only then is the place looked at under the rule `auto`: a road that is full does not grow,
+                  nor a ring open a lap, for a house that takes the place of one that leaves. The event `annex` does the same for a link learned later.
                   The annexes are `State.annexes`; `State.items` and `State.road_of` are the houses that stand on a lot, so a count of `max` and `min` never has them. An annex stands
                   where its house stands: a move, a merge, a split or a new radius needs nothing for it, and an undo is the fold of the log without the event, as for every event.
 """
@@ -208,13 +211,22 @@ class HandWorld(zw.World):
                               "count_before": before, "count_after": before - len(lots)})
         self.add_houses(place, [{"article": lot["article"], "tag": key, "seq": lot["seq"]} for lot in lots], trigger)
 
-    def absorb(self, house: str, parent: str, form: str, trigger: str) -> None:
-        """A house that stands on a lot becomes an annex of the house `parent` (a `form`: wing or mailbox): its lot is freed (a lot of a road stays reserved, a lot of the ring leaves
-        nothing), its record is the annex record (it keeps its arrival number) and one entry `absorbed` of the chronicle says where it was."""
+    def leave(self, house: str) -> dict:
+        """The house `house` leaves its lot, to stand beside another house as an annex: the lot is freed (a lot of a road stays reserved, a lot of the ring leaves nothing). Returns what
+        the entry of the chronicle needs of it, `{seq, street}`: its arrival number and the place it left."""
         lot = self.places.get(lay.article_place(house))
         self.free_lot(lot)
-        self.put_annex(house, parent, form, lot["seq"])
-        self.note(trigger, absorbed=house, parent=parent, form=form, left=lot["street"])
+        return {"seq": lot["seq"], "street": lot["street"]}
+
+    def stand_beside(self, house: str, parent: str, form: str, left: dict, trigger: str) -> None:
+        """The house `house`, which has left its lot (`leave`), stands beside the house `parent` (which stands on a lot) as a `form`, wing or mailbox: its annex record (it keeps its arrival
+        number) and one entry `absorbed` of the chronicle, which says where it was."""
+        self.put_annex(house, parent, form, left["seq"])
+        self.note(trigger, absorbed=house, parent=parent, form=form, left=left["street"])
+
+    def absorb(self, house: str, parent: str, form: str, trigger: str) -> None:
+        """A house that stands on a lot becomes an annex of the house `parent` at once (`leave`, then `stand_beside`): the event `annex`, where nothing is placed in between."""
+        self.stand_beside(house, parent, form, self.leave(house), trigger)
 
     def file_house(self, house: str, key: str, trigger: str) -> None:
         """Move one house onto the road `key`; its lot stays empty behind it."""
@@ -517,19 +529,12 @@ class State:
                           house=house, parent=parent, above=above)
         return parent in self.items
 
-    def absorb_waiting(self, w: HandWorld, house: dict) -> list[str]:
-        """The houses that waited for the house `house` (houses whose item says `annex_of` this one) are absorbed, in the order they arrived: each leaves its lot and stands beside it,
-        with one entry `absorbed` of the chronicle. A house that is an annex itself takes none (no annex is of an annex): they stay houses. Returns the ids of the houses absorbed."""
-        if self.annex_of(house["id"]) is not None:
+    def waiting_for(self, item: dict) -> list[str]:
+        """The houses that wait for the arriving item `item` (houses whose item says `annex_of` this one), in the order they arrived: they are absorbed when it arrives. None of them when the
+        item is an annex itself, or waits as one (no annex is of an annex): the houses that waited for it stay houses."""
+        if item.get("annex_of") is not None:
             return []
-        out = []
-        for h in [h for h, it in self.items.items() if it.get("annex_of") == house["id"]]:
-            form = self.items[h]["annex_form"]
-            w.absorb(h, house["id"], form, "add_item")
-            del self.items[h], self.road_of[h]
-            self.annexes[h] = {"parent": house["id"], "form": form}
-            out.append(h)
-        return out
+        return [h for h, it in self.items.items() if it.get("annex_of") == item["id"]]
 
     def do_add_item(self, e: dict, p: dict) -> None:
         item = p["item"]
@@ -545,14 +550,23 @@ class State:
             self.effects[e["seq"]] = {"houses": [item["id"]], "roads": []}
             return
         land = landing(self, item) if self.rule["auto"] else None  # (a road only under `auto`; otherwise the ring road)
+        waited = self.waiting_for(item)  # (the houses that waited for this one: an item that has no `annex_of` of its own may have some)
         w, before = self.world(e), len(self.doc["chronicle"])
         w.seq += 1  # the arrival number: log order
         w.arrival_ids.add(item["id"])
+        # The houses that waited leave their lots FIRST, then this house is placed, then they stand beside it: the house may take a lot that one of them leaves (the lowest empty lot of its
+        # road, the first free slot of the ring in fill order), and a road that is full does not grow, nor a ring open a lap, nor do the roads beyond move, for a house that only takes the
+        # place of one that leaves. Every other house keeps its lot.
+        left = {h: w.leave(h) for h in waited}
         w.add_houses(zw.ROOT_PLACE if land is None else lay.tag_place(land), [{"article": item["id"], "tag": land, "seq": w.seq}], "add_item")
+        for h in waited:
+            form = self.items[h]["annex_form"]
+            w.stand_beside(h, item["id"], form, left[h], "add_item")
+            del self.items[h], self.road_of[h]
+            self.annexes[h] = {"parent": item["id"], "form": form}
         self.items[item["id"]] = item
         self.road_of[item["id"]] = land
-        touched, opened = [item["id"]], []
-        touched += self.absorb_waiting(w, item)  # (the houses that waited for this one: an item that has no `annex_of` of its own may have some)
+        touched, opened = [item["id"], *waited], []
         self.settle(w, e, land, touched, opened)
         self.commit(w, e, before)
         self.effects[e["seq"]] = {"houses": touched, "roads": opened}

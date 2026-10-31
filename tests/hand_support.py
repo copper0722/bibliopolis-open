@@ -758,11 +758,21 @@ def stability_violations(events: list[dict], rule: dict) -> list[str]:
             bad.append(f"event {e['seq']} ({e['kind']}) took other houses off their lots than {sorted(absorbed)}: {sorted({h for h in before_roads if h not in state.road_of} ^ absorbed)}")
         if e["kind"] == "add_item":
             house, cells = e["payload"]["item"]["id"], ring_cells(state)
-            if house in cells:  # it stands on the ring: where it was put, on the first free slot in fill order of the lowest lap that has one in the world before the event (a split that
-                want = first_free(laps_before, set(cells_before.values()))  # this event then makes frees lots of the group that leaves, and the house that stays keeps its own)
+            if house in cells:  # it stands on the ring: where it was put, on the first free slot in fill order of the lowest lap that has one in the world before the event, the lots of the
+                # houses that waited for it (absorbed: they leave BEFORE it is placed) counted free (a split that this event then makes frees lots of the group that leaves, and the house that stays keeps its own)
+                want = first_free(laps_before, {cell for h, cell in cells_before.items() if h not in absorbed})
                 if cells[house] != want:
                     bad.append(f"event {e['seq']} (add_item) put the house {house} on (lap, slot) {cells[house]}, not on the first free slot in fill order, {want}")
             new = [k for k in state.nodes if k not in before_nodes]
+            landed, place = state.road_of.get(house), lay.tag_place(state.road_of[house]) if state.road_of.get(house) is not None else None
+            was = before_doc["places"].get(place)
+            if landed is not None and not new and was is not None and "rib" in was:  # it stands on a road that stood, which no road was opened from: the lowest empty lot of its rib, the lots of the houses that
+                empty = {q["slot"] for q in before_doc["places"].values() if q["kind"] == "reserved" and q["parent"] == place}  # waited for it counted free, and a rib with one does not grow
+                empty |= {before_doc["places"][lay.article_place(h)]["slot"] for h in absorbed if before_roads.get(h) == landed}
+                mine = state.doc["places"][lay.article_place(house)]
+                if empty and (mine["slot"] != min(empty) or state.doc["places"][place]["rib"]["slots"] != was["rib"]["slots"]):
+                    bad.append(f"event {e['seq']} (add_item) put the house {house} on slot {mine['slot']} of {landed!r}, a rib of {state.doc['places'][place]['rib']['slots']} lots (it had {was['rib']['slots']}), "
+                               f"not on the lowest empty lot {min(empty)} of a rib that does not grow")
             if not auto and new:
                 bad.append(f"event {e['seq']} (add_item) opened roads without the rule auto: {new}")
             if any(not k.startswith("auto:") for k in new):

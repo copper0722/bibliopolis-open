@@ -141,7 +141,10 @@ a move, a merge, a split or a new radius needs nothing for it. `add_item` of suc
 (one entry `annex` in the chronicle). When that house is itself an annex, or an item that waits for its own house, it is refused (`annex_of_annex`; `annex_of_itself` for an item of itself). When the house has not
 arrived, the item is an ordinary house, on the ring road or where the rule `auto` lands it, and it waits: `State.items` holds it, and its item says `annex_of`. When a house arrives, every
 house that waited for it is **absorbed**, in the order they arrived: it leaves its lot (`free_lot`: a lot of a road stays reserved, a lot of the ring leaves nothing) and stands beside the
-house, with one entry `absorbed` of the chronicle each; **every other house keeps its lot, byte for byte**. A house that is an annex itself, or waits as one, takes none (no annex is of an annex): the houses that waited
+house, with one entry `absorbed` of the chronicle each; **every other house keeps its lot, byte for byte**. The lots of the houses that waited are freed FIRST, and the arriving house is
+placed after that: it takes the lowest empty lot of its road (on the ring, the first free slot in fill order), which is a lot just freed when that is the lowest, so a road that is full does not
+grow, nor a ring open a lap, nor do the roads beyond move, for a house that only takes the place of one that leaves (a lot that is freed and not taken stays reserved). The annex records and
+the entries `absorbed` come after the house is placed, in the order the houses arrived, and the rule `auto` looks at the place last. A house that is an annex itself, or waits as one, takes none (no annex is of an annex): the houses that waited
 for it stay houses. The event `annex` does the same for a link learned later: both items stand on a lot and differ, the house has no annex of its own and the parent is no annex, else it is
 refused (`annex_of_itself`, `house_is_annex`, `not_a_house`, `annex_of_annex`, `annex_parent_missing`, `annex_has_annexes`, in that order); it writes one entry `absorbed`. An item that stands beside a house is no
 house: `file` and `open_road` refuse it (`house_is_annex`), and so does `suggest_file`. The annexes of a house and a form are ranked 1, 2, ... by arrival (the arrival number it had when it
@@ -486,9 +489,10 @@ The TypeScript engine must give the same bytes as this one. What is easy to get 
 - **Rounding.** The `confidence` of `suggest_file` is `round(count / whole, 2)` with Python's `round`, which rounds a half to the even digit on the binary value: 1/8 is 0.12, not 0.13.
 - **Annexes.** An annex has the record `{kind, article, parent, form, rank, seq}` (the keys in that order) at `place:article:<id>`, `parent` being `place:article:<house>`. `rank` is the place of the
   annex among those of its house and form by `seq` (its own arrival number, also for a house that was absorbed), from 1, and the annexes of the group are ranked again whenever one joins (an annex
-  with a lower `seq` than the ones that stand takes the first rank). `add_item` places the house first, then absorbs the houses that waited for it (items of the state in arrival order whose
-  `annex_of` is the house, unless the house is an annex or waits as one), each by `free_lot` and one entry `absorbed`, and only then looks at the place under the rule `auto`. An entry has
-  `event_id` the `seq` of the event and `seq` the arrivals so far. The refusals are tried in the order that "What the fold does" lists them. The lot of an absorbed house is freed like the lot of a
+  with a lower `seq` than the ones that stand takes the first rank). `add_item` first frees the lots of the houses that waited for the house (items of the state in arrival order whose
+  `annex_of` is the house, unless the house is an annex or waits as one), each by `free_lot`; then places the house on the lowest empty lot of its road, or the first free slot of the ring in fill
+  order, which may be a lot just freed (so a full road does not grow, nor a full ring open a lap); then writes, for each house that waited in arrival order, its annex record and one entry `absorbed`;
+  and only then looks at the place under the rule `auto`. An entry has `event_id` the `seq` of the event and `seq` the arrivals so far. The refusals are tried in the order that "What the fold does" lists them. The lot of an absorbed house is freed like the lot of a
   house that is filed away; the lots of every other house, and the numbers of the arrivals, stay. A new radius puts the lots again and carries the annex records over as they are.
 - **Order.** The roads, the items and the houses are kept in the order of the log; "in arrival order" and "in the order the roads were opened" mean that order, and an object is written with its
   keys in the order of this page (the chronicle entries, the events, the world file).

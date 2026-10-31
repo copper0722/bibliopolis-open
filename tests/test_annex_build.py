@@ -140,6 +140,22 @@ def test_a_road_holds_max_houses_whatever_annexes_they_have_and_the_next_house_s
     assert [e["label"] for e in again["world"]["chronicle"] if "from" in e] == ["A"] and len(annexes_of(again)) == 30  # the thirteenth house splits it
 
 
+@pytest.mark.parametrize("mode", MODES)
+def test_a_waiting_annex_never_has_a_lot_so_a_full_ring_opens_no_lap_for_the_house_it_waits_for(mode):
+    """In a build an annex that waits for its house never stood on a lot: there is no lot to free and no order of freeing and placing to get wrong. A ring that the houses fill exactly
+    opens no lap when the house arrives after its annex, and the city is the city of the houses (the fold of a world built by hand had to free the lot of a waiting house before it
+    placed the house it waits for: tests/test_annex_hand.py, "the order of an arrival that absorbs"). The control: one more house opens a lap, so the ring was full."""
+    tree, _ = make_tree({"r": T(0)})
+    slots = city([art(1, [])], tree, mode=mode)["places"]["place:root"]["ring"]["slots"]
+    houses = [art(i, []) for i in range(1, slots)]  # slots - 1 houses; the last is the house that the annex waits for
+    annex, parent = art(slots, [], annex_of=f"a{slots + 1:05d}", annex_form="wing"), art(slots + 1, [])
+    doc = city([*houses, annex, parent], tree, mode=mode)
+    assert doc["world"]["houses"] == slots and "lanes" not in doc["places"]["place:root"] and list(annexes_of(doc)) == [annex["id"]]
+    assert without_annexes(doc) == city([*houses, parent], tree, mode=mode)  # the same city as the one of the houses, to the byte of its document
+    control = city([*houses, parent, art(slots + 2, [])], tree, mode=mode)  # (one more house than the ring holds)
+    assert control["places"]["place:root"]["lanes"] == ["place:root:lap:2"]
+
+
 # ------------------------------------------------------------------------- calls: what a world does not depend on ----
 def world_for(items, tree, mode="grow", **rule):
     tv = TreeView(tree)
