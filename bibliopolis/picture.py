@@ -11,6 +11,10 @@ ring 1 has its own colour. Units are cells; x east, z south, north up. Pure text
 The ring road round the plaza is drawn like any road (a closed circle, class 大道, every lap of it); its houses are drawn like any house, as the polar cells of the
 lane of their lap on both sides of it, in a colour of their own (the ring is no sector of ring 1), and its name stands at its north point. A sector of ring 1 is named
 once a road of it exists.
+
+An item that exists for another item (an annex) has no lot, so it is drawn on its house: a wing is a small box against the right wall of the house, at most a third of its
+footprint, and the wings of a house run back along the wall from the front in the order they arrived (four are drawn, and above four a plate at the back shows the total); a
+mailbox is a small mark at the gate, one for each. From a scale of ANNEX_PIXELS pixels to the cell down they merge into their houses and are not drawn.
 """
 
 from __future__ import annotations
@@ -18,7 +22,7 @@ from __future__ import annotations
 import math
 import re
 import unicodedata
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 CLASS_STROKE = {"大道": 2.6, "路": 1.7, "巷": 1.1, "弄": 0.8}
 CLASS_COLOR = {"大道": "#3b3b45", "路": "#55556a", "巷": "#74748c", "弄": "#8f8fa3"}
@@ -34,6 +38,10 @@ RING_COLOR = ("#f1e3b8", "#8a6d1f")  # fill and edge of the houses of the ring r
 PLAZA = "place:plaza"
 TITLE = "Bibliopolis 文獻城邦"
 PAD = 24.0  # cells of sea round the land: room for the names of ring 1
+ANNEX_PIXELS = 16.0  # pixels to the cell from which the annexes are drawn: below it a wing and a mailbox are smaller than a pixel and merge into their house
+WING_DEPTH, WING_LENGTH, WING_GAP, WINGS_DRAWN = 0.3, 0.2, 0.04, 4  # cells: a wing is 0.3 deep (into the cell from its right wall) and 0.2 long (along the wall); four make 0.24 of the cell
+MAIL_SIZE, MAIL_GAP, MAILS_PER_ROW, MAIL_ROWS = 0.1, 0.03, 5, 7  # cells: a mailbox is a square, in rows of five from the front of the house toward its back (35 are drawn at most)
+MAILBOX_COLOR = ("#fff7d6", "#6b4f0f")  # fill and edge of a mailbox
 
 Frame = tuple[float, float, float, float]  # (x0, x1, z0, z1) in cells
 Box = tuple[float, float, float, float]
@@ -111,7 +119,7 @@ def extent(city: dict, pad: float = PAD) -> Frame:
 class Look:
     """How a picture is drawn, in cells: the height of the names of ring 1 (`big`), of ring 2 (`small`; 0 draws none) and of the plaza (`plaza`), the
     width of the white edge of a name (`halo`), the decimals of a coordinate (`digits`: 2 suits a picture of 1800 pixels, 1 a panel of 400) and how thick
-    the roads are (`line`, 1 for the widths of CLASS_STROKE)."""
+    the roads are (`line`, 1 for the widths of CLASS_STROKE) and the scale in pixels to the cell (`pixels`; None when it is not known, and the annexes are drawn)."""
 
     big: float = 7.0
     small: float = 3.4
@@ -119,15 +127,23 @@ class Look:
     halo: float = 0.9
     digits: int = 2
     line: float = 1.0
+    pixels: float | None = None
 
     @staticmethod
     def of_pixels(scale: float, big: float, small: float, plaza: float, digits: int = 1) -> Look:
         """The look that makes the names `big`, `small` and `plaza` pixels high at `scale` pixels to the cell, and keeps a road from growing thicker than it
-        is at 3.5 pixels to the cell (a picture of a small city is drawn at a large scale)."""
-        return Look(big / scale, small / scale, plaza / scale, max(0.2, big / scale * 0.13), digits, min(1.0, 3.5 / scale))
+        is at 3.5 pixels to the cell (a picture of a small city is drawn at a large scale). `pixels` is that scale: the annexes are drawn from ANNEX_PIXELS up."""
+        return Look(big / scale, small / scale, plaza / scale, max(0.2, big / scale * 0.13), digits, min(1.0, 3.5 / scale), scale)
 
 
 # ------------------------------------------------------------------------------------------------------ the city ----
+def group_colors(i: int) -> tuple[str, str]:
+    """Fill and edge of the houses of a group: a sector of ring 1 by its place in the document, or the ring road (-1), which is no sector."""
+    if i == -1:
+        return RING_COLOR
+    return f"hsl({HUES[i % len(HUES)]},45%,72%)", f"hsl({HUES[i % len(HUES)]},40%,45%)"
+
+
 def draw_lots(city: dict, add, look: Look, highlight: set[str] | None = None) -> None:
     """Houses filled, empty lots outlined (a document that lists them). `highlight` (item ids) are drawn on top in the accent colour."""
     places = city["places"]
@@ -152,16 +168,87 @@ def draw_lots(city: dict, add, look: Look, highlight: set[str] | None = None) ->
         else:
             g[p["kind"]].append(path)
     for i in sorted(groups):
-        if i == -1:
-            fill, edge = RING_COLOR
-        else:
-            fill, edge = f"hsl({HUES[i % len(HUES)]},45%,72%)", f"hsl({HUES[i % len(HUES)]},40%,45%)"
+        fill, edge = group_colors(i)
         if groups[i]["reserved"]:
             add(f'<path d="{"".join(groups[i]["reserved"])}" fill="none" stroke="{edge}" stroke-width="0.12" opacity="0.8"/>')
         if groups[i]["lot"]:
             add(f'<path d="{"".join(groups[i]["lot"])}" fill="{fill}" stroke="{edge}" stroke-width="0.08"/>')
     if marked:
         add(f'<path d="{"".join(marked)}" fill="{HIGHLIGHT[0]}" stroke="{HIGHLIGHT[1]}" stroke-width="0.14"/>')
+
+
+def box_path(x: float, z: float, facing: float, boxes: list[tuple[float, float, float, float]], digits: int) -> str:
+    """Path data of boxes in the frame of a house: `(a0, a1, b0, b1)` in cells from the centre of its cell, `a` along its front (the way it faces) and `b` to its right."""
+    r = math.radians(facing)
+    ux, uz, vx, vz = math.sin(r), -math.cos(r), math.cos(r), math.sin(r)
+    return "".join("M" + "L".join(f"{num(x + a * ux + b * vx, digits)},{num(z + a * uz + b * vz, digits)}" for a, b in ((a0, b0), (a1, b0), (a1, b1), (a0, b1))) + "Z"
+                   for a0, a1, b0, b1 in boxes)
+
+
+def wing_boxes(drawn: int) -> list[tuple[float, float, float, float]]:
+    """The boxes of the first `drawn` wings of a house, in its frame: against the right wall (`b` from 0.5 - WING_DEPTH to 0.5), the first at the front and the others behind it."""
+    out = []
+    for k in range(drawn):
+        front = 0.5 - 0.04 - k * (WING_LENGTH + WING_GAP)
+        out.append((front - WING_LENGTH, front, 0.5 - WING_DEPTH, 0.5))
+    return out
+
+
+def mailbox_boxes(drawn: int) -> list[tuple[float, float, float, float]]:
+    """The boxes of the first `drawn` mailboxes of a house, in its frame: rows of MAILS_PER_ROW along the front from its left wall, the first row at the gate, the next ones behind it."""
+    out = []
+    for k in range(drawn):
+        row, col = divmod(k, MAILS_PER_ROW)
+        front, left = 0.5 - 0.03 - row * (MAIL_SIZE + MAIL_GAP), -0.5 + 0.06 + col * (MAIL_SIZE + MAIL_GAP)
+        out.append((front - MAIL_SIZE, front, left, left + MAIL_SIZE))
+    return out
+
+
+PLATE = (-0.46, -0.28, -0.46, 0.14)  # the box of the number plate of a house with more wings than are drawn, in its frame: at the back, left of the wings
+
+
+def draw_annexes(city: dict, add, look: Look) -> None:
+    """The annexes of the document on their houses (see the module docstring). Wings take the edge colour of the district of their house, mailboxes have a colour of their own, and a
+    house with more than WINGS_DRAWN wings has a plate with the number of them. Nothing is drawn at a scale below ANNEX_PIXELS. Houses are taken in the order of their ids."""
+    if look.pixels is not None and look.pixels < ANNEX_PIXELS:
+        return
+    places = city["places"]
+    beside: dict[str, list[tuple[int, str, dict]]] = {}
+    for pid, p in places.items():
+        if p["kind"] == "annex":
+            beside.setdefault(p["parent"], []).append((p["rank"], pid, p))
+    if not beside:
+        return
+    index = {r["place"]: i for i, r in enumerate(city["composition"]["ring1"])}
+    wings: dict[int, list[str]] = {}
+    plates: dict[int, list[tuple[str, float, float, int]]] = {}
+    marks: list[str] = []
+    digits = look.digits + 1  # (a wing is a fifth of a cell: a picture that keeps two decimals would show its shape in whole hundredths)
+    for parent in sorted(beside):
+        house = places[parent]
+        pos, facing = house["position"], house.get("facing", 0.0)
+        group = -1 if ring_lot(places, house) else index[ring1_place(places, house["parent"])]
+        mine = sorted(beside[parent], key=lambda t: t[:2])
+        wing = [p for _rank, _pid, p in mine if p["form"] == "wing"]
+        mail = [p for _rank, _pid, p in mine if p["form"] == "mailbox"]
+        if wing:
+            wings.setdefault(group, []).append(box_path(pos["x"], pos["z"], facing, wing_boxes(min(len(wing), WINGS_DRAWN)), digits))
+        if len(wing) > WINGS_DRAWN:
+            a0, a1, b0, b1 = PLATE
+            r, (a, b) = math.radians(facing), ((a0 + a1) / 2, (b0 + b1) / 2)
+            plates.setdefault(group, []).append((box_path(pos["x"], pos["z"], facing, [PLATE], digits), pos["x"] + a * math.sin(r) + b * math.cos(r),
+                                                 pos["z"] - a * math.cos(r) + b * math.sin(r), len(wing)))
+        if mail:
+            marks.append(box_path(pos["x"], pos["z"], facing, mailbox_boxes(min(len(mail), MAILS_PER_ROW * MAIL_ROWS)), digits))
+    for group in sorted({*wings, *plates}):
+        edge = group_colors(group)[1]
+        if group in wings:
+            add(f'<path d="{"".join(wings[group])}" fill="{edge}" stroke="{edge}" stroke-width="0.03"/>')
+        for path, x, z, total in plates.get(group, ()):
+            add(f'<path d="{path}" fill="#ffffff" stroke="{edge}" stroke-width="0.02"/>')
+            add(f'<text x="{num(x, digits)}" y="{num(z + 0.06, digits)}" font-size="0.16" text-anchor="middle" fill="{INK}">{total}</text>')
+    if marks:
+        add(f'<path d="{"".join(marks)}" fill="{MAILBOX_COLOR[0]}" stroke="{MAILBOX_COLOR[1]}" stroke-width="0.015"/>')
 
 
 def draw_roads(city: dict, add, look: Look) -> None:
@@ -286,6 +373,7 @@ def draw_city(city: dict, add, look: Look, highlight: set[str] | None = None) ->
         add(f'<path d="{polyline(poly, look.digits)}Z" fill="{LAND}" stroke="{SHORE}" stroke-width="0.6" stroke-linejoin="round"/>')
     draw_lots(city, add, look, highlight)
     draw_roads(city, add, look)
+    draw_annexes(city, add, look)  # (after the roads: a road is drawn wider than its lane and would cover the gate of a house)
     add(f'<circle cx="0" cy="0" r="{num(city["places"][PLAZA]["radius"])}" fill="#fff7d6" stroke="#8a6d1f" stroke-width="0.9"/>')
     return draw_labels(city, add, look)
 
@@ -340,7 +428,8 @@ def stats_line(city: dict, labels: tuple[int, int]) -> str:
     """The line of numbers under the title. A measure is printed as the float it is (`55.0`), whether the file it was read from has `55.0` or `55` (the canonical form of a
     document writes the second): a picture drawn from a city file has the same bytes as the picture of the city."""
     comp, m = city["composition"], city["composition"]["measure"]
-    text = (f'{comp["buildings"]} houses ({m["ring_lots"]} on the ring road) on {comp["streets"]["total"]} roads; '
+    annexes = sum(1 for p in city.get("places", {}).values() if p.get("kind") == "annex")  # (items that exist for another item: buildings, but no houses)
+    text = (f'{comp["buildings"] - annexes} houses{f" and {annexes} annexes" if annexes else ""} ({m["ring_lots"]} on the ring road) on {comp["streets"]["total"]} roads; '
             f'the farthest house is {float(m["max_radius"])} cells from the centre, the mean walk {float(m["walk_mean"])}, the longest {float(m["walk_longest"])}')
     if labels[1]:
         text += f"; road names drawn: {labels[0]} of {labels[1]}"
@@ -358,6 +447,7 @@ def render(city: dict, title: str | None = None, size: int = 1800, highlight: se
     z0, z1 = min([z0] + [b[1] - 2.0 for b in boxes]), max([z1] + [b[3] + 2.0 for b in boxes])
     w, h = x1 - x0, z1 - z0
     scale = size / max(w, h)
+    look = replace(look, pixels=scale)
     head, foot = 60, 36
     height = h * scale + head + foot
     out: list[str] = []

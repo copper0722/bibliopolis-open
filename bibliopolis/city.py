@@ -60,11 +60,14 @@ def build_city(library: dict, tree: dict, *, mode: str = GROW, max_houses: int =
 def summary(doc: dict) -> dict:
     """The numbers of a city document: houses, roads (a road is counted once, whatever ribs it has; the ring road counts as one), the houses on the ring road (`ring`), splits,
     and the streets that are over now (a road or the ring road that holds more than `max` houses and cannot split). The chronicle remembers every road that was ever
-    over; a road that a later split brought back under `max` is in the chronicle and no longer counts here."""
+    over; a road that a later split brought back under `max` is in the chronicle and no longer counts here. A city that has annexes (items that exist for another item, which
+    are no houses) says how many in `annexes`, and any other has no such key."""
     streets = doc["composition"]["streets"]
     chronicle = doc["world"]["chronicle"]
+    annexes = sum(1 for p in doc["places"].values() if p["kind"] == "annex")
     return {"mode": doc["world"]["mode"], "houses": doc["world"]["houses"], "roads": streets["total"], "ring": doc["composition"]["measure"]["ring_lots"],
-            "splits": sum(1 for e in chronicle if "from" in e), "over": sum(1 for p in doc["places"].values() if p["kind"] == "street" and p.get("over"))}
+            "splits": sum(1 for e in chronicle if "from" in e), "over": sum(1 for p in doc["places"].values() if p["kind"] == "street" and p.get("over")),
+            **({"annexes": annexes} if annexes else {})}
 
 
 _DAY = re.compile(r"\d{4}-\d\d-\d\d")
@@ -73,7 +76,8 @@ _DAY = re.compile(r"\d{4}-\d\d-\d\d")
 def chronicle_lines(doc: dict, limit: int | None = None) -> list[str]:
     """The chronicle of a city document as sentences, oldest first, one per entry (the first `limit` of them if given): the house whose arrival caused it, the
     day it was added, and what happened. Every number comes from the entry or from the rule of the document. (In a world built by hand an entry says the event
-    that wrote it, and there are entries for a house filed, a road renamed or moved, avenues merged, an undo and a change of rule.)"""
+    that wrote it, and there are entries for a house filed, a road renamed or moved, avenues merged, an undo and a change of rule. An item that exists for another item has an
+    entry when it stands beside its house, and a house that stood on a lot of its own has one when it becomes such an item.)"""
     places = doc["places"]
     rule = doc["world"]["districts"]
 
@@ -118,6 +122,10 @@ def chronicle_lines(doc: dict, limit: int | None = None) -> list[str]:
             lines.append(f"{when}: the ring road {name(e['resized'], False)} {radius}{branches}; {len(e['houses'])} houses are put again, in the order they stood.")
         elif "undone" in e:
             lines.append(f"{when}: event {e['undone']} ({e['of']}) is undone.")
+        elif "annex" in e:
+            lines.append(f"{when}: {e['annex']} stands beside the house {e['parent']} as a {e['form']}.")
+        elif "absorbed" in e:
+            lines.append(f"{when}: the house {e['absorbed']} leaves {name(e['left'], False)} and stands beside the house {e['parent']} as a {e['form']}.")
         else:
             r = e["rule"]
             lines.append(f"{when}: the rule is now {r['max']} houses at most and {r['min']} at least for a new road, {r['branches']} branches to a road, auto {'on' if r.get('auto') else 'off'}.")

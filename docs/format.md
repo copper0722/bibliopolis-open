@@ -116,7 +116,7 @@ writes from a world built by hand is the same document, with `world.mode` `hand`
 | `generator` | `{tool, version, input}` |
 | `composition` | the counts: see below |
 | `geometry`, `kinds`, `roads_kinds` | notes in words on the units and on every kind of place and road |
-| `counts` | places by kind |
+| `counts` | places by kind (`annex` is there only when the city has an annex) |
 | `world` | the rule, the mode and the chronicle: see below |
 | `roads` | the road network, by road id |
 | `coast` | `{buffer, tolerance, polygons}`: the outline of the land. Each polygon is a list of `[x, z]` corners. It is drawn on a grid of one cell, and a city whose grid would hold more than 8388608 cells (its farthest lot or road more than 1441 cells from the town hall) has none: it is refused with the id `city_too_large` ([world.md](world.md), "A city is too large to draw"). |
@@ -124,24 +124,25 @@ writes from a world built by hand is the same document, with `world.mode` `hand`
 
 ### `composition`
 
-`home_max`, `trunk_min` (the numbers the plan was cut with), `articles` = `buildings` (the houses in the document), `reserved_lots`
+`home_max`, `trunk_min` (the numbers the plan was cut with), `articles` = `buildings` (the houses in the document and its annexes: every article is one building), `reserved_lots`
 (empty lots in the document: always 0 here), `ring1` (every ring-1 sector: `{place, label, weight, from, to, span}`, degrees; a world built by hand ([world.md](world.md)) adds `axis`, the bearing of the spoke, which lies in the sector and need not be its middle), `streets`
 (`{total, containers, leaves, trunks, groups, spokes, lanes, continuations, ring}`: a road is one record, and the ring road counts as one
 street, its laps being the only continuations (a document of version 0.3 or before may have more: a continuation rib of a road); `ring` is the number of street records of shape `ring`, laps included) and `measure` (`lots`, `land_area`, `max_radius`, the
-walk from the plaza to the doors, `streets_by_class`, `ring_lots`, the houses on the ring road, ...). Every house is on the surface, and the measures count them all.
+walk from the plaza to the doors, `streets_by_class`, `ring_lots`, the houses on the ring road, ...). Every house is on the surface, and the measures count them all. `lots` counts
+the houses, which are the lots, and so does `world.houses`: an annex has no lot.
 
 ### `world`
 
 | key | holds |
 |---|---|
 | `format`, `zoning_version`, `mode` | `"world/1"`, the name of the rule set, and `"grow"` or `"mirror"` |
-| `seq` | the number of items that arrived |
-| `houses`, `unbuilt` | the houses in the document, the empty lots the world holds |
+| `seq` | the number of items that arrived (an item that exists for another item arrives too) |
+| `houses`, `unbuilt` | the houses in the document (the lots), the empty lots the world holds |
 | `districts` | the rule: `{max, min, extract: "largest", count: "direct"}` |
 | `chronicle` | what happened, in order: see below |
 | `notes` | the meaning of the fields in words |
 
-A **chronicle** entry is either a split or an over, numbered `n` = 1, 2, ... in the order they happened:
+A **chronicle** entry is a split, an over, or (in a city that has annexes) an annex, numbered `n` = 1, 2, ... in the order they happened:
 
 ```json
 {"n": 1, "event_id": null, "seq": 41, "trigger": "arrival", "from": "place:root", "to": "place:tag:computing", "label": "Computing",
@@ -149,9 +150,15 @@ A **chronicle** entry is either a split or an over, numbered `n` = 1, 2, ... in 
 {"n": 19, "event_id": null, "seq": 575, "trigger": "arrival", "over": "place:tag:networks", "count": 41, "at": "2026-06-02"}
 ```
 
+```json
+{"n": 20, "event_id": null, "seq": 601, "trigger": "arrival", "annex": "item-0601", "parent": "item-0042", "form": "wing", "at": "2026-06-03"}
+```
+
 `seq` is the arrival number of the item that caused it, `at` its `added_at` as written in the library, `houses` the ids of the items that moved,
 `count_before` and `count_after` the houses on the road `from` before the split and after it. `event_id` is always null here and `trigger` always
-`"arrival"` (the keys are the ones a city with a record of events fills in).
+`"arrival"` (the keys are the ones a city with a record of events fills in). An `annex` entry says that the item `annex` stands beside its house `parent` as a `form`
+(see "An item that exists for another item" below). It is caused by the arrival of the item itself when its house has arrived, and else by the arrival of the house, which
+the annex waited for.
 
 ### `places`
 
@@ -161,6 +168,10 @@ Every place has a `kind`.
 - **`lot`**: one house. `{article, parent, order, slot, position, facing, seq}`. `article` is the item id, `parent` the rib it stands in (its road; for a house on the ring road, its lap), `slot` its number in the rib (the lowest empty one is used first; on a lap of the ring road, the first empty one in the fill order of the lap, see [engine.md](engine.md), "The ring road"), `seq` the arrival number,
   `facing` a bearing in degrees.
 - **`reserved`**: an empty lot (only in a document made with reserved lots; `build` does not).
+- **`annex`**: an item that exists for another item (below). `{article, parent, form, rank, seq}`. It is no house: it has no lot, no position, no slot and no address, and it stands
+  where its house stands. `article` is the item id (the place is `place:article:<item id>`, as for a house), `parent` the place of the lot of the house it stands beside, `form` is
+  `wing` (against the side wall of the house) or `mailbox` (at its gate), `rank` numbers the annexes of one house and form in the order they arrived, 1 first, and `seq` is its
+  arrival number.
 - **`street`**: a road, in one of these `shape`s:
   - `trunk`: a road with a spoke of its own (every ring-1 road, and below it a heavy container road): `wedge`, `axis`, `s0`, `s_end`, `open`, `bands`, `road`, `lane`, `heavy`.
   - `group`: a road with roads below it; its own houses (if any) stand on the bands of its carrier trunk.
@@ -201,6 +212,14 @@ The polyline of an arc (`lane`, `arc`) from bearing `a` to `b` on a circle of ra
 
 The walk from the plaza to a door is the sum of the `at` of its road and its ancestors, and the distance along its own lane. The spokes of ring 1 start at the outer
 edge of the ring road (`s0`); the walk to a house on the ring goes out through the nearest gate to its lane, then along it.
+
+## An item that exists for another item
+
+Some items exist only for another item: a letter about one article, say. A library says so with `annex_of` and `annex_form`, and the engine does not guess it from `type`.
+Such an item is an *annex*. It has an arrival number like any item, but it is no house: no lot, no road, no address, so it takes no room on a road, weighs nothing in the cut and,
+in `mirror` mode, makes no road of the topics it is filed under. It stands where its house stands, as a wing against the side wall or as a mailbox at the gate, and the city
+document has a place of kind `annex` for it (above). A road that holds 40 houses holds them whatever annexes they have, and the number of articles of a city is its houses and its
+annexes. An annex that arrives before its house waits for it, and a replay that stops before the house has no record of the annex. The rules are in [engine.md](engine.md), "Annexes".
 
 ## Two modes
 

@@ -41,7 +41,7 @@ def sample():
 
 def test_every_complete_json_example_of_the_format_page_loads_through_the_reader():
     libraries, trees, entries = examples()
-    assert len(libraries) >= 1 and len(trees) >= 1 and len(entries) == 2  # the library, the tree, and the two chronicle entries
+    assert len(libraries) >= 1 and len(trees) >= 1 and len(entries) == 3  # the library, the tree, and the three chronicle entries: a split, an over and an annex
     for tree in trees:
         checked = inputs.read_tree(tree)
         assert len(checked["nodes"]) == len(tree["nodes"])
@@ -63,6 +63,21 @@ def test_the_chronicle_entries_of_the_format_page_have_the_keys_the_engine_write
     assert list(shown_split) == list(split) and list(shown_over) == list(over)  # the same keys in the same order
     assert (shown_split["trigger"], shown_split["event_id"], shown_over["trigger"], shown_over["event_id"]) == ("arrival", None, "arrival", None)
     assert shown_split["seq"] == split["seq"] == 41 and shown_split["from"] == split["from"] and shown_split["to"] == split["to"]
+
+
+def test_the_annex_entry_and_the_annex_place_of_the_format_page_have_the_keys_the_engine_writes():
+    from support import T, art, make_tree
+
+    tree, items = make_tree({"med": T(3, a=T(2))})
+    items += [art(10, [], annex_of="a00002", annex_form="wing")]
+    doc = bibliopolis.build_city({"items": items}, tree)
+    entry = next(e for e in doc["world"]["chronicle"] if "annex" in e)
+    shown = next(e for e in examples()[2] if "annex" in e)
+    assert list(shown) == list(entry) and (shown["trigger"], shown["event_id"], shown["form"]) == ("arrival", None, "wing")
+    place = doc["places"]["place:article:a00010"]
+    assert list(place) == ["kind", "article", "parent", "form", "rank", "seq"] and place["parent"] == "place:article:a00002"
+    section = PAGE.split("- **`annex`**")[1].split("- **`street`**")[0]
+    assert all(f"`{key}`" in section for key in ("article", "parent", "form", "rank", "seq", "wing", "mailbox"))
 
 
 @pytest.mark.parametrize("mode", ["grow", "mirror"])

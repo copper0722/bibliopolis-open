@@ -16,6 +16,7 @@ from bibliopolis import layout as lay
 @pytest.fixture(scope="module")
 def real_city():
     tree, items = make_tree({"med": T(0, a=T(25), b=T(16)), "pub": T(14)})
+    items += [art(60 + k, [], annex_of=items[k % 3]["id"], annex_form="wing" if k % 4 else "mailbox") for k in range(9)]  # nine items that exist for the first three houses
     doc = json.loads(json.dumps(bibliopolis.build_city({"items": items}, tree)))
     doc["world"]["chronicle"].append({"n": 9, "seq": 9, "over": "place:tag:pub", "count": 41})  # an over entry as well as the split
     return doc
@@ -26,12 +27,25 @@ def worlds(mode):
     houses with no topic on the ring road. The rule is small (12 houses to a road) to get all of that from few houses."""
     tree, items = make_tree({"r": T(0, a=T(3, c=T(0, c1=T(14), c2=T(14)), d=T(10)), b=T(8, e=T(6), f=T(14)))})
     items += [art(900 + k, []) for k in range(110)]
+    on_road, on_ring = items[5]["id"], items[-1]["id"]
+    items += [art(1100 + k, [], annex_of=on_road, annex_form="wing") for k in range(6)] + [art(1110 + k, [], annex_of=on_road, annex_form="mailbox") for k in range(2)]
+    items += [art(1120, [], annex_of=on_ring, annex_form="wing"), art(1121, [], annex_of=on_ring, annex_form="mailbox")]
     doc = bibliopolis.build_city({"items": items}, tree, mode=mode, max_houses=12, min_houses=4, trunk_min=20)
     return json.loads(json.dumps(doc))
 
 
 def first_lot(doc):
     return next(pid for pid, p in doc["places"].items() if p["kind"] == "lot")
+
+
+def an_annex(doc):
+    """The id of the first annex (an item that exists for another item) of the document."""
+    return next(pid for pid, p in doc["places"].items() if p["kind"] == "annex")
+
+
+def an_entry(doc, key):
+    """The first entry of the chronicle that has `key`."""
+    return next(e for e in doc["world"]["chronicle"] if key in e)
 
 
 def a_street(doc, *keys):
@@ -112,7 +126,7 @@ MISTAKES = [
     ("a plaza with no name", lambda d: d["places"]["place:plaza"].update(label=3), "places['place:plaza'].label: must be a string"),
     ("a plaza with no position", lambda d: d["places"]["place:plaza"].pop("position"), "places['place:plaza']: position is missing"),
     ("a plaza position with no x", lambda d: d["places"]["place:plaza"].update(position={"z": 0}), "places['place:plaza'].position: must be {x, z}"),
-    ("a place of a kind nobody knows", lambda d: d["places"][first_lot(d)].update(kind="castle"), "must be an object whose kind is one of plaza, street, lot, reserved"),
+    ("a place of a kind nobody knows", lambda d: d["places"][first_lot(d)].update(kind="castle"), "must be an object whose kind is one of plaza, street, lot, reserved, annex"),
     ("a place that is a string", lambda d: d["places"].update({"place:odd": "x"}), "city.places['place:odd']: must be an object whose kind is one of"),
     ("a house with no position", lambda d: d["places"][first_lot(d)].pop("position"), ".position: must be {x, z}: two numbers"),
     ("a house at a position that is a word", lambda d: d["places"][first_lot(d)]["position"].update(x="far"), ".position: must be {x, z}: two numbers"),
@@ -123,6 +137,22 @@ MISTAKES = [
     ("a house with no item", lambda d: d["places"][first_lot(d)].pop("article"), "article is missing"),
     ("a house whose item is a list", lambda d: d["places"][first_lot(d)].update(article=["a"]), ".article: must be the item id (a string)"),
     ("a house that faces a word", lambda d: d["places"][first_lot(d)].update(facing="north"), ".facing: must be a bearing in degrees"),
+    ("an annex with no house", lambda d: d["places"][an_annex(d)].pop("parent"), "parent is missing"),
+    ("an annex whose house is a list", lambda d: d["places"][an_annex(d)].update(parent=["a"]), ".parent: must be the id of the house it stands beside"),
+    ("an annex whose house is not there", lambda d: d["places"][an_annex(d)].update(parent="place:nowhere"), "'place:nowhere' is not a house (the place of a lot)"),
+    ("an annex whose house is the plaza", lambda d: d["places"][an_annex(d)].update(parent="place:plaza"), "'place:plaza' is not a house (the place of a lot)"),
+    ("an annex whose house is a street", lambda d: d["places"][an_annex(d)].update(parent=a_street(d)), "is not a house (the place of a lot)"),
+    ("an annex whose house is an annex", lambda d: d["places"][an_annex(d)].update(parent=an_annex(d)), "is not a house (the place of a lot)"),
+    ("an annex of a form nobody knows", lambda d: d["places"][an_annex(d)].update(form="shed"), ".form: must be one of wing, mailbox, got 'shed'"),
+    ("an annex with no form", lambda d: d["places"][an_annex(d)].pop("form"), "form is missing (one of wing, mailbox)"),
+    ("an annex whose form is a list", lambda d: d["places"][an_annex(d)].update(form=["wing"]), ".form: must be one of wing, mailbox"),
+    ("an annex with a rank that is a word", lambda d: d["places"][an_annex(d)].update(rank="first"), ".rank: must be a whole number, 1 or more"),
+    ("an annex with rank 0", lambda d: d["places"][an_annex(d)].update(rank=0), ".rank: must be a whole number, 1 or more, got 0"),
+    ("an annex with a rank that is a fraction", lambda d: d["places"][an_annex(d)].update(rank=1.5), ".rank: must be a whole number, 1 or more"),
+    ("an annex with no rank", lambda d: d["places"][an_annex(d)].pop("rank"), "rank is missing (a whole number, 1 or more)"),
+    ("an annex with no item", lambda d: d["places"][an_annex(d)].pop("article"), "article is missing"),
+    ("an annex whose item is a list", lambda d: d["places"][an_annex(d)].update(article=["a"]), ".article: must be the item id (a string)"),
+    ("an annex with a position that is a word", lambda d: d["places"][an_annex(d)].update(position="here"), ".position: must be {x, z}: two numbers"),
     ("a street with no shape", lambda d: d["places"][a_street(d)].pop("shape"), "shape is missing"),
     ("a street with no address", lambda d: d["places"][a_street(d)].pop("address"), "address is missing"),
     ("a street whose address is empty", lambda d: d["places"][a_street(d)].update(address=[]), ".address: must be a list of names"),
@@ -178,6 +208,11 @@ MISTAKES = [
     ("a split with no new road", lambda d: d["world"]["chronicle"][0].pop("label"), "chronicle[0]: label is missing"),
     ("an over with no count", lambda d: d["world"]["chronicle"][-1].pop("count"), ": count is missing (a whole number)"),
     ("an over of a road that is a number", lambda d: d["world"]["chronicle"][-1].update(over=7), ".over: must be a place id (a string)"),
+    ("an entry of an annex whose item is a number", lambda d: an_entry(d, "annex").update(annex=7), ".annex: must be the id of the item (a string)"),
+    ("an entry of an annex with no house", lambda d: an_entry(d, "annex").pop("parent"), ": parent is missing (the id of its house (a string))"),
+    ("an entry of an annex of a form nobody knows", lambda d: an_entry(d, "annex").update(form="shed"), ".form: must be one of wing, mailbox, got 'shed'"),
+    ("an entry of an annex with no arrival", lambda d: an_entry(d, "annex").pop("seq"), ": seq is missing"),
+    ("an entry of an annex for arrival 0", lambda d: an_entry(d, "annex").update(seq=0), ".seq: must be a whole number, 1 or more"),
 ]
 
 
@@ -200,6 +235,7 @@ NUMBERS = [  # (the number, how to put a value there, what the message names)
     ("a point of a road", lambda d, v: next(iter(d["roads"].values())).update(points=[[0, 0], [v, 1]]), ".points: must be a list of at least two"),
     ("a bearing of a sector", lambda d, v: d["composition"]["ring1"][0].update({"from": v}), "ring1[0].from: must be a bearing in degrees"),
     ("the weight of a street", lambda d, v: d["places"][a_street(d)].update(weight=v), ".weight: must be a number"),
+    ("the position of an annex", lambda d, v: d["places"][an_annex(d)].update(position={"x": v, "z": 0}), ".position: must be {x, z}: two numbers"),
     ("the radius of a lane", lambda d, v: d["places"][a_street(d, "rib")]["rib"].update(band=0, s=v), ".rib.s: must be a number of at least 1"),
     ("the radius of the ring road", lambda d, v: d["places"][the_ring(d)]["ring"].update(radius=v), ".ring.radius: must be a number of at least 1"),
     ("a corner of the coast", lambda d, v: d["coast"]["polygons"][0].__setitem__(0, [v, 0]), "coast.polygons[0]: must be a list of at least three"),
@@ -209,6 +245,7 @@ NUMBERS = [  # (the number, how to put a value there, what the message names)
 WHOLES = [  # (the whole number, how to put a value there, what the message names)
     ("a level", lambda d, v: d["places"][a_street(d)].update(level=v), ".level: must be a whole number"),
     ("a band", lambda d, v: d["places"][a_street(d, "rib")]["rib"].update(band=v), ".rib.band: must be a whole number or null"),
+    ("the rank of an annex", lambda d, v: d["places"][an_annex(d)].update(rank=v), ".rank: must be a whole number, 1 or more"),
     ("an arrival", lambda d, v: d["world"]["chronicle"][0].update(seq=v), "chronicle[0].seq: must be a whole number, 1 or more"),
     ("a count of a split", lambda d, v: d["world"]["chronicle"][0].update(count_before=v), "chronicle[0].count_before: must be a whole number"),
     ("the count of an over", lambda d, v: d["world"]["chronicle"][-1].update(count=v), ".count: must be a whole number"),
@@ -358,7 +395,7 @@ def targets(doc):
             seen[r["kind"]] += 1
             paths += [["roads", rid], ["roads", rid, "points"], ["roads", rid, "points", 0]]
     chronicle = doc["world"]["chronicle"]
-    for wanted in ("from", "over"):
+    for wanted in ("from", "over", "annex", "absorbed"):
         i = next((i for i, e in enumerate(chronicle) if wanted in e), None)
         if i is not None:
             paths.append(["world", "chronicle", i])
@@ -373,13 +410,13 @@ def at(doc, path):
     return doc
 
 
-def fuzz(base, reader, stop_after=None):
+def fuzz(base, reader, stop_after=None, only=None):
     """Break `base` one field at a time (take a key away, or put each of WRONG there; a key that names a place gets a few places as well) and return what
     `reader` let through that then crashed `picture.render` or `city.chronicle_lines`, with how many documents were refused and how many accepted.
-    `stop_after`: give up after that many findings."""
-    ids = ["place:plaza", the_root(base), first_lot(base), base["composition"]["ring1"][0]["place"], a_street(base)]
+    `stop_after`: give up after that many findings. `only`: break the parts whose path it accepts, and no others."""
+    ids = ["place:plaza", the_root(base), first_lot(base), base["composition"]["ring1"][0]["place"], a_street(base), *([an_annex(base)] if any(p["kind"] == "annex" for p in base["places"].values()) else [])]
     failures, tally = [], collections.Counter()
-    for path in targets(base):
+    for path in (p for p in targets(base) if only is None or only(p)):
         node = at(base, path)
         for key in (list(node) if isinstance(node, dict) else range(len(node))):
             options = ["take away", *WRONG, *(ids + [path[-1]] if key in LINKS else [])]
@@ -411,11 +448,27 @@ def test_no_single_wrong_field_gets_past_the_reader_to_crash_a_picture_or_the_ch
     base = worlds(mode)
     assert inputs.read_city(copy.deepcopy(base))
     kinds = {(p["kind"], p.get("shape"), "lane_of" in p) for p in base["places"].values()}
-    assert {("lot", None, False), ("street", "ring", True), ("street", "rib", False), ("street", "trunk", False), ("street", "ring", False)} <= kinds
+    assert {("lot", None, False), ("street", "ring", True), ("street", "rib", False), ("street", "trunk", False), ("street", "ring", False), ("annex", None, False)} <= kinds
+    assert {"wing", "mailbox"} == {p["form"] for p in base["places"].values() if p["kind"] == "annex"} and [e for e in base["world"]["chronicle"] if "annex" in e]
     assert not [p for p in base["places"].values() if p.get("underground")]  # (no house, no street under the town hall: the ring road is on the surface)
     failures, tally = fuzz(base, inputs.read_city)
     assert failures == [], failures[:5]
     assert tally["refused"] > 1_000 and tally["accepted"] > 1_000  # the documents that were broken, and refused or not worth refusing (a key nothing reads)
+
+
+def test_the_break_in_reaches_the_annexes_and_their_entries_and_a_reader_that_lets_everything_through_is_caught_there_too():
+    """The one-field break-in takes the annex places and the entries of the chronicle that are theirs as targets, like any other part, and a reader that accepts everything lets crashes of
+    the picture and the chronicle through there: the reader of the annex keys is what stops them."""
+    base = worlds("grow")
+    ids = {pid for pid, p in base["places"].items() if p["kind"] == "annex"}
+    assert len(ids) >= 8 and any(path[:2] == ["places", pid] for path in targets(base) for pid in ids) and ["world", "chronicle"] in [path[:2] for path in targets(base)]
+    only = lambda path: (path[:1] == ["places"] and path[1] in ids) or (path[:2] == ["world", "chronicle"] and "annex" in base["world"]["chronicle"][path[2]])  # noqa: E731
+    failures, tally = fuzz(base, inputs.read_city, only=only)
+    assert failures == [] and tally["refused"] > 100
+    failures, tally = fuzz(base, lambda doc: doc, only=only)
+    assert tally["refused"] == 0 and len(failures) > 20
+    assert {"KeyError", "TypeError"} <= {f[3].split(":")[0] for f in failures} and {f[1] for f in failures} >= {"parent", "rank"}  # (the keys that the picture reads)
+    assert any(f[0][:1] == ["world"] for f in failures)  # (and the chronicle: the sentence of an entry reads its keys)
 
 
 def test_the_control_a_reader_that_lets_everything_through_is_caught_by_the_same_break_in():

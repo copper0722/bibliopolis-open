@@ -103,9 +103,14 @@ def build_command(args: argparse.Namespace) -> int:
     doc = build_city(library, tree, mode=args.mode, max_houses=args.max_houses, min_houses=args.min_houses, first=args.first)
     write_text_atomically(Path(args.out), render(doc))
     s = summary(doc)
-    print(f"wrote {args.out}: {s['houses']} houses on {s['roads']} roads, {s['ring']} on the ring road, "
+    print(f"wrote {args.out}: {s['houses']} houses{annexes_of(s)} on {s['roads']} roads, {s['ring']} on the ring road, "
           f"{s['splits']} splits, {s['over']} over (mode {s['mode']})", file=sys.stderr)
     return 0
+
+
+def annexes_of(s: dict) -> str:
+    """` and 12 annexes` for a city that has annexes (items that exist for another item), else nothing: the line of a library with none is as it was."""
+    return f" and {s['annexes']} annexes" if s.get("annexes") else ""
 
 
 def picture_command(args: argparse.Namespace) -> int:
@@ -161,7 +166,7 @@ def world_command(args: argparse.Namespace) -> int:
         doc = journal.state.city()
         store.publish_text(args.out, render(doc))
         s = summary(doc)
-        print(f"wrote {args.out}: {s['houses']} houses on {s['roads']} roads, {s['ring']} on the ring road, "
+        print(f"wrote {args.out}: {s['houses']} houses{annexes_of(s)} on {s['roads']} roads, {s['ring']} on the ring road, "
               f"{s['splits']} splits, {s['over']} over (mode {s['mode']})", file=sys.stderr)
     return 0
 

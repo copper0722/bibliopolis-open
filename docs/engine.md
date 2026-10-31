@@ -208,6 +208,29 @@ The topic tree is the street plan.
   its own, so that a world does not depend on how its arrivals were cut into calls: a record made early would open the trunks of the plan before their first
   house, nearer the plaza.
 
+## Annexes
+
+An item that exists for another item (`annex_of` and `annex_form` in the library, [format.md](format.md)) is an annex. It is no house.
+
+- **No ground, no address.** It takes an arrival number like any item (`seq` counts it, and `first` replays it), but it has no lot, no road, no rib, no slot, no position and no
+  address. The cut, the weights, the ring and the ribs never count it, so `build` cuts the plan from the houses, the items that have no `annex_of`: the `topics` of an annex
+  are checked against the tree and give it no address and, in `mirror` mode, no road. A road holds `max` houses whatever annexes they have, and `min` and `max` count houses only.
+- **The record.** `{"kind": "annex", "article", "parent", "form", "rank", "seq"}` at `place:article:<id>` (the keys in that order). `parent` is the place of the lot of its house,
+  `form` is `wing` or `mailbox`, `rank` is its number among the annexes of that house and form by `seq`, 1 first (an annex that arrives before the ones that stand is the first of them
+  and theirs go up by one), and `seq` is its arrival number. It stands where its house stands, so a split, a move or a new radius needs nothing for it.
+- **Arrival.** `assign` places an annex at once when its house has a lot. Otherwise it waits: the house arrives, takes its place (and its splits, if it causes any), and then the
+  annexes that waited for it are placed in the order they arrived, without ever having had a lot. The waiting list is kept in the world document, `waiting` = `{house id: [{article, form,
+  seq}]}`, which a world has only after an annex has waited, and a delta has the key only when its call changed who waits: so a world does not depend on how its arrivals are cut into
+  calls. A replay that stops before the house has no record of the annex. An annex of itself, or of an annex (one that stands, or one that waits), is a mistake of the caller, a
+  `ValueError`; `bibliopolis.inputs` refuses such a library before the engine sees it.
+- **The chronicle** has one entry `annex` for each placement: `annex` (the item), `parent` (the id of its house) and `form`. `seq` is the arrival that caused it, the item's own when
+  its house had arrived and the house's when it waited, and `at` the `added_at` of that item.
+- **The numbers.** Lots are houses. `world.houses` and `measure.lots` count the lots; `composition.articles` and `buildings` count the houses and the annexes (every article is one
+  building). The kind `annex` in `counts` and `kinds`, and the notes about annexes, are in a document only when it holds an annex: every other document is as it was.
+- **What the tests hold to.** The city of a library with annexes is the city of its houses to the byte, once the annex records, the entries of the chronicle that are theirs and the
+  counts that include them are taken out and the houses are numbered 1, 2, ... in the order they arrived: no annex moves a house (`tests/test_annex_build.py`). A library or a log
+  with no annex key gives the bytes of version 0.4.0 (`tests/test_legacy_bytes.py`).
+
 ## The pictures
 
 `bibliopolis.picture` draws a city document, and nothing else: it never reads the library. Units are cells, north is up.
@@ -222,6 +245,11 @@ The topic tree is the street plan.
 - **One sheet** (`sheet`): several cities on the same frame at the same scale, so that growth shows as growth. The frame leaves room for every name of every
   city. A road is never drawn thicker than at 3.5 pixels to the cell, so a small city is not made of fat lines. Coordinates have one decimal on a sheet and two
   in a single picture, which keeps a sheet small (the sheets of the README are under 100 KB, and a test says so).
+- **Annexes** are drawn on their houses, after the roads (a road is drawn wider than its lane and would cover a gate). A wing is a small box against the right wall of its house
+  (0.3 cell deep and 0.2 long: a wing takes 0.06 of the footprint, and four of them together 0.24, under a third); the wings of a house run back along the wall from the
+  front in the order they arrived, four are drawn, and above four a plate at the back of the house shows the total. A mailbox is a small square at the gate, the front of the
+  house, one for each, in rows of five from the gate toward the back (35 are drawn at most). Wings take the edge colour of the district of their house. From a scale of
+  `ANNEX_PIXELS` (16 pixels to the cell) down they merge into their houses and nothing is drawn; the line of numbers under the title says houses and annexes.
 - The same document gives the same bytes. A character that XML 1.0 cannot carry (a control character) in a name is replaced, so a picture is always valid XML.
 
 The pictures of the README (`docs/images/`) are made by `examples/make_pictures.py`: `growth.svg` is the sample in `grow` mode after 40, 41, 150 and 600 items
@@ -260,6 +288,9 @@ them again and compares them with the committed files byte for byte.
 | the two input files and their checks | `tests/test_inputs.py`, `tests/test_schema.py` |
 | reading a city file: what is accepted, what is refused and where, and that no single wrong field gets past the reader to crash or loop `picture` or `chronicle` | `tests/test_cityfile.py`, `tests/test_cli.py` |
 | the pipeline, its summary (the streets that are over now), the basics of the replay with `first`, the chronicle as sentences | `tests/test_city.py` |
+| annexes in a built city: the record, the rank, the wait for a house and a replay before it, what never counts them, the same world however the calls are cut | `tests/test_annex_build.py` |
+| annexes shown: the wings, the plate, the mailboxes and the scale of the picture, the chronicle sentences, the summary and the command | `tests/test_annex_show.py` |
+| an input with no annex key gives the bytes of version 0.4.0 (sha256 made from that version) | `tests/test_legacy_bytes.py` |
 | a replay: what keeps its place and what does not, what a mirror replay leaves out, a case that crosses `trunk_min` | `tests/test_replay.py` |
 | the command line (`build`, `picture`, `chronicle`), the same bytes in separate processes | `tests/test_cli.py` |
 | the picture: what is drawn and left out, the frame of a sheet, valid XML | `tests/test_picture.py` |

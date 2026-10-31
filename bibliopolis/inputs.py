@@ -287,7 +287,7 @@ def read_library(doc, tree: dict) -> list[dict]:
 
 # ----------------------------------------------------------------------------------------------------- city ----
 ROAD_CLASSES = ("大道", "路", "巷", "弄")
-PLACE_KINDS = ("plaza", "street", "lot", "reserved")
+PLACE_KINDS = ("plaza", "street", "lot", "reserved", "annex")
 PLAZA = "place:plaza"
 REACH = 1e7  # cells: far beyond any city, and small enough that the arithmetic of a picture stays finite
 COUNT = 10**12  # houses, arrivals, levels: far beyond any library
@@ -364,6 +364,14 @@ def _check_house(problems: _Problems, where: str, p: dict) -> None:
     _typed(problems, where, p, "facing", _number, "a bearing in degrees", required=False)
 
 
+def _check_annex(problems: _Problems, where: str, p: dict) -> None:
+    """An item that exists for another item: the place of the house it stands beside (a lot: the links say so), how it stands there, and its number among those of that house and form."""
+    _typed(problems, where, p, "parent", _is_text, "the id of the house it stands beside (the place of its lot)")
+    _typed(problems, where, p, "form", lambda v: isinstance(v, str) and v in ANNEX_FORMS, f"one of {', '.join(ANNEX_FORMS)}")
+    _typed(problems, where, p, "rank", lambda v: _whole(v) and v >= 1, "a whole number, 1 or more")
+    _typed(problems, where, p, "article", _is_text, "the item id (a string)")
+
+
 def _check_places(problems: _Problems, name: str, places: dict) -> None:
     plaza = places.get(PLAZA)
     if not isinstance(plaza, dict) or plaza.get("kind") != "plaza":
@@ -386,6 +394,8 @@ def _check_places(problems: _Problems, name: str, places: dict) -> None:
             _check_street(problems, where, p)
         elif p["kind"] in ("lot", "reserved"):
             _check_house(problems, where, p)
+        elif p["kind"] == "annex":
+            _check_annex(problems, where, p)
 
 
 def _check_roads(problems: _Problems, name: str, roads: dict) -> None:
@@ -499,9 +509,18 @@ def _check_world(problems: _Problems, name: str, world: dict) -> None:
         elif "rule" in e:  # the district rule changed
             _typed(problems, here, e, "rule", lambda v: isinstance(v, dict) and _whole(v.get("max")) and _whole(v.get("min")) and _whole(v.get("branches")),
                    "an object with whole numbers max, min and branches")
+        elif "annex" in e:  # an item that exists for another item stands beside its house
+            _typed(problems, here, e, "annex", _is_text, "the id of the item (a string)")
+            _typed(problems, here, e, "parent", _is_text, "the id of its house (a string)")
+            _typed(problems, here, e, "form", lambda v: isinstance(v, str) and v in ANNEX_FORMS, f"one of {', '.join(ANNEX_FORMS)}")
+        elif "absorbed" in e:  # a house that stood on a lot of its own is an annex now
+            _typed(problems, here, e, "absorbed", _is_text, "the id of the house (a string)")
+            _typed(problems, here, e, "parent", _is_text, "the id of the house it is beside now (a string)")
+            _typed(problems, here, e, "form", lambda v: isinstance(v, str) and v in ANNEX_FORMS, f"one of {', '.join(ANNEX_FORMS)}")
+            _typed(problems, here, e, "left", _is_text, "the place it left (a string)")
         else:
-            problems.add(here, "must be a split (from, label, houses, count_before, count_after) or an over (over, count), or one of the entries of a world "
-                               f"built by hand ({', '.join(HAND_ENTRIES)})")
+            problems.add(here, "must be a split (from, label, houses, count_before, count_after) or an over (over, count), or an annex (annex, parent, form) or an absorbed house "
+                               f"(absorbed, parent, form, left), or one of the entries of a world built by hand ({', '.join(HAND_ENTRIES)})")
 
 
 def _check_links(problems: _Problems, name: str, doc: dict) -> None:
@@ -555,6 +574,11 @@ def _check_links(problems: _Problems, name: str, doc: dict) -> None:
             outside.setdefault(p["parent"], pid)
         elif top.get(p["parent"]) in rings and above.get("shape") != "ring":  # a house of the ring road stands in a lap of it, the polar cell of the lane of the lap
             astray.setdefault(p["parent"], pid)
+    for pid, p in places.items():  # an annex stands beside a house: its parent is the place of a lot
+        if p["kind"] == "annex":
+            above = places.get(p["parent"])
+            if above is None or above["kind"] != "lot":
+                problems.add(f"{name}.places[{pid!r}].parent", f"{p['parent']!r} is not a house (the place of a lot)")
     for street, house in outside.items():
         problems.add(f"{name}.places[{street!r}]", f"it stands under {top[street]!r}, which is not a sector in composition.ring1 (a house on it: {house!r})")
     for street, house in astray.items():
