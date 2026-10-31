@@ -484,6 +484,8 @@ def district_problems(doc, plan, tree):
     if [e["n"] for e in chron] != list(range(1, len(chron) + 1)):
         bad.append(("chronicle", "numbers are not 1..n"))
     for e in chron:
+        if "annex" in e:  # an item that exists for another item stands beside its house: not a split and not an over, and it moves no house
+            continue
         if "from" in e:
             if mirror or len(e["houses"]) < mn or e["count_before"] != e["count_after"] + len(e["houses"]) or e["from"] == e["to"] or e["count_before"] <= mx:
                 bad.append(("chronicle", f"entry {e['n']} does not add up"))

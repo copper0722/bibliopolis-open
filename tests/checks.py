@@ -25,7 +25,7 @@ RING_ROOT = "place:root"
 EPS = 1e-6
 EDGE = 0.003  # cells: where two cells touch, or a road passes the edge of a cell, the positions (rounded to 0.001) may cross by this much; a length along the lane, so the allowance in
 #              angle, degrees(EDGE / R), shrinks with the radius and never turns negative (a fixed 0.02 degrees did beyond the radius 1432)
-DOCUMENT_CHECKS = ("overlaps", "not_adjacent", "road_tree_problems", "crossings", "roads_through_lots")
+DOCUMENT_CHECKS = ("overlaps", "not_adjacent", "road_tree_problems", "crossings", "roads_through_lots", "annex_problems")
 WORLD_CHECKS = ("position_problems", "wedge_problems", "branch_circle_problems", "registry_problems", "bookkeeping_problems", "ring_problems")
 
 
@@ -456,6 +456,48 @@ def bookkeeping_problems(doc):
             owner = places[p["parent"]]
             if owner.get("lane_of", p["parent"]) != p["street"]:
                 bad.append((pid, "lot in a rib that is not of its street"))
+    return bad
+
+
+ANNEX_KEYS = ["kind", "article", "parent", "form", "rank", "seq"]  # (the keys of an annex record, in the order they are written: stated here apart from the engine)
+
+
+def annex_problems(doc):
+    """An item that exists for another item stands beside a house and owns no ground: its place is the place of its item, its record has the keys of an annex and none of a lot (no
+    street, slot, position or facing), its parent is the place of the lot of another item, its form is a wing or a mailbox, and the annexes of one house in one form are ranked 1, 2,
+    ... by arrival. What waits for its house (a world that a build leaves keeps the list, `waiting`) has no record, and its house has no lot yet."""
+    places = doc["places"]
+    bad = []
+    groups = defaultdict(list)
+    for pid, p in places.items():
+        if p["kind"] != "annex":
+            continue
+        if pid != "place:article:" + str(p.get("article")):
+            bad.append((pid, "the place of an annex is the place of its item"))
+        if list(p) != ANNEX_KEYS:
+            bad.append((pid, f"the keys of an annex are {ANNEX_KEYS}, not {list(p)}"))
+            continue
+        parent = places.get(p["parent"])
+        if parent is None or parent["kind"] != "lot":
+            bad.append((pid, "its parent is not the place of the lot of a house"))
+            continue
+        if parent["article"] == p["article"]:
+            bad.append((pid, "an item is an annex of itself"))
+        if p["form"] not in ("wing", "mailbox"):
+            bad.append((pid, f"its form is {p['form']!r}"))
+        groups[(p["parent"], p["form"])].append(p)
+    for (parent, form), group in groups.items():
+        ordered = sorted(group, key=lambda p: p["seq"])
+        if len({p["seq"] for p in group}) != len(group):
+            bad.append((parent, f"two {form}s with one arrival number"))
+        if [p["rank"] for p in ordered] != list(range(1, len(ordered) + 1)):
+            bad.append((parent, f"the {form}s are ranked {[p['rank'] for p in ordered]} in the order they arrived, not 1, 2, ..."))
+    for parent, entries in doc.get("waiting", {}).items():
+        if places.get("place:article:" + parent) is not None:
+            bad.append((parent, "annexes wait for a house that stands"))
+        if [e["seq"] for e in entries] != sorted(e["seq"] for e in entries):
+            bad.append((parent, "the annexes that wait are not in the order they arrived"))
+        bad += [(e["article"], "an annex that waits has a record") for e in entries if places.get("place:article:" + e["article"]) is not None]
     return bad
 
 

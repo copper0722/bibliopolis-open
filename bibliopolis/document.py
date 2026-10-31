@@ -30,10 +30,11 @@ Keys:
                 `road:place:root:lap:<k>`. `measure.ring_lots` counts the houses on every lap; `composition.streets` counts the ring as one street (`ring` = the
                 records of shape ring, laps included; the laps are `continuations`).
   composition home_max trunk_min articles buildings reserved_lots ring1 streets measure. `articles` = `buildings` = the houses in this
-              document; `reserved_lots` = the empty lots in this document (0 without `with_reserved`); `ring1` is the plan's, every sector of
-              it, built or not (the pinned directions).
+              document and the annexes (items that exist for another item: below), which are buildings too; `reserved_lots` = the empty lots in this
+              document (0 without `with_reserved`); `ring1` is the plan's, every sector of it, built or not (the pinned directions). `world.houses` and
+              `measure.lots` count the houses, which are the lots.
   places      plaza {kind label position radius [tag]}; lot {kind article parent order slot position facing seq}; reserved {kind
-              parent slot end position facing} (with_reserved only); street, in the shapes
+              parent slot end position facing} (with_reserved only); annex {kind article parent form rank seq}; street, in the shapes
                 trunk  address axis bands class kind level lots open order parent reserved road s0 s_end shape wedge weight
                        [carrier collapsed heavy label lane rib tag over]
                 group  address carrier class kind level lots order parent reserved shape weight [collapsed label rib road tag over]
@@ -41,6 +42,9 @@ Keys:
                        (the key `lanes` is the ring road's list of its laps; a city file of version 0.3 or before may give a road `lanes` too: continuation ribs)
               and `rib` {trunk band side x0 x1 s slots} (band null: laid along the spoke of `trunk`, lots on both sides of its axis).
               `lot.seq` is the arrival number (orders the growth). A street's `lots` counts its built lots, `reserved` the lots it holds empty.
+              An annex is an item that exists for another item. It is no house: it has no lot, no position, no slot and no address, and `parent` is the place of the lot of the house it
+              stands beside, as a `form` wing or mailbox; `rank` numbers the annexes of one house and form by arrival (`seq`), 1 first. A document has the kind `annex` in `counts` and
+              `kinds`, and the notes about annexes, only when it holds an annex.
   roads       spoke {at axis class kind length open parent points s0 s_end street wedge}; arc {at class kind length parent points side
               street}; lane {at band bearings class kind length off parent points radius side street trunk}; ring {at class kind length parent (null) points
               radius street}.
@@ -178,7 +182,7 @@ def world_layout(doc: dict, *, with_reserved: bool = False, with_coast: bool = T
     out: dict[str, dict] = {lay.PLAZA_PLACE: dict(places[lay.PLAZA_PLACE])}
     for pid in streets:
         out[pid] = street_view(pid, places[pid], out_roads, streets, heavy_of, bands_of)
-    n_lots = n_reserved = 0
+    n_lots = n_reserved = n_annex = 0
     for pid, p in places.items():
         if p["kind"] == "lot":
             rec = {k: p[k] for k in LOT_KEYS}
@@ -186,6 +190,9 @@ def world_layout(doc: dict, *, with_reserved: bool = False, with_coast: bool = T
             rec["seq"] = p["seq"]
             out[pid] = rec
             n_lots += 1
+        elif p["kind"] == "annex":  # an item that exists for another item: no lot, no position; it stands where its house stands
+            out[pid] = {k: p[k] for k in lay.ANNEX_RECORD_KEYS}
+            n_annex += 1
         elif p["kind"] == "reserved" and with_reserved:
             rec = {k: p[k] for k in RESERVED_KEYS}
             rec["position"] = dict(p["position"])
@@ -200,17 +207,17 @@ def world_layout(doc: dict, *, with_reserved: bool = False, with_coast: bool = T
     world = {"format": doc["schema_version"], "zoning_version": doc.get("zoning_version"), "mode": doc.get("mode"), "seq": doc.get("seq", 0),
              "houses": n_lots, "unbuilt": sum(1 for p in places.values() if p["kind"] == "reserved"),
              "districts": dict(doc["districts"]), "chronicle": [dict(e) for e in doc["chronicle"]],
-             "notes": {**NOTES, **NOTES_DISTRICTS, **(NOTES_HAND if by_hand else {})}}
+             "notes": {**NOTES, **NOTES_DISTRICTS, **(NOTES_HAND if by_hand else {}), **(lay.ANNEX_NOTES if n_annex else {})}}
     layout = {
         "schema_version": lay.SCHEMA_VERSION, "layout_version": lay.LAYOUT_VERSION,
         "centre": dict(doc["centre"]),
         "generator": {**GENERATOR, **({"input": HAND_INPUT} if by_hand else {})},
         "composition": {
             "home_max": c.get("home_max", lay.HOME_MAX), "trunk_min": c.get("trunk_min", lay.TRUNK_MIN),
-            "articles": n_lots, "buildings": n_lots, "reserved_lots": n_reserved,
+            "articles": n_lots + n_annex, "buildings": n_lots + n_annex, "reserved_lots": n_reserved,
             "ring1": [dict(r) for r in c["ring1"]], "streets": street_counts(out),
         },
-        "geometry": dict(lay.GEOMETRY), "kinds": dict(lay.KIND_NOTES), "roads_kinds": dict(lay.ROAD_NOTES),
+        "geometry": dict(lay.GEOMETRY), "kinds": {**lay.KIND_NOTES, **({"annex": lay.ANNEX_KIND_NOTE} if n_annex else {})}, "roads_kinds": dict(lay.ROAD_NOTES),
         "counts": dict(sorted(kinds.items())),
         "world": world,
         "roads": out_roads, "places": out,

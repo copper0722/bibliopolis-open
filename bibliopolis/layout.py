@@ -246,6 +246,15 @@ def reserved_record(parent: str, slot: int, end: str, xz: tuple[float, float], f
     return {"kind": "reserved", "parent": parent, "slot": slot, "end": end, "position": {"x": r3(xz[0]), "z": r3(xz[1])}, "facing": r3(facing % 360)}
 
 
+ANNEX_RECORD_KEYS = ("kind", "article", "parent", "form", "rank", "seq")  # the keys of an annex record, in the order they are written
+
+
+def annex_record(article: str, parent: str, form: str, rank: int, seq: int) -> dict:
+    """The place record of an item that exists for another item: it has no lot, no position and no slot, and stands where its house stands. `parent` is the place of the lot of
+    that house, `rank` the number of the annex among those of that house in the same form (1 is the first to arrive), `seq` its arrival number."""
+    return {"kind": "annex", "article": article, "parent": parent, "form": form, "rank": rank, "seq": seq}
+
+
 def road_record(street: str, kind: str, ring: int, parent: str | None, at: float, points: list[list[float]], length: float, **extra) -> dict:
     """A road: the street it serves, its display class, the road it hangs on and where (`at`: distance along the parent), its polyline."""
     rec = {"street": street, "kind": kind, "class": class_of(ring), "parent": parent, "at": r3(at), "length": r3(length), **extra}
@@ -269,6 +278,13 @@ ROAD_NOTES = {
     "lane": "an arc around the plaza across a trunk (a band): one stretch per street, each starting where the previous one ends",
     "ring": "a closed circle round the plaza (the ring road or one of its laps): a polyline from north clockwise whose last point is its first, with no parent",
 }
+ANNEX_KIND_NOTE = ("an item that exists for another item, with no lot of its own: it stands where its house stands (`parent` is the place of that house's lot), as a `form` "
+                   "wing (on its side wall) or mailbox (at its gate); `rank` numbers the annexes of one house and form by arrival, 1 first; id place:article:<item id>")
+ANNEX_NOTES = {
+    "composition.buildings": "every article is one building, a house or an annex: `articles` and `buildings` count both, while `world.houses` and `measure.lots` count the houses, "
+                             "which are the lots",
+    "world.chronicle.annex": "an item that exists for another item stands beside its house: `annex` is the item, `parent` its house and `form` how it stands there",
+}  # a document has them only when it holds an annex
 GEOMETRY = {
     "unit": "cell", "x": "east", "z": "south", "angle": "degrees clockwise from north (may be negative or above 360)",
     "origin": "the centre of the town hall plaza", "position": "centre of the cell",

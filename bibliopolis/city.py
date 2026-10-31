@@ -37,7 +37,8 @@ def build_world(library: dict, tree: dict, *, mode: str = GROW, max_houses: int 
     tree_doc = inputs.read_tree(tree)
     items = inputs.read_library(library, tree_doc)
     tv = TreeView(tree_doc)
-    plan = plan_mod.build_plan(tv, items, mode=mode, max_houses=max_houses, min_houses=min_houses, trunk_min=trunk_min)
+    houses = [a for a in items if "annex_of" not in a]  # an item that exists for another item is no house: the cut and the weights never count it, and its topics give it no address
+    plan = plan_mod.build_plan(tv, houses, mode=mode, max_houses=max_houses, min_houses=min_houses, trunk_min=trunk_min)
     world = world_mod.new_world(plan)
     placed = items if first is None else items[:first]
     result = world_mod.assign(plan, tv, world, placed)

@@ -79,6 +79,12 @@ The ring road (geometry in bibliopolis.ring; the plan's `params.ring` = {label, 
 
 In a `mirror` plan every topic of `plan["roads"]` is a road from the start and there is no split: a road that holds more than `max` houses is
 `over`, and the chronicle says when.
+
+An item that exists for another item is an ANNEX (an arrival with `annex_of` and `annex_form`, `wing` or `mailbox`). It takes an arrival number like any item and is no house:
+no lot, no road, no rib, no slot, no position and no address, so the cut, the weights, the ring and the ribs never count it. Its record is `lay.annex_record`
+(`kind` annex, `article`, `parent` the place of the lot of the house it is of, `form`, `rank` among the annexes of that house and form by arrival, `seq`): it stands where its
+parent stands, so a split, a move or a new radius needs nothing for it. In an arrival an annex is placed at once when its parent stands, and else it waits (`doc["waiting"]`, kept
+only while something waits) and is placed when the parent arrives, in arrival order, without ever having had a lot. The chronicle has one entry `annex` for each placement.
 """
 
 from __future__ import annotations
@@ -285,12 +291,19 @@ def apply_delta(doc: dict, delta: dict) -> dict:
             else:
                 out[name][key] = value
     out["chronicle"] = list(delta["chronicle"])  # the whole chronicle after the delta
+    if "waiting" in delta:  # (only a world that has had an annex waiting for its parent carries the key)
+        out["waiting"] = {parent: [dict(entry) for entry in entries] for parent, entries in delta["waiting"].items()}
     return out
 
 
 def houses(doc: dict) -> dict[str, dict]:
     """item id -> its lot record."""
     return {p["article"]: p for p in doc["places"].values() if p["kind"] == "lot"}
+
+
+def annexes(doc: dict) -> dict[str, dict]:
+    """item id -> its annex record: the items that stand beside a house and have no lot of their own."""
+    return {p["article"]: p for p in doc["places"].values() if p["kind"] == "annex"}
 
 
 # ------------------------------------------------------------------------------------------ the world ----
@@ -317,6 +330,8 @@ class World:
         self.arrival_ids: set[str] = set()  # the houses this call brings: the rest are houses put again
         self.hold: dict[str, int] = {}  # road place -> the houses it holds with the batch being put on it: a rib that opens is sized to it
         self._by_road: dict[str, list[dict]] | None = None  # road place -> its lots; None: not built (or stale)
+        self._annexed: dict[str, list[str]] | None = None  # place of a house -> the items that are annexes of it, in the order they were placed; None: not built
+        self.waiting: dict[str, list[dict]] = {parent: [dict(entry) for entry in entries] for parent, entries in doc.get("waiting", {}).items()}  # annexes whose house has not arrived
         self.index_roads()
         if self.mirror:  # every topic that holds a house is a road from the start
             for tag in plan.roads:
@@ -397,6 +412,54 @@ class World:
             self.placements[article_id] = lot
         self.by_road().setdefault(ROOT_PLACE, []).append(lot)
         return lot
+
+    # ---- annexes: items that stand beside a house and have no lot of their own
+    def annexed(self) -> dict[str, list[str]]:
+        """The annexes of each house: the place of the house -> the ids of its annex items, in the order they were placed; built on first use and kept up to date by `put_annex`."""
+        if self._annexed is None:
+            index: dict[str, list[str]] = {}
+            for _pid, p in self.places.items():
+                if p["kind"] == "annex":
+                    index.setdefault(p["parent"], []).append(p["article"])
+            self._annexed = index
+        return self._annexed
+
+    def put_annex(self, article_id: str, parent_id: str, form: str, seq: int) -> dict:
+        """Write the record of an item that stands beside the house `parent_id` (which has a lot) as a `form` (wing or mailbox), and give the annexes of that house and form their ranks
+        again: 1, 2, ... by arrival (`seq`), so that an annex that arrived before the ones that stand is the first of them and theirs go up by one. Nothing else is written."""
+        parent, standing = lay.article_place(parent_id), self.annexed()  # (the index is made before the record is written: it reads the records)
+        self.places.put(lay.article_place(article_id), lay.annex_record(article_id, parent, form, 1, seq))
+        standing.setdefault(parent, []).append(article_id)
+        same = sorted((self.places.get(lay.article_place(a)) for a in standing[parent]), key=lambda r: r["seq"])
+        for rank, r in enumerate((r for r in same if r["form"] == form), start=1):
+            if r["rank"] != rank:
+                self.places.mut(lay.article_place(r["article"]))["rank"] = rank
+        return self.places.get(lay.article_place(article_id))
+
+    def place_annex(self, article_id: str, parent_id: str, form: str, seq: int, trigger: str) -> None:
+        """An item that never had a lot stands beside its house: its record, and one entry `annex` of the chronicle (the arrival that caused it is `self.seq`)."""
+        self.put_annex(article_id, parent_id, form, seq)
+        self.chronicle.append({"n": len(self.chronicle) + 1, "event_id": self.event_id, "seq": self.seq, "trigger": trigger, "annex": article_id, "parent": parent_id, "form": form})
+
+    def arrive_annex(self, a: dict) -> None:
+        """An annex arrives (`a` has `annex_of` and `annex_form`): beside its house at once when that has a lot, else it waits for it. An annex of an annex, or of itself, is a mistake of the
+        caller (a library is checked before it gets here, `bibliopolis.inputs`)."""
+        parent, form = a["annex_of"], a["annex_form"]
+        if parent == a["id"]:
+            raise ValueError(f"{a['id']!r} is an annex of itself")
+        there = self.places.get(lay.article_place(parent))
+        if (there is not None and there["kind"] == "annex") or any(e["article"] == parent for entries in self.waiting.values() for e in entries):
+            raise ValueError(f"{a['id']!r} is an annex of {parent!r}, which is an annex itself")
+        if there is not None:
+            self.place_annex(a["id"], parent, form, self.seq, "arrival")
+        else:
+            self.waiting.setdefault(parent, []).append({"article": a["id"], "form": form, "seq": self.seq})
+
+    def release_annexes(self, parent_id: str) -> None:
+        """The house `parent_id` has arrived and stands: the annexes that waited for it stand beside it now, in the order they arrived (a build knows the whole library, so
+        none of them ever had a lot)."""
+        for entry in self.waiting.pop(parent_id, ()):
+            self.place_annex(entry["article"], parent_id, entry["form"], entry["seq"], "arrival")
 
     # ---- roads: the open roads are world state
     def index_roads(self) -> None:
@@ -1322,7 +1385,10 @@ class World:
         return lot
 
     def delta(self) -> dict:
-        return {"places": self.places.new, "roads": self.roads.new, "lines": self.lines.new, "seq": self.seq, "chronicle": self.chronicle}
+        out = {"places": self.places.new, "roads": self.roads.new, "lines": self.lines.new, "seq": self.seq, "chronicle": self.chronicle}
+        if self.waiting != self.doc.get("waiting", {}):  # (the key is there only when this call changed who waits)
+            out["waiting"] = {parent: [dict(entry) for entry in entries] for parent, entries in self.waiting.items()}
+        return out
 
     def result(self, **extra) -> dict:
         """What a call returns: the records that are new or changed (`places`, `roads`), the delta that carries them and some counts."""
@@ -1336,7 +1402,8 @@ def assign(plan: dict | PlanView, tree: dict | TreeView, placed: dict, arrivals:
     """Place the arrivals, in the order given, in the world `placed`; return what to add (see the module docstring).
 
     An arrival is `{"id", "topics"}`: its address is its deepest topic of the tree, else the root bucket when it is filed under it, else None
-    (`bibliopolis.tree.address_of`): a house with no address, or with the bucket for its address, stands on the ring road. The arrivals are resolved, placed and checked one at a time, in this order, because the road of the next house depends on the splits the
+    (`bibliopolis.tree.address_of`): a house with no address, or with the bucket for its address, stands on the ring road. An arrival that also has `annex_of` and `annex_form`
+    is an annex: it has no address and no lot (`put_annex`), and `placements` holds the houses of the call only. The arrivals are resolved, placed and checked one at a time, in this order, because the road of the next house depends on the splits the
     houses before it caused. `event_id` is the event the call belongs to: the chronicle entries it causes carry it (None: no events)."""
     pv = plan if isinstance(plan, PlanView) else PlanView(plan)
     tv = tree if isinstance(tree, TreeView) else TreeView(tree)
@@ -1344,15 +1411,20 @@ def assign(plan: dict | PlanView, tree: dict | TreeView, placed: dict, arrivals:
     by_id = {a["id"]: a for a in arrivals}
     if len(by_id) != len(arrivals):
         raise ValueError("an item arrives twice")
-    clash = [aid for aid in sorted(by_id) if placed["places"].get(lay.article_place(aid)) is not None]
+    waiting = {e["article"] for entries in placed.get("waiting", {}).values() for e in entries}
+    clash = [aid for aid in sorted(by_id) if placed["places"].get(lay.article_place(aid)) is not None or aid in waiting]
     if clash:
         raise ValueError(f"already placed: {clash[:3]}")
     for a in arrivals:
-        tag = address_of(tv, a)
         w.seq += 1
+        if a.get("annex_of") is not None:  # an item that exists for another item: no house, no address; beside its house, or waiting for it
+            w.arrive_annex(a)
+            continue
+        tag = address_of(tv, a)
         house = {"article": a["id"], "tag": tag, "seq": w.seq}
         w.arrival_ids.add(a["id"])
         w.add_houses(w.road_for_tag(tag), [house], "arrival")
+        w.release_annexes(a["id"])
     for aid in w.placements:  # (a house a later split moved is where it stands now)
         w.placements[aid] = w.places.get(lay.article_place(aid))
     return w.result(placements=w.placements)
