@@ -30,6 +30,9 @@ JSON Schema files for the two inputs are in `schema/`. A schema cannot say every
 | `tags` | list of strings | free tags: the residents of the house. Not read by the engine. |
 | `topics` | list of strings | ids of nodes of the tree: the topics the item is filed under. The address of the house is the deepest of the topics outside the root bucket of the tree (a root is depth 1; ties: the lower id), and the house stands once, there. In `mirror` mode every topic outside the root bucket that is listed is also a road (see below). With no such topic (the list is empty, or names only nodes of the root bucket, below) the house stands on the ring road, round the town hall. |
 
+| `annex_of` | string, optional | the id of another item of the library that this item exists for (a letter about an article, say): this item is no house of its own, and its `topics` give it no address. That other item is a house: it has no `annex_of` itself. Comes with `annex_form`, or neither. |
+| `annex_form` | `wing` or `mailbox`, optional | how this item stands beside the house it exists for: a wing on its side wall, or a mailbox at its gate. The engine reads no `type`: the one who writes the library says which form an item takes. |
+
 The order of the items in the file does not matter: only `added_at` and `id` do. Other keys are ignored.
 
 ## The topic tree
@@ -74,6 +77,8 @@ The bucket is called what you call it: the engine knows no name for it. Houses o
 
 - every `id` of the library is used once, every `id` of the tree is used once;
 - every `topics` entry is the id of a node of the tree (a topic the tree does not have is a mistake, not a house placed somewhere; the nodes of the bucket are nodes);
+- `annex_of` and `annex_form` come together or not at all; `annex_form` is `wing` or `mailbox`; `annex_of` is the id of another item of the library (not the item itself), and that item has no
+  `annex_of` itself: an item is of a house, never of another item that exists for one;
 - `bucket`, if it is given, is the id of a node, and that node is a root;
 - every `parent` is the id of a node, the parents lead to a root (no cycle), and no branch is deeper than 64 levels;
 - `added_at` parses;

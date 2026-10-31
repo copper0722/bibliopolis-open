@@ -44,3 +44,17 @@ def test_the_example_files_satisfy_the_schemas_and_a_wrong_file_does_not():
             jsonschema.validate(bad, TREE)
     jsonschema.validate({**tree, "bucket": tree["nodes"][0]["id"]}, TREE)  # (whether the id is the id of a root node is for the program to check, not the schema)
     jsonschema.validate({**tree, "bucket": None}, TREE)
+
+
+def test_the_library_schema_takes_the_annex_keys_together_and_refuses_one_alone_or_a_form_that_is_not_one():
+    jsonschema = pytest.importorskip("jsonschema")
+    library = json.loads((ROOT / "examples" / "library.json").read_text(encoding="utf-8"))
+    base = library["items"][0]
+    for good in ({}, {"annex_of": "item-0002", "annex_form": "wing"}, {"annex_of": "item-0002", "annex_form": "mailbox"}):
+        jsonschema.validate({"items": [{**base, **good}]}, LIBRARY)
+    for bad in ({"annex_of": "item-0002"}, {"annex_form": "wing"}, {"annex_of": "item-0002", "annex_form": "shed"}, {"annex_of": "", "annex_form": "wing"},
+                {"annex_of": 2, "annex_form": "wing"}):
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate({"items": [{**base, **bad}]}, LIBRARY)
+    props = LIBRARY["$defs"]["item"]["properties"]
+    assert tuple(props["annex_form"]["enum"]) == inputs.ANNEX_FORMS and tuple(LIBRARY["$defs"]["item"]["dependentRequired"]) == inputs.ANNEX_KEYS

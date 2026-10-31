@@ -1,12 +1,16 @@
 """Reading and checking the input documents: the library and the topic tree (docs/format.md, schema/), and the city that `picture` and `chronicle` read.
 
-    library  {"items": [{"id", "title", "authors", "year", "doi"?, "added_at", "type", "tags", "topics"}, ...]}
+    library  {"items": [{"id", "title", "authors", "year", "doi"?, "added_at", "type", "tags", "topics", "annex_of"?, "annex_form"?}, ...]}
     tree     {"nodes": [{"id", "label", "parent"}, ...], "bucket"?: <id of a root node>}
     city     the layout v4 document that `build` writes (docs/format.md, The city): only what a picture and the chronicle read is checked
 
 `topics` are ids of tree nodes. The address of a house is its item's deepest topic (ties in code-point order of the id); an item with no
 topic lives on the ring road, and so does an item filed only under the root bucket of the tree (the root node that `bucket` names, and everything below it: they are nodes of the
 file and no places of the tree, see bibliopolis.tree). Items arrive in `added_at` order, ties by id.
+
+An item that exists for another item carries `annex_of` (the id of that item, which is a house: it has no `annex_of` itself) and `annex_form` (`wing` or `mailbox`), both or
+neither. It is no house of its own: it stands where the item it is of stands (docs/format.md, "An item that exists for another item"). The engine reads no `type`: the caller says which
+form an item takes.
 
 The checks are strict on purpose: a library that names a topic the tree does not have is a mistake worth stopping for, not a house to place
 somewhere. Every problem found is reported at once (up to MAX_PROBLEMS), each with the place it was found at.
@@ -24,7 +28,9 @@ MAX_PROBLEMS = 20
 MAX_DEPTH = 64  # the engine walks the tree recursively; a tree deeper than this is a mistake, not a topic structure
 
 LIBRARY_REQUIRED = ("id", "title", "authors", "year", "added_at", "type", "tags", "topics")
-LIBRARY_OPTIONAL = ("doi",)
+LIBRARY_OPTIONAL = ("doi", "annex_of", "annex_form")
+ANNEX_FORMS = ("wing", "mailbox")  # the forms of an item that exists for another item: a wing beside the house, a mailbox at its gate
+ANNEX_KEYS = ("annex_of", "annex_form")  # both or neither
 TREE_REQUIRED = ("id", "label", "parent")
 TREE_OPTIONAL = ("bucket",)  # a key of the tree document itself, beside "nodes"
 
@@ -165,11 +171,43 @@ def parse_added_at(value: str) -> datetime:
     return moment.replace(tzinfo=timezone.utc) if moment.tzinfo is None else moment.astimezone(timezone.utc)
 
 
+def _annex_keys(problems: _Problems, where: str, it: dict) -> bool:
+    """Whether the annex keys of one item are right: both or neither, `annex_of` an id (text without control characters), `annex_form` one of ANNEX_FORMS. Whether `annex_of` names an item
+    of the library is for `_annex_links`, which sees them all."""
+    present = [k for k in ANNEX_KEYS if k in it]
+    if not present:
+        return True
+    if len(present) == 1:
+        missing = next(k for k in ANNEX_KEYS if k not in it)
+        problems.add(where, f"{present[0]} comes with {missing}: an item that exists for another item has both, and any other has neither; {missing} is missing")
+        return False
+    ok = _text(problems, f"{where}.annex_of", it["annex_of"], plain=True)
+    if it["annex_form"] not in ANNEX_FORMS:
+        problems.add(f"{where}.annex_form", f"must be one of {', '.join(ANNEX_FORMS)}, got {_shown(it['annex_form'])}")
+        ok = False
+    return ok
+
+
+def _annex_links(problems: _Problems, items: list, seen: dict[str, int]) -> None:
+    """The item that an annex is of is another item of the library, and a house: it has no `annex_of` itself (no item is of itself, and no annex is of an annex). `seen` is the place
+    of the first item of each id."""
+    for i, it in enumerate(items):
+        if not isinstance(it, dict) or not isinstance(it.get("id"), str) or seen.get(it["id"]) != i or not all(k in it for k in ANNEX_KEYS) or not isinstance(it["annex_of"], str):
+            continue
+        parent, here = it["annex_of"], f"library.items[{i}] ({it['id']!r}).annex_of"
+        if parent == it["id"]:
+            problems.add(here, f"{parent!r} is the item itself: an item that exists for another item is of another one")
+        elif parent not in seen:
+            problems.add(here, f"{parent!r} is not the id of an item of the library")
+        elif ANNEX_KEYS[0] in items[seen[parent]]:
+            problems.add(here, f"{parent!r} exists for another item itself (it has annex_of): an item is of a house, not of another annex")
+
+
 def read_library(doc, tree: dict) -> list[dict]:
     """The items of a library document, checked against the (checked) `tree`, in arrival order: by `added_at`, ties by id.
 
     Each item comes back as `{"id", "title", "authors", "year", "doi", "added_at", "type", "tags", "topics"}` (`doi` None when the item has none;
-    `topics` without repeats, in the order given; other keys dropped)."""
+    `topics` without repeats, in the order given; other keys dropped); an item that exists for another item has `annex_of` and `annex_form` as well, last, and any other has neither."""
     problems = _Problems()
     if not isinstance(doc, dict) or not isinstance(doc.get("items"), list):
         raise InputError('library: must be an object with a list "items"')
@@ -202,6 +240,7 @@ def read_library(doc, tree: dict) -> list[dict]:
         doi = it.get("doi")
         if doi is not None:
             ok = _text(problems, f"{where}.doi", doi) and ok
+        ok = _annex_keys(problems, where, it) and ok
         for name in ("authors", "tags"):
             value = it[name]
             if not isinstance(value, list):
@@ -235,8 +274,12 @@ def read_library(doc, tree: dict) -> list[dict]:
         else:
             ok = False
         if ok and moment is not None:
-            keyed.append((moment, it["id"], {"id": it["id"], "title": it["title"], "authors": list(it["authors"]), "year": year, "doi": doi,
-                                             "added_at": it["added_at"], "type": it["type"], "tags": list(it["tags"]), "topics": clean}))
+            read = {"id": it["id"], "title": it["title"], "authors": list(it["authors"]), "year": year, "doi": doi,
+                    "added_at": it["added_at"], "type": it["type"], "tags": list(it["tags"]), "topics": clean}
+            if ANNEX_KEYS[0] in it:
+                read.update({k: it[k] for k in ANNEX_KEYS})
+            keyed.append((moment, it["id"], read))
+    _annex_links(problems, doc["items"], seen)
     problems.raise_if_any()
     keyed.sort(key=lambda t: (t[0], t[1]))
     return [t[2] for t in keyed]

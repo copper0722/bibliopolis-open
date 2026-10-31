@@ -23,8 +23,11 @@
         "added_at": {"type": "string", "minLength": 1, "description": "ISO 8601: a date, or a date and time with or without an offset (a time without one is read as UTC). Items arrive in this order, ties by id."},
         "type": {"type": "string", "minLength": 1, "description": "The kind of document, e.g. article, review, editorial, letter, news, erratum, retraction notice."},
         "tags": {"type": "array", "items": {"type": "string"}, "description": "Free tags: the residents of the house."},
-        "topics": {"type": "array", "items": {"type": "string"}, "description": "Ids of nodes of the topic tree: the topics the item is filed under. The address of the house is the deepest of them (ties: the lower id), and the house stands once, there. In mirror mode every topic listed is also a road. Empty: the house stands on the ring road round the town hall."}
-      }
+        "topics": {"type": "array", "items": {"type": "string"}, "description": "Ids of nodes of the topic tree: the topics the item is filed under. The address of the house is the deepest of them (ties: the lower id), and the house stands once, there. In mirror mode every topic listed is also a road. Empty: the house stands on the ring road round the town hall."},
+        "annex_of": {"type": "string", "minLength": 1, "description": "Optional, and only with annex_form. The id of the item that this item exists for. That item is another item of the library and a house: it has no annex_of itself. This item is no house of its own: it stands where that item stands, and its topics give it no address."},
+        "annex_form": {"enum": ["wing", "mailbox"], "description": "Optional, and only with annex_of. How this item stands beside its house: a wing on its side wall, or a mailbox at its gate."}
+      },
+      "dependentRequired": {"annex_of": ["annex_form"], "annex_form": ["annex_of"]}
     }
   }
 }

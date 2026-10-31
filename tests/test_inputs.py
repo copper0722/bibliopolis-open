@@ -137,12 +137,43 @@ def test_the_address_of_an_item_is_its_deepest_topic_and_ties_go_to_the_lower_id
     (library(item(added_at="")), "added_at: must not be empty"),
     (library(item(added_at=20240301)), "added_at: must be a string"),
     (library(item("a"), item("a")), "library.items[1] ('a').id: used twice (first at library.items[0])"),
+    (library(item("a"), item("b", annex_of="a")), "library.items[1] ('b'): annex_of comes with annex_form: an item that exists for another item has both, and any other has neither; annex_form is missing"),
+    (library(item("a"), item("b", annex_form="wing")), "library.items[1] ('b'): annex_form comes with annex_of: an item that exists for another item has both, and any other has neither; annex_of is missing"),
+    (library(item("a"), item("b", annex_of="a", annex_form="shed")), "library.items[1] ('b').annex_form: must be one of wing, mailbox, got 'shed'"),
+    (library(item("a"), item("b", annex_of="a", annex_form=None)), "library.items[1] ('b').annex_form: must be one of wing, mailbox, got None"),
+    (library(item("a"), item("b", annex_of=7, annex_form="wing")), "library.items[1] ('b').annex_of: must be a string, got int"),
+    (library(item("a"), item("b", annex_of="", annex_form="wing")), "library.items[1] ('b').annex_of: must not be empty"),
+    (library(item("a"), item("b", annex_of="a\n", annex_form="wing")), "library.items[1] ('b').annex_of: must not contain control characters"),
+    (library(item("a"), item("b", annex_of="b", annex_form="wing")), "library.items[1] ('b').annex_of: 'b' is the item itself: an item that exists for another item is of another one"),
+    (library(item("a"), item("b", annex_of="nowhere", annex_form="wing")), "library.items[1] ('b').annex_of: 'nowhere' is not the id of an item of the library"),
+    (library(item("a"), item("b", annex_of="a", annex_form="wing"), item("c", annex_of="b", annex_form="mailbox")),
+     "library.items[2] ('c').annex_of: 'b' exists for another item itself (it has annex_of): an item is of a house, not of another annex"),
+    (library(item("a", annex_of="b", annex_form="wing"), item("b", annex_of="a", annex_form="wing")), "exists for another item itself (it has annex_of)"),
     (library(item(title="x\ud800")), "cannot be written as UTF-8"),
     (library(item(id="a\x00")), "must not contain control characters"),
 ])
 def test_a_library_that_is_not_what_the_format_says_is_refused_with_the_place(doc, where):
     lines = problems(inputs.read_library, doc, inputs.read_tree(TREE))
     assert any(where in line for line in lines), lines
+
+
+def test_an_item_that_exists_for_another_item_comes_back_with_its_two_keys_last_and_another_item_with_neither():
+    got = read(item("a"), item("b", annex_of="a", annex_form="wing", added_at="2024-03-02"), item("c", annex_of="a", annex_form="mailbox", added_at="2024-03-03"))
+    assert [list(i)[-2:] for i in got] == [["tags", "topics"], ["annex_of", "annex_form"], ["annex_of", "annex_form"]]
+    assert got[1] == {"id": "b", "title": "Title b", "authors": ["A. Author"], "year": 2020, "doi": "10.0000/b", "added_at": "2024-03-02", "type": "article", "tags": ["x"],
+                      "topics": ["gen"], "annex_of": "a", "annex_form": "wing"}
+    assert [(i.get("annex_of"), i.get("annex_form")) for i in got] == [(None, None), ("a", "wing"), ("a", "mailbox")]
+
+
+def test_an_item_may_arrive_before_the_item_it_exists_for_and_its_type_decides_nothing():
+    got = read(item("letter", annex_of="paper", annex_form="mailbox", added_at="2024-03-01", type="article"), item("paper", added_at="2024-03-05", type="letter"))
+    assert [i["id"] for i in got] == ["letter", "paper"] and got[0]["annex_of"] == "paper" and "annex_of" not in got[1]
+
+
+def test_the_problems_of_the_annex_keys_are_listed_with_those_of_the_other_keys_of_the_item():
+    lines = problems(inputs.read_library, library(item("a"), item("b", annex_of="zz", annex_form="shed", topics=["nowhere"])), inputs.read_tree(TREE))
+    assert len(lines) == 3 and all("('b')" in line for line in lines)
+    assert "annex_form" in lines[0] and "topics[0]" in lines[1] and "annex_of: 'zz' is not the id of an item of the library" in lines[2]
 
 
 def test_all_the_problems_of_a_library_are_listed_each_with_its_item():
