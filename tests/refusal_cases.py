@@ -222,6 +222,32 @@ def branches_below_standing(tmp):
     return raised(lambda: h.rule(40, 3, False, 2))  # three avenues hold the numbers 0, 1 and 2: the rule needs 3 branches at least
 
 
+def house_is_annex(tmp):
+    h = town(3)
+    h.add(1, annex_of=hid(1), annex_form="wing")  # h0004 stands beside h0001 and has no lot
+    return raised(lambda: h.file(hid(4), "a"))
+
+
+def annex_of_itself(tmp):
+    return raised(lambda: town(2).add(1, annex_of=hid(3), annex_form="wing"))  # the new item is h0003
+
+
+def annex_of_annex(tmp):
+    h = town(2)
+    h.add(1, annex_of=hid(1), annex_form="wing")  # h0003 stands beside h0001
+    return raised(lambda: h.add(1, annex_of=hid(3), annex_form="mailbox"))
+
+
+def annex_parent_missing(tmp):
+    return raised(lambda: town(2).event("annex", {"house": hid(1), "parent": "nobody", "form": "wing"}))
+
+
+def annex_has_annexes(tmp):
+    h = town(3)
+    h.add(1, annex_of=hid(1), annex_form="wing")  # h0004 stands beside h0001, which therefore cannot stand beside another house
+    return raised(lambda: h.event("annex", {"house": hid(1), "parent": hid(2), "form": "wing"}))
+
+
 # ------------------------------------------------------------------------------------------------ an undo ----
 def undo_not_earlier(tmp):
     return raised(lambda: town(3).event("undo", {"seq": 9}))
@@ -434,6 +460,14 @@ def date_bad(tmp):
 
 def kind_unknown(tmp):
     return event_problem("kind_unknown", kind="sweep")
+
+
+def annex_keys_unpaired(tmp):
+    return event_problem("annex_keys_unpaired", item__annex_of="h0002")
+
+
+def annex_form_bad(tmp):
+    return event_problem("annex_form_bad", item__annex_of="h0002", item__annex_form="shed")
 
 
 # ---------------------------------------------------------------------------------- not a world file ----

@@ -79,8 +79,11 @@
         "year": {"type": ["integer", "null"], "minimum": -1000000, "maximum": 1000000, "description": "The year of publication, or null."},
         "doi": {"type": ["string", "null"], "minLength": 1, "description": "Optional; null when there is none."},
         "type": {"type": "string", "minLength": 1, "description": "The kind of document, e.g. article, review, editorial."},
-        "openalex": {"type": "array", "maxItems": 3, "items": {"$ref": "#/$defs/openalex_topic"}, "description": "Optional; the primary topic first, then up to two more. Empty or left out: no topic is known."}
-      }
+        "openalex": {"type": "array", "maxItems": 3, "items": {"$ref": "#/$defs/openalex_topic"}, "description": "Optional; the primary topic first, then up to two more. Empty or left out: no topic is known."},
+        "annex_of": {"$ref": "#/$defs/text", "description": "Optional, and only with annex_form. The id of the house that this item exists for. Where that house stands on a lot, the item stands beside it at once and has no lot; where it has not arrived, the item is an ordinary house that waits and is absorbed when the house arrives."},
+        "annex_form": {"enum": ["wing", "mailbox"], "description": "Optional, and only with annex_of. How the item stands beside its house: a wing on its side wall, or a mailbox at its gate."}
+      },
+      "dependentRequired": {"annex_of": ["annex_form"], "annex_form": ["annex_of"]}
     },
     "road_node": {
       "type": ["object", "null"],
@@ -103,7 +106,8 @@
         {"$ref": "#/$defs/move_road"},
         {"$ref": "#/$defs/merge_roads"},
         {"$ref": "#/$defs/undo"},
-        {"$ref": "#/$defs/set_rule"}
+        {"$ref": "#/$defs/set_rule"},
+        {"$ref": "#/$defs/annex"}
       ]
     },
     "add_item": {
@@ -240,6 +244,27 @@
         "at": {"$ref": "#/$defs/moment"},
         "kind": {"const": "set_rule"},
         "payload": {"$ref": "#/$defs/rule"}
+      }
+    },
+    "annex": {
+      "type": "object",
+      "required": ["seq", "at", "kind", "payload"],
+      "additionalProperties": false,
+      "properties": {
+        "seq": {"$ref": "#/$defs/count"},
+        "at": {"$ref": "#/$defs/moment"},
+        "kind": {"const": "annex"},
+        "payload": {
+          "type": "object",
+          "required": ["house", "parent", "form"],
+          "additionalProperties": false,
+          "properties": {
+            "house": {"$ref": "#/$defs/text", "description": "The house that becomes an annex: it stands on a lot, and has no annex of its own."},
+            "parent": {"$ref": "#/$defs/text", "description": "The house it exists for: it stands on a lot and is no annex, and not the house itself."},
+            "form": {"enum": ["wing", "mailbox"]}
+          },
+          "description": "A link learned later: the house leaves its lot and stands beside the parent."
+        }
       }
     }
   }

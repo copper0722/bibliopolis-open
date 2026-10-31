@@ -5,7 +5,7 @@ import errno
 import json
 
 import pytest
-from hand_support import Hand, hid, item, journal_value, scripted, scripted_merge, scripted_nodes, stamp, topic
+from hand_support import Hand, every_entry, hid, item, journal_value, scripted, scripted_merge, scripted_nodes, stamp, topic
 
 from bibliopolis import hand
 from bibliopolis import journal as journal_module
@@ -86,7 +86,7 @@ def containers(value, path="payload"):
 def test_no_list_or_dict_that_a_payload_is_made_of_is_shared_with_the_event_that_is_kept_for_any_kind_of_event():
     """Every event of the scripted worlds is appended again to a new journal with a payload of its own; whatever list or dict of it the journal keeps must be a copy."""
     seen = set()
-    for world in (scripted, scripted_nodes, scripted_merge):
+    for world in (scripted, scripted_nodes, scripted_merge, every_entry):  # (the last has the event `annex` and items that exist for another item)
         source = world().journal
         fresh = Journal(source.rule)
         for e in source.events:
@@ -102,7 +102,7 @@ def test_the_event_append_returns_is_a_copy_that_shares_nothing_with_the_log_and
     """What `append` gives back used to be the event of the log itself: a caller who set a key or emptied a list of it changed the log. Every event of the scripted worlds is appended to a
     new journal; what comes back equals the event in the log, is not it, shares no list or dict with it, and is changed all over without changing the log."""
     seen = set()
-    for world in (scripted, scripted_nodes, scripted_merge):
+    for world in (scripted, scripted_nodes, scripted_merge, every_entry):  # (the last has the event `annex` and items that exist for another item)
         source = world().journal
         fresh = Journal(source.rule)
         for e in source.events:
@@ -200,6 +200,7 @@ NEXT = {
     "merge_roads": lambda h: {"road": "m", "name": "M", "parent": None, "members": ["a", "b"]},
     "undo": lambda h: {"seq": len(h.journal.events)},
     "set_rule": lambda h: {"max": 9, "min": 3, "auto": True, "branches": 13},
+    "annex": lambda h: {"house": hid(7), "parent": hid(8), "form": "wing"},
 }
 AT = "2026-10-26T12:00:00Z"
 PLACING = ("add_item", "open_road", "file", "move_road", "merge_roads")  # the kinds that put houses on a road

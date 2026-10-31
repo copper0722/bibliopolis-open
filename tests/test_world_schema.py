@@ -9,7 +9,7 @@ import random
 from pathlib import Path
 
 import pytest
-from hand_support import Hand, hid, play, scripted, scripted_merge, scripted_nodes, topic
+from hand_support import Hand, every_entry, hid, play, scripted, scripted_merge, scripted_nodes, topic
 from refusal_cases import small_journal
 from schema_support import faults, valid
 
@@ -38,9 +38,10 @@ def taken_world():
 
 @functools.lru_cache(maxsize=None)
 def worlds():
-    """Worlds that between them use every kind of event, the node of a road, the rule auto, undo, topics, and nothing at all. (Built once; a file is made from each as needed.)"""
+    """Worlds that between them use every kind of event (the event `annex` and items that exist for another item in `entries`), the node of a road, the rule auto, undo, topics, and
+    nothing at all. (Built once; a file is made from each as needed.)"""
     return {"empty": Journal(), "small": small_journal(), "scripted": scripted().journal, "nodes": scripted_nodes().journal, "merge": scripted_merge().journal,
-            "taken": taken_world(), "random": play(3, steps=80, auto=True, suggested=True, arrivals=0.8, merging=True)}
+            "taken": taken_world(), "random": play(3, steps=80, auto=True, suggested=True, arrivals=0.8, merging=True), "entries": every_entry().journal}
 
 
 def accepted(doc) -> bool:
@@ -167,6 +168,13 @@ WRONG = [
     ("a move_road to the town hall", "scripted", lambda d: next(e for e in d["events"] if e["kind"] == "move_road")["payload"].update(parent=None), "matches 0 of oneOf"),
     ("an undo of event 0", "scripted", lambda d: next(e for e in d["events"] if e["kind"] == "undo")["payload"].update(seq=0), "matches 0 of oneOf"),
     ("a set_rule with a rule too many", "scripted", lambda d: next(e for e in d["events"] if e["kind"] == "set_rule")["payload"].update(x=1), "matches 0 of oneOf"),
+    ("an item that exists for another item with no form", "entries", lambda d: next(i for i in d["items"] if "annex_of" in i).pop("annex_form"), "annex_of needs annex_form"),
+    ("an item with a form and no house", "entries", lambda d: next(i for i in d["items"] if "annex_of" in i).pop("annex_of"), "annex_form needs annex_of"),
+    ("an item that exists for another item in a form that is not one", "entries", lambda d: next(i for i in d["items"] if "annex_of" in i).update(annex_form="shed"), "not one of"),
+    ("an item that exists for something that is no id", "entries", lambda d: next(i for i in d["items"] if "annex_of" in i).update(annex_of=5), "not of type"),
+    ("an annex event with a form that is not one", "entries", lambda d: next(e for e in d["events"] if e["kind"] == "annex")["payload"].update(form="shed"), "matches 0 of oneOf"),
+    ("an annex event with no parent", "entries", lambda d: next(e for e in d["events"] if e["kind"] == "annex")["payload"].pop("parent"), "matches 0 of oneOf"),
+    ("an annex event with a key too many", "entries", lambda d: next(e for e in d["events"] if e["kind"] == "annex")["payload"].update(x=1), "matches 0 of oneOf"),
 ]
 
 
@@ -196,6 +204,14 @@ CANNOT = [
         "road": "again", "name": "Again", "parent": None, "members": ["f0", "f5"]}}), "does not stand directly below the ring road"),
     ("a merge of a road that is not there", "merge", lambda d: d["events"].append({"seq": len(d["events"]) + 1, "at": "2026-01-01", "kind": "merge_roads", "payload": {
         "road": "again", "name": "Again", "parent": None, "members": ["f5", "ghost"]}}), "there is no road 'ghost'"),
+    ("an annex of itself", "entries", lambda d: d["events"].append({"seq": len(d["events"]) + 1, "at": "2026-01-01", "kind": "annex", "payload": {
+        "house": "h0001", "parent": "h0001", "form": "wing"}}), "cannot be an annex of itself"),
+    ("an annex of a house that is not there", "entries", lambda d: d["events"].append({"seq": len(d["events"]) + 1, "at": "2026-01-01", "kind": "annex", "payload": {
+        "house": "h0001", "parent": "ghost", "form": "wing"}}), "there is no house 'ghost'"),
+    ("an annex of an annex", "entries", lambda d: d["events"].append({"seq": len(d["events"]) + 1, "at": "2026-01-01", "kind": "annex", "payload": {
+        "house": "h0001", "parent": "h0041", "form": "wing"}}), "is an annex of 'h0040'"),
+    ("a house that is an annex again", "entries", lambda d: d["events"].append({"seq": len(d["events"]) + 1, "at": "2026-01-01", "kind": "annex", "payload": {
+        "house": "h0041", "parent": "h0001", "form": "wing"}}), "is a wing of the house 'h0040'"),
     ("a node that another road stands for", "taken", lambda d: d["events"].append({"seq": len(d["events"]) + 1, "at": "2026-01-01", "kind": "open_road", "payload": {
         "road": "again", "name": "Again", "parent": None, "houses": [hid(i) for i in range(13, 23)], "topic": {"id": "ex:d1", "level": "domain", "name": "Domain 1"}}}), "stands for"),
 ]
@@ -301,6 +317,7 @@ def test_the_validator_agrees_with_jsonschema_on_the_files_and_the_faults_where_
 
 def test_the_validator_does_not_pass_a_schema_it_does_not_understand():
     with pytest.raises(ValueError, match="does not know"):
-        faults({}, {"type": "object", "dependentRequired": {"a": ["b"]}})
+        faults({}, {"type": "object", "dependentSchemas": {"a": {"required": ["b"]}}})
+    assert faults({"a": 1}, {"type": "object", "dependentRequired": {"a": ["b"]}}) == ["$: a needs b"] and faults({"b": 1}, {"type": "object", "dependentRequired": {"a": ["b"]}}) == []
     assert faults(1, {"type": "integer"}) == [] and faults(True, {"type": "integer"}) and faults("a\nb", {"not": {"pattern": "[\\u0000-\\u001f]"}})
     assert faults({"a": 1}, {"type": "object", "additionalProperties": False})

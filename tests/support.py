@@ -625,10 +625,11 @@ def streets_along(doc, lid, band, side):
     return [r["street"] for r in sorted(lanes, key=lambda r: r["off"])]
 
 
-def step_problems(before, after, may_change=lambda lot_before, lot_after: False, *, re_ribbed=frozenset(), laid_out_again=False):
+def step_problems(before, after, may_change=lambda lot_before, lot_after: False, *, re_ribbed=frozenset(), laid_out_again=False, annexed=frozenset()):
     """What one step did that it may not (empty: nothing), as (invariant, what, detail). `may_change(lot_before, lot_after)` is True for a house that the step may put on
     another road or lot (a split, a move, a merge, a filing). `re_ribbed`: the streets of roads that the step moved, whose rib is a new one (the old rib stays in the line as a
-    ghost). `laid_out_again`: the step laid the whole world out afresh (a new ring road), so that only the first two hold.
+    ghost). `laid_out_again`: the step laid the whole world out afresh (a new ring road), so that only the first two hold. `annexed`: the houses that the step turned into annexes
+    (items that exist for another item): they leave their lots, and no other house is gone.
       1 address  every house keeps its road and its topic;
       2 lot      every house keeps its rib and its slot;
       4 row      a rib keeps its mode, its band and its side; a house keeps its row (inner or outer) and its side of the axis, read from where it stands;
@@ -638,7 +639,8 @@ def step_problems(before, after, may_change=lambda lot_before, lot_after: False,
     was, now = {p["article"]: p for p in before["places"].values() if p["kind"] == "lot"}, {p["article"]: p for p in after["places"].values() if p["kind"] == "lot"}
     for aid, lot in was.items():
         if aid not in now:
-            bad.append((1, "a house is gone", aid))
+            if aid not in annexed:
+                bad.append((1, "a house is gone", aid))
         elif lot_key(lot) != lot_key(now[aid]) and not may_change(lot, now[aid]):
             what = (1, "a house changed its road or topic") if lot["street"] != now[aid]["street"] or lot["tag"] != now[aid]["tag"] else (2, "a house changed its lot")
             bad.append((*what, f"{aid}: {lot_key(lot)} -> {lot_key(now[aid])}"))

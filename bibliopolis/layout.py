@@ -285,6 +285,10 @@ ANNEX_NOTES = {
                              "which are the lots",
     "world.chronicle.annex": "an item that exists for another item stands beside its house: `annex` is the item, `parent` its house and `form` how it stands there",
 }  # a document has them only when it holds an annex
+ANNEX_NOTES_HAND = {
+    "world.chronicle.absorbed": "a house that stood on a lot of its own is an annex now, when the house it exists for arrives or by the event `annex`: `absorbed` is the house, `parent` the house "
+                                "it stands beside, `form` how, and `left` the place it left (a lot of a road stays reserved, a lot of the ring leaves nothing)",
+}  # a document of a world built by hand has it only when it holds an annex
 GEOMETRY = {
     "unit": "cell", "x": "east", "z": "south", "angle": "degrees clockwise from north (may be negative or above 360)",
     "origin": "the centre of the town hall plaza", "position": "centre of the cell",

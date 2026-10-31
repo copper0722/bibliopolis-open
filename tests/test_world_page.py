@@ -99,10 +99,10 @@ def entries_of_a_world():
 
 def test_the_table_of_chronicle_entries_has_the_keys_the_engine_writes_in_that_order():
     rows = re.findall(r"^\| (?:a |an )(.+?) \| (.+?) \|$", PAGE.split("The chronicle.")[1].split("An event that an undo")[0], flags=re.M)
-    assert len(rows) == 8
+    assert len(rows) == 10
     entries = list(entries_of_a_world().values())
     kinds = {"road opened": "from", "house filed": "filed", "road renamed": "renamed", "road moved": "moved", "merge of roads": "merged", "undo": "undone", "change of rule": "rule",
-             "new radius": "resized"}
+             "new radius": "resized", "annex placed": "annex", "house absorbed": "absorbed"}
     for what, cell in rows:
         shown = re.findall(r"`(\w+)`", cell)
         marker = next(v for k, v in kinds.items() if what.startswith(k))
@@ -174,7 +174,7 @@ def test_the_threat_model_of_the_files_is_on_the_page_and_in_the_card():
 
 def test_the_page_states_the_scope_of_the_restore_in_place_that_the_journal_tests_pin():
     page = " ".join(PAGE.split())
-    for phrase in ("the State, its live tree and its main dictionaries (`nodes`, `items`, `road_of`, `plan`, `held`, `kinds`, `effects`) are the same objects afterwards",
+    for phrase in ("the State, its live tree and its main dictionaries (`nodes`, `items`, `road_of`, `annexes`, `plan`, `held`, `kinds`, `effects`) are the same objects afterwards",
                    "`rule`, the document and the record of each road are replaced by the copies taken before", "The copy of the event that `append` gives back is made before anything changes"):
         assert phrase in page, phrase
 

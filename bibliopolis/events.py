@@ -22,6 +22,11 @@ A world built by hand is an append-only log of events, and its city and its chro
   set_rule     {max, min, auto, branches}     the rule from here on; `auto` applies the district rule after each arrival (bibliopolis.hand); `branches` is how many roads a road holds
                                               directly (and how many avenues the ring road has), 13 unless the world starts with another; a new `branches` or a `max` that asks the
                                               ring road for another radius lays the whole world out again
+  annex        {house, parent, form}          a link learned later: the house `house`, which stands on a lot, is an item that exists for the house `parent` (which stands on a lot too)
+                                              and stands beside it as a `form` (wing or mailbox) from here on, with no lot of its own
+
+An item may carry `annex_of` (the id of the house it exists for) and `annex_form` (wing or mailbox), both or neither. Where its house stands, it is no house: it stands beside it at
+once. Where its house has not arrived, it is an ordinary house that waits, and when the house arrives it is absorbed: it leaves its lot and stands beside the house.
 
 Every check here is about the shape of one event, and is made before the world is asked. What the world refuses (a house that is not there, a road that exists
 already, ...) is `Refusal`, raised by the fold. Every refusal, every problem of shape and every error of a world file has an id and params (`CODES`, `Refusal`), so
@@ -31,10 +36,10 @@ that a page can translate it into any language without reading the English text.
 from __future__ import annotations
 
 from .coded import Coded
-from .inputs import _CONTROL, _LANE_LIKE, MAX_DEPTH, MAX_PROBLEMS, _Problems, _shown, _whole, parse_added_at
+from .inputs import _CONTROL, _LANE_LIKE, ANNEX_FORMS, ANNEX_KEYS, MAX_DEPTH, MAX_PROBLEMS, _Problems, _shown, _whole, parse_added_at
 from .plan import MAX_HOUSES, MIN_HOUSES, RULE_LIMIT
 
-KINDS = ("add_item", "open_road", "file", "rename_road", "move_road", "merge_roads", "undo", "set_rule")
+KINDS = ("add_item", "open_road", "file", "rename_road", "move_road", "merge_roads", "undo", "set_rule", "annex")
 ORDER = ("domain", "field", "subfield", "topic")  # the four levels of an OpenAlex topic, the widest first (the order the keys are written in)
 LEVELS = ORDER[::-1]  # ... and the most specific first (the order a filing suggestion scores them in)
 MAX_TOPICS = 3  # the primary topic of an item and up to two more
@@ -45,11 +50,12 @@ DEFAULT_RULE = {"max": MAX_HOUSES, "min": MIN_HOUSES, "auto": False, "branches":
 BRANCHES_LEAST = 2  # the fewest `branches` a rule has: a full road must be able to merge two of its roads (MERGE_LEAST)
 BRANCHES_LIMIT = 1000  # the most: with that many directions the narrowest land is 0.16 degrees and the ring road, the widest a rule can ask for, has a radius of 1073.5 cells
 AUTO_PREFIX = "auto:"  # the ids of the roads that the rule opens by itself; a player's road id never starts with it
-ITEM_KEYS = ("id", "title", "authors", "year", "doi", "type", "openalex")
+ITEM_KEYS = ("id", "title", "authors", "year", "doi", "type", "openalex", *ANNEX_KEYS)
 ITEM_REQUIRED = ("id", "title", "authors", "year", "type")
 YEAR_LIMIT = 10**6
 PAYLOAD_KEYS = {"add_item": ("item",), "open_road": ("road", "name", "parent", "houses", "topic"), "file": ("house", "road"), "rename_road": ("road", "name"),
-                "move_road": ("road", "parent"), "merge_roads": ("road", "name", "parent", "members", "topic"), "undo": ("seq",), "set_rule": RULE_KEYS}
+                "move_road": ("road", "parent"), "merge_roads": ("road", "name", "parent", "members", "topic"), "undo": ("seq",), "set_rule": RULE_KEYS,
+                "annex": ("house", "parent", "form")}
 OPTIONAL_KEYS = {"open_road": ("topic",), "merge_roads": ("topic",)}  # left out, they are null (the event is kept with every key, in the order of PAYLOAD_KEYS)
 MERGE_LEAST = 2  # the fewest roads a merge takes
 RING_LIMIT = MAX_DEPTH  # the deepest ring a road stands in (an avenue is ring 1): the engine walks the roads ring by ring, and takes no more of a library's tree either
@@ -79,6 +85,11 @@ CODES = {
     "already_below": ("road", "parent"),
     "rule_unchanged": ("max", "min", "auto", "branches"),
     "branches_below_standing": ("road", "needs", "branches"),
+    "house_is_annex": ("house", "parent", "form"),
+    "annex_of_itself": ("house",),
+    "annex_of_annex": ("house", "parent", "above"),
+    "annex_parent_missing": ("house", "parent"),
+    "annex_has_annexes": ("house", "count"),
     # ---- an undo is refused
     "undo_not_earlier": ("target", "seq"),
     "undo_not_counting": ("target",),
@@ -129,6 +140,8 @@ CODES = {
     "event_seq_bad": ("got",),
     "date_bad": ("at",),
     "kind_unknown": ("kind", "kinds"),
+    "annex_keys_unpaired": ("present", "missing"),
+    "annex_form_bad": ("got", "forms"),
     # ---- a world file or a store is not a world (WorldFileError)
     "not_a_world_file": ("got",),
     "file_keys": ("missing", "unknown", "expected"),
@@ -153,6 +166,11 @@ class Refusal(Coded, ValueError):
         out = Refusal(f"event {seq} ({kind}): {self}", self.code, **self.params)
         out.event, out.where = {"seq": seq, "kind": kind}, self.where
         return out
+
+
+def house_is_annex(house: str, parent: str, form: str) -> Refusal:
+    """The refusal when an item that has no lot, because it is an annex of the house `parent` (a `form`: wing or mailbox), is asked to stand on a road, be filed or be chosen to open one."""
+    return Refusal(f"{house!r} is a {form} of the house {parent!r} and has no lot of its own", "house_is_annex", house=house, parent=parent, form=form)
 
 
 class Problems(_Problems):
@@ -251,6 +269,30 @@ def check_topics(value, where: str, problems: Problems) -> list[dict] | None:
     return out if _count(problems) == start else None
 
 
+def check_form(value, where: str, problems: Problems) -> bool:
+    """Whether `value` is a form of an item that exists for another item (wing or mailbox)."""
+    if isinstance(value, str) and value in ANNEX_FORMS:
+        return True
+    problems.add(where, f"must be one of {', '.join(ANNEX_FORMS)}, got {_shown(value)}", "annex_form_bad", got=_shown(value), forms=list(ANNEX_FORMS))
+    return False
+
+
+def check_annex_keys(item: dict, where: str, problems: Problems) -> dict:
+    """`annex_of` and `annex_form` of an item, both or neither: `{annex_of, annex_form}` when it has both and they are right, else `{}` (with the problems added). `annex_of` is the
+    id of the item that this one exists for, text without control characters; whether that item stands is for the world to say."""
+    present = [k for k in ANNEX_KEYS if k in item]
+    if len(present) == 1:
+        missing = next(k for k in ANNEX_KEYS if k not in item)
+        problems.add(where, f"{present[0]} comes with {missing}: an item that exists for another item has both, and any other has neither; {missing} is missing", "annex_keys_unpaired",
+                     present=present[0], missing=missing)
+        return {}
+    if not present:
+        return {}
+    ok = text(problems, f"{where}.annex_of", item["annex_of"], plain=True)
+    ok = check_form(item["annex_form"], f"{where}.annex_form", problems) and ok
+    return {k: item[k] for k in ANNEX_KEYS} if ok else {}
+
+
 def check_item(item, where: str, problems: Problems) -> dict | None:
     """The metadata of an item as a world keeps it, or None with the problems added. `id`, `title`, `authors`, `year` (a whole number or null) and `type` are
     there; `doi` (null when it has none) and `openalex` (the topics, none when unknown) may be left out. Any other key is refused, so that nothing is dropped
@@ -277,9 +319,10 @@ def check_item(item, where: str, problems: Problems) -> dict | None:
     if doi is not None:
         text(problems, f"{where}.doi", doi)
     topics = check_topics(item.get("openalex", []), f"{where}.openalex", problems)
+    annex = check_annex_keys(item, where, problems)
     if _count(problems) != start or topics is None:
         return None
-    return {"id": item["id"], "title": item["title"], "authors": list(authors), "year": year, "doi": doi, "type": item["type"], "openalex": topics}
+    return {"id": item["id"], "title": item["title"], "authors": list(authors), "year": year, "doi": doi, "type": item["type"], "openalex": topics, **annex}
 
 
 # ------------------------------------------------------------------------------------------------------ rules ----
@@ -393,6 +436,10 @@ def _payload(kind: str, payload, where: str, problems: Problems) -> dict | None:
     elif kind == "move_road":
         _road_id(problems, f"{where}.road", payload["road"])
         _road_id(problems, f"{where}.parent", payload["parent"])
+    elif kind == "annex":
+        text(problems, f"{where}.house", payload["house"], plain=True)
+        text(problems, f"{where}.parent", payload["parent"], plain=True)
+        check_form(payload["form"], f"{where}.form", problems)
     if _count(problems) != start:
         return None
     out = {k: payload.get(k) for k in keys}
@@ -454,4 +501,6 @@ def references(event: dict) -> tuple[set[str], set[str]]:
         return {p["road"], p["parent"]}, set()
     if kind == "merge_roads":
         return set(p["members"]) | ({p["parent"]} if p["parent"] is not None else set()), set()
+    if kind == "annex":
+        return set(), {p["house"], p["parent"]}
     return set(), set()

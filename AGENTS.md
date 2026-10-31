@@ -34,12 +34,14 @@ split as they grow).
 - Files the tool writes: `world new`, `import`, `export` and `fold` publish a finished temporary file by a hard link and never write over a name (refused where there are no hard links);
   `build` and `picture` replace their own output. Threat model: several runs of this tool by one user at once, a wrong name, a fault or an interrupt in the middle of a call and a disk with no hard
   links are in scope; a hostile process with write access to the same folder is out (it could delete or replace the world itself, and no way of publishing stops that). See `docs/world.md`, "The files".
-- `tests/`: `python3 -m pytest` from the repository root. Every test is offline and synthetic.
+- `tests/`: `python3 -m pytest` from the repository root. Every test is offline and synthetic. `tests/test_legacy_bytes.py` holds the sha256 of what the version of 0.4.0 made for the sample,
+  random libraries and worlds built by hand (with no annex), made from a snapshot of that version: an input with no annex key must give those bytes.
 - The plan, the world of `grow` mode (roads, direct counts, the ring road, chronicle, lots, ribs, lines) and the document it makes (places, roads, coast,
   measures) are an extraction of the private engine. A parity test in the private repository compares them with it on random libraries and on the
   sample (the whole document against a private plan without the journal sector). Not compared, because the private engine has nothing to compare
   with: the input checks (and the checks of a city file), the mirror mode (and `complete`), the command line and its summary, the `at` dates of the
-  chronicle, the replay (`first`), the chronicle sentences, and the whole world built by hand (the event log and its fold, the golden-angle bearings and their nearest-bearing sectors,
+  chronicle, the replay (`first`), the chronicle sentences, the items that exist for another item (annexes: the keys `annex_of` and `annex_form`, the place kind `annex`, the waiting list of a build,
+  the absorption and the event `annex` of a world built by hand), and the whole world built by hand (the event log and its fold, the golden-angle bearings and their nearest-bearing sectors,
   the branches and the merges at every level, undo, the suggestions, the world file and the SQLite store; its tests pin the sha256 of a scripted world and of the sample cities). `picture` is a
   rewrite of the private SVG renderer (the plan view of a layout v4 document), not an extraction, and it is not under parity either; the pictures of the
   README are made here, from the sample. A change to any of these says so in its commit.

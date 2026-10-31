@@ -37,6 +37,12 @@ There is no library to plan from, so the plan grows with the world and never cha
                   their order round it (the laps in turn, each from the north) and take the first slots of the fill order of the new laps, matched by rank (`put_ring_again`).
   the chronicle   one entry for each road opened (the shape of a split), house filed, road renamed or moved, undo and change of rule, in log order; `event_id` is the
                   `seq` of the event and `at` its `at`.
+  an annex        an item that exists for another item (`annex_of` and `annex_form` of an item, or the event `annex`) is no house: it has no lot and no road, and stands beside its
+                  house as a wing or a mailbox (bibliopolis.world: `put_annex`). An item whose house stands is an annex at once; one whose house has not arrived is an ordinary
+                  house that waits (its item says `annex_of`), and when the house arrives every house that waited for it is ABSORBED: it leaves its lot (a lot of a road stays
+                  reserved, a lot of the ring leaves nothing) and becomes an annex, and every other house keeps its lot. The event `annex` does the same for a link learned later.
+                  The annexes are `State.annexes`; `State.items` and `State.road_of` are the houses that stand on a lot, so a count of `max` and `min` never has them. An annex stands
+                  where its house stands: a move, a merge, a split or a new radius needs nothing for it, and an undo is the fold of the log without the event, as for every event.
 """
 
 from __future__ import annotations
@@ -49,7 +55,7 @@ from . import layout as lay
 from . import plan as plan_mod
 from . import ring as ring_mod
 from . import world as zw
-from .events import AUTO_PREFIX, BRANCHES_LEAST, DEFAULT_RULE, RING_LIMIT, RULE_KEYS, Refusal, standing
+from .events import AUTO_PREFIX, BRANCHES_LEAST, DEFAULT_RULE, RING_LIMIT, RULE_KEYS, Refusal, house_is_annex, standing
 from .suggest import descends, landing, roads_by_node, suggest_merge, suggest_road
 
 ZONING_VERSION = "hand-1"
@@ -202,6 +208,14 @@ class HandWorld(zw.World):
                               "count_before": before, "count_after": before - len(lots)})
         self.add_houses(place, [{"article": lot["article"], "tag": key, "seq": lot["seq"]} for lot in lots], trigger)
 
+    def absorb(self, house: str, parent: str, form: str, trigger: str) -> None:
+        """A house that stands on a lot becomes an annex of the house `parent` (a `form`: wing or mailbox): its lot is freed (a lot of a road stays reserved, a lot of the ring leaves
+        nothing), its record is the annex record (it keeps its arrival number) and one entry `absorbed` of the chronicle says where it was."""
+        lot = self.places.get(lay.article_place(house))
+        self.free_lot(lot)
+        self.put_annex(house, parent, form, lot["seq"])
+        self.note(trigger, absorbed=house, parent=parent, form=form, left=lot["street"])
+
     def file_house(self, house: str, key: str, trigger: str) -> None:
         """Move one house onto the road `key`; its lot stays empty behind it."""
         lot = self.places.get(lay.article_place(house))
@@ -304,8 +318,9 @@ class State:
     def __init__(self, rule: dict):
         self.rule = {**DEFAULT_RULE, **rule}  # (every key: a rule a test or a caller gives without `branches` has the default)
         self.nodes: dict[str, dict] = {}  # road id -> {"key", "name", "parent"}, in the order the roads were opened
-        self.items: dict[str, dict] = {}  # house id -> its item, in arrival order
+        self.items: dict[str, dict] = {}  # house id -> its item, in arrival order: the houses that stand on a lot (an item that waits for its house is one of them)
         self.road_of: dict[str, str | None] = {}  # house id -> the road it stands on; None: the ring road
+        self.annexes: dict[str, dict] = {}  # item id -> {"parent": the house it stands beside, "form": wing or mailbox}: the items that have no lot, in the order they became annexes
         self.plan = new_plan(self.rule)
         self.tree = LiveTree(self.nodes)
         self.doc = zw.new_world(self.plan)
@@ -318,15 +333,15 @@ class State:
         """Everything that an event may change in this State, kept so that `restore` can put it back (`Journal.append` takes one before it applies an event). The dictionaries are copies;
         the records of `nodes` are copied too, since a rename or a move changes them in place, and the plan is copied whole; the document is the same object, since it is never changed
         (a new one takes its place when an event is committed, `zw.apply_delta`). `vars(State)` is this and the live tree, which reads `nodes`: a test holds the two together."""
-        return {"rule": dict(self.rule), "nodes": {k: dict(v) for k, v in self.nodes.items()}, "items": dict(self.items), "road_of": dict(self.road_of), "plan": copy.deepcopy(self.plan),
-                "doc": self.doc, "held": dict(self.held), "kinds": dict(self.kinds), "effects": dict(self.effects)}
+        return {"rule": dict(self.rule), "nodes": {k: dict(v) for k, v in self.nodes.items()}, "items": dict(self.items), "road_of": dict(self.road_of), "annexes": dict(self.annexes),
+                "plan": copy.deepcopy(self.plan), "doc": self.doc, "held": dict(self.held), "kinds": dict(self.kinds), "effects": dict(self.effects)}
 
     def restore(self, saved: dict) -> None:
-        """Put back what `snapshot` kept. The dictionaries `nodes`, `items`, `road_of`, `plan`, `held`, `kinds` and `effects` are emptied and filled again, not replaced, so that whoever holds
+        """Put back what `snapshot` kept. The dictionaries `nodes`, `items`, `road_of`, `annexes`, `plan`, `held`, `kinds` and `effects` are emptied and filled again, not replaced, so that whoever holds
         one (the live tree holds `nodes`) still holds the State's. What `snapshot` copied one level down is replaced: the record of each road in `nodes`, and `rule`, and the document, which
         is a new object at every commit; a reference to one of those taken before a failed event is not the State's afterwards."""
         self.rule, self.doc = saved["rule"], saved["doc"]
-        for name in ("nodes", "items", "road_of", "plan", "held", "kinds", "effects"):
+        for name in ("nodes", "items", "road_of", "annexes", "plan", "held", "kinds", "effects"):
             current = getattr(self, name)
             current.clear()
             current.update(saved[name])
@@ -484,10 +499,51 @@ class State:
             self.road_of[h] = key
 
     # ---- the events
+    def annex_of(self, house: str) -> str | None:
+        """The house that `house` is an annex of: the one it stands beside, or, for an ordinary house that waits for its house, the one its item says it exists for. None for a house that
+        is no annex, and for an id that is none of the world's."""
+        if house in self.annexes:
+            return self.annexes[house]["parent"]
+        return self.items[house].get("annex_of") if house in self.items else None
+
+    def beside(self, house: str, parent: str) -> bool:
+        """Whether the new item `house`, which exists for `parent`, stands beside it at once (`parent` stands on a lot) or waits for it. `Refusal` for an item of itself, and for an item of
+        an annex (one that stands beside a house, or one that waits for its own house): an item is of a house, never of another annex."""
+        if house == parent:
+            raise Refusal(f"{house!r} cannot be an annex of itself", "annex_of_itself", house=house)
+        above = self.annex_of(parent)
+        if above is not None:
+            raise Refusal(f"{house!r} cannot be an annex of {parent!r}, which is an annex of {above!r}: an item is of a house, not of another annex", "annex_of_annex",
+                          house=house, parent=parent, above=above)
+        return parent in self.items
+
+    def absorb_waiting(self, w: HandWorld, house: dict) -> list[str]:
+        """The houses that waited for the house `house` (houses whose item says `annex_of` this one) are absorbed, in the order they arrived: each leaves its lot and stands beside it,
+        with one entry `absorbed` of the chronicle. A house that is an annex itself takes none (no annex is of an annex): they stay houses. Returns the ids of the houses absorbed."""
+        if self.annex_of(house["id"]) is not None:
+            return []
+        out = []
+        for h in [h for h, it in self.items.items() if it.get("annex_of") == house["id"]]:
+            form = self.items[h]["annex_form"]
+            w.absorb(h, house["id"], form, "add_item")
+            del self.items[h], self.road_of[h]
+            self.annexes[h] = {"parent": house["id"], "form": form}
+            out.append(h)
+        return out
+
     def do_add_item(self, e: dict, p: dict) -> None:
         item = p["item"]
-        if item["id"] in self.items:
+        if item["id"] in self.items or item["id"] in self.annexes:
             raise Refusal(f"{item['id']!r} is a house already", "house_exists", house=item["id"])
+        parent = item.get("annex_of")
+        if parent is not None and self.beside(item["id"], parent):  # an item that exists for a house that stands: beside it at once, with no lot, no road and no landing
+            w, before = self.world(e), len(self.doc["chronicle"])
+            w.seq += 1  # the arrival number: log order
+            w.place_annex(item["id"], parent, item["annex_form"], w.seq, "add_item")
+            self.annexes[item["id"]] = {"parent": parent, "form": item["annex_form"]}
+            self.commit(w, e, before)
+            self.effects[e["seq"]] = {"houses": [item["id"]], "roads": []}
+            return
         land = landing(self, item) if self.rule["auto"] else None  # (a road only under `auto`; otherwise the ring road)
         w, before = self.world(e), len(self.doc["chronicle"])
         w.seq += 1  # the arrival number: log order
@@ -496,9 +552,37 @@ class State:
         self.items[item["id"]] = item
         self.road_of[item["id"]] = land
         touched, opened = [item["id"]], []
+        touched += self.absorb_waiting(w, item)  # (the houses that waited for this one: an item that has no `annex_of` of its own may have some)
         self.settle(w, e, land, touched, opened)
         self.commit(w, e, before)
         self.effects[e["seq"]] = {"houses": touched, "roads": opened}
+
+    def do_annex(self, e: dict, p: dict) -> None:
+        """A link learned later: the house `house` stands beside the house `parent` from here on. Both stand on a lot and differ, the house has no annex of its own and the parent is no annex
+        (not one that stands beside a house, and not one that waits for its own house); else a refusal with its own id."""
+        house, parent, form = p["house"], p["parent"], p["form"]
+        if house == parent:
+            raise Refusal(f"{house!r} cannot be an annex of itself", "annex_of_itself", house=house)
+        if house in self.annexes:
+            raise house_is_annex(house, self.annexes[house]["parent"], self.annexes[house]["form"])
+        if house not in self.items:
+            raise Refusal(f"{house!r} is not a house", "not_a_house", house=house)
+        above = self.annex_of(parent)
+        if above is not None:
+            raise Refusal(f"{house!r} cannot be an annex of {parent!r}, which is an annex of {above!r}: an item is of a house, not of another annex", "annex_of_annex",
+                          house=house, parent=parent, above=above)
+        if parent not in self.items:
+            raise Refusal(f"{house!r} cannot be an annex of {parent!r}: there is no house {parent!r}", "annex_parent_missing", house=house, parent=parent)
+        owned = [a for a, rec in self.annexes.items() if rec["parent"] == house]
+        if owned:
+            raise Refusal(f"{house!r} has {len(owned)} {'annex' if len(owned) == 1 else 'annexes'} of its own, so it cannot be an annex: an item is of a house, not of another annex",
+                          "annex_has_annexes", house=house, count=len(owned))
+        w, before = self.world(e), len(self.doc["chronicle"])
+        w.absorb(house, parent, form, "annex")
+        del self.items[house], self.road_of[house]
+        self.annexes[house] = {"parent": parent, "form": form}
+        self.commit(w, e, before)
+        self.effects[e["seq"]] = {"houses": [house], "roads": []}
 
     def settle(self, w: HandWorld, e: dict, start: str | None, touched: list[str], opened: list[str]) -> None:
         """After an arrival, under the rule `auto`: the place the house stands on (`start`: a road, or None for the ring road) is looked at, and while it holds more than `max`
@@ -552,6 +636,8 @@ class State:
         if len(ids) < least:
             raise Refusal(f"{len(ids)} houses are chosen; a road takes at least {least}", "too_few_chosen", chosen=len(ids), least=least)
         for h in ids:
+            if h in self.annexes:
+                raise house_is_annex(h, self.annexes[h]["parent"], self.annexes[h]["form"])
             if h not in self.items:
                 raise Refusal(f"{h!r} is not a house", "not_a_house", house=h)
             if self.road_of[h] != parent:
@@ -576,6 +662,8 @@ class State:
 
     def do_file(self, e: dict, p: dict) -> None:
         house, key = p["house"], p["road"]
+        if house in self.annexes:
+            raise house_is_annex(house, self.annexes[house]["parent"], self.annexes[house]["form"])
         if house not in self.items:
             raise Refusal(f"{house!r} is not a house", "not_a_house", house=house)
         if key not in self.nodes:
@@ -759,6 +847,7 @@ class State:
         `commit`) and the ids of the houses put again, in the order they were put."""
         old = self.doc
         base = {**zw.new_world(self.plan), "seq": old["seq"], "chronicle": [dict(c) for c in old["chronicle"]]}
+        base["places"].update({pid: rec for pid, rec in old["places"].items() if rec["kind"] == "annex"})  # (an annex has no lot to put again: it stands where its house stands)
         w, put = HandWorld(zw.PlanView(self.plan), self.tree, base, event_id=e["seq"]), []
         for place, lots in self.layout_order():
             if place == zw.ROOT_PLACE:

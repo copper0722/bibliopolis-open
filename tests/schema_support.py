@@ -6,8 +6,8 @@ import json
 import re
 
 ANNOTATIONS = {"$schema", "$defs", "title", "description", "$comment"}
-KEYWORDS = {"$ref", "type", "const", "enum", "required", "properties", "additionalProperties", "items", "minItems", "maxItems", "uniqueItems", "minimum", "maximum", "minLength",
-            "pattern", "not", "anyOf", "oneOf"}
+KEYWORDS = {"$ref", "type", "const", "enum", "required", "dependentRequired", "properties", "additionalProperties", "items", "minItems", "maxItems", "uniqueItems", "minimum", "maximum",
+            "minLength", "pattern", "not", "anyOf", "oneOf"}
 
 
 def is_type(value, name: str) -> bool:
@@ -62,6 +62,9 @@ def faults(instance, schema: dict, root: dict | None = None, path: str = "$") ->
         for key in schema.get("required", []):
             if key not in instance:
                 out.append(f"{path}: missing {key}")
+        for key, needed in schema.get("dependentRequired", {}).items():
+            if key in instance:
+                out += [f"{path}: {key} needs {name}" for name in needed if name not in instance]
         props = schema.get("properties", {})
         for key, value in instance.items():
             if key in props:

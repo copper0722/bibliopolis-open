@@ -29,6 +29,7 @@ the event, writes it into the chronicle, and never reads the clock; `at` does no
 | `merge_roads` | `{road, name, parent, members, topic}` | a full road is the moment to group upward: two or more roads that stand directly below `parent` (null: the ring road, so avenues) stand below a new road `road`, which takes their place there. A new avenue takes the direction of the member with the widest sector; the directions of the others are free (see "Merging roads"). `topic` is as for `open_road` |
 | `undo` | `{seq}` | the named event no longer counts; an undo of an undo gives it back |
 | `set_rule` | `{max, min, auto, branches}` | the rule from here on; a new `branches`, or a `max` that asks the ring road for another radius, lays the whole world out again (see "A new radius") |
+| `annex` | `{house, parent, form}` | a link learned later: the house `house` is an item that exists for the house `parent`, and stands beside it as a `form` (`wing` or `mailbox`) from here on, with no lot of its own (see "An item that exists for another item") |
 
 A road id is text chosen by whoever appends the event (not empty, no control characters, not starting with `auto:`, and not of the form `lane:<id>:<n>`: that is the block key of a continuation rib, which only a city file from before version 0.4 has); it names one road, so a road
 is not opened twice under one id while it stands. A house id is the id of its item, and likewise names one house. (An event that an undo takes back leaves its ids free.) Road ids and
@@ -43,7 +44,7 @@ house ids are two kinds of name.
 ```
 
 `id`, `title` (may be empty), `authors`, `year` (a whole number or null) and `type` are there; `doi` (null when there is none) and `openalex` (the empty list when no topic is
-known) may be left out. `openalex` holds up to three topics, the primary one first, each with all four levels (domain, field, subfield, topic) as `{id, name}`; an id is any
+known) may be left out, and so may `annex_of` and `annex_form`, which come together or not at all (below). `openalex` holds up to three topics, the primary one first, each with all four levels (domain, field, subfield, topic) as `{id, name}`; an id is any
 text, the ids of OpenAlex when the topics come from there. Any other key is refused, so that nothing is dropped in silence. The samples and the tests of this repository use
 invented topics (`ex:d1.f1.s1.t1`).
 
@@ -134,6 +135,22 @@ below it; nothing else moves a house, and the houses that stay keep their lots w
 takes the lowest empty lot; on the ring road, the first free slot in the fill order of the lap). The one exception is `undo`, which is the fold of the log without the event it takes back, so it may place again what came after that event. The tests
 replay logs one event at a time and check this (`tests/test_stability.py`), with planted faults that must turn the check red.
 
+**An item that exists for another item.** An item may carry `annex_of` (the id of the house it exists for) and `annex_form` (`wing`, against the side wall of the house, or `mailbox`, at its
+gate). An item like that is an *annex*: no house, no lot, no road, no landing under the rule `auto`, and it counts for nothing against `max` or `min`. It stands where its house stands, so
+a move, a merge, a split or a new radius needs nothing for it. `add_item` of such an item does one of three things. When the house it exists for stands on a lot, the item stands beside it at once
+(one entry `annex` in the chronicle). When that house is itself an annex, or an item that waits for its own house, it is refused (`annex_of_annex`; `annex_of_itself` for an item of itself). When the house has not
+arrived, the item is an ordinary house, on the ring road or where the rule `auto` lands it, and it waits: `State.items` holds it, and its item says `annex_of`. When a house arrives, every
+house that waited for it is **absorbed**, in the order they arrived: it leaves its lot (`free_lot`: a lot of a road stays reserved, a lot of the ring leaves nothing) and stands beside the
+house, with one entry `absorbed` of the chronicle each; **every other house keeps its lot, byte for byte**. A house that is an annex itself, or waits as one, takes none (no annex is of an annex): the houses that waited
+for it stay houses. The event `annex` does the same for a link learned later: both items stand on a lot and differ, the house has no annex of its own and the parent is no annex, else it is
+refused (`annex_of_itself`, `house_is_annex`, `not_a_house`, `annex_of_annex`, `annex_parent_missing`, `annex_has_annexes`, in that order); it writes one entry `absorbed`. An item that stands beside a house is no
+house: `file` and `open_road` refuse it (`house_is_annex`), and so does `suggest_file`. The annexes of a house and a form are ranked 1, 2, ... by arrival (the arrival number it had when it
+came, also for a house that was absorbed), and a link learned later for an item that arrived before the annexes that stand puts it first and moves theirs up by one. The annexes are
+`State.annexes`, in the order they became annexes; `State.items`, `road_of` and everything that counts houses (`crowded`, `suggest_road`, `suggest_merge`) hold the houses that stand on a lot. The
+city document has a place of kind `annex` for each ([format.md](format.md)); `world.houses` and `measure.lots` count the lots, and `composition.articles` and `buildings` count the lots and the
+annexes. An `undo` is the fold of the log without the event, as always, so undoing the arrival of the house puts a house that was absorbed back on a lot of its own; it is refused, as ever, when a
+later event that counts depends on the event (the event `annex` names both its items).
+
 **Moving a road.** The road and the roads below it are put again below the new parent, a road at a time in the order the roads were opened, and their houses in the order they arrived;
 their old ribs go and the ground they claimed stays claimed. A road may not move below itself or below a road of its own, nor below the road it is below already, nor where the deepest road of its subtree would stand below ring 64 (`too_deep`). A ring-1 road may move
 below a road (it is then laid out like any road of ring 2, on the line of the avenue it is below). It gives up its direction, and its old line, which nothing stands on any more and which the next avenue
@@ -141,12 +158,12 @@ of that direction would have its own line over, is taken away (the ground of the
 
 **Undo.** `undo` names an earlier event that counts. It is refused when a later event that counts depends on the named one: it names a road that the event opened, or a house that the
 event placed or moved. So the player undoes from the end backwards. It is also refused when the log without that event does not fold (every later event that counts is taken again; for
-example giving back a filing whose house a later event took from the ring road, or a merge whose freed direction a later avenue took when the ring would then be full). Appending is all or nothing: a snapshot of the world is taken before an event is applied, and when anything comes out of the call (a refusal, a fault of the engine, an interrupt, a log that cannot take the event) the world is put back from it, in place, and the log is as it was. "In place" has a scope: the State, its live tree and its main dictionaries (`nodes`, `items`, `road_of`, `plan`, `held`, `kinds`, `effects`) are the same objects afterwards,
+example giving back a filing whose house a later event took from the ring road, or a merge whose freed direction a later avenue took when the ring would then be full). Appending is all or nothing: a snapshot of the world is taken before an event is applied, and when anything comes out of the call (a refusal, a fault of the engine, an interrupt, a log that cannot take the event) the world is put back from it, in place, and the log is as it was. "In place" has a scope: the State, its live tree and its main dictionaries (`nodes`, `items`, `road_of`, `annexes`, `plan`, `held`, `kinds`, `effects`) are the same objects afterwards,
 while `rule`, the document and the record of each road are replaced by the copies taken before, so a reference to a road record taken before a failed event still shows what that event did to it. The copy of the event that
 `append` gives back is made before anything changes.
 A merge depends on the roads it merges (the events that opened them cannot be undone before it); a later event that names the new avenue depends on it.
 
-**The chronicle.** One entry for each road opened, house filed, road renamed or moved, merge of roads, undo, change of rule and new radius of the ring road, in log order. Every entry has `n` (1, 2, ...), `event_id` (the `seq` of the
+**The chronicle.** One entry for each road opened, house filed, road renamed or moved, merge of roads, undo, change of rule, new radius of the ring road, annex placed and house absorbed, in log order. Every entry has `n` (1, 2, ...), `event_id` (the `seq` of the
 event), `seq` (the houses that have arrived), `trigger` (the kind of the event) and, last, `at` (the `at` of the event); then:
 
 | entry | keys |
@@ -159,6 +176,8 @@ event), `seq` (the houses that have arrived), `trigger` (the kind of the event) 
 | an undo | `undone`, `of` (the number and the kind of the event) |
 | a change of rule | `rule` |
 | a new radius of the ring road | `resized`, `was_radius`, `radius`, `was_branches`, `branches`, `houses` (the place of the ring road, its radius and its branches before and after, the houses put again in the order they were put) |
+| an annex placed (`add_item`) | `annex`, `parent`, `form` (the item and the house it stands beside, a wing or a mailbox, the ids of the items) |
+| a house absorbed (`add_item` of its house, or `annex`) | `absorbed`, `parent`, `form`, `left` (the house that stood on a lot of its own, the house it stands beside now and how, and the place it left) |
 
 An event that an undo takes back writes no entry (it does not count); the undo writes one. `python3 -m bibliopolis chronicle` reads them as sentences.
 
@@ -244,6 +263,11 @@ that is read passes the refusal of an event on as a `WorldFileError` with the sa
 | `already_below` | `road`, `parent` | `move_road` below the road it is below | the road 'a1' is below 'a' already |
 | `rule_unchanged` | `max`, `min`, `auto`, `branches` | `set_rule` to the rule that is in force | the rule is this already |
 | `branches_below_standing` | `road`, `needs`, `branches` | `set_rule` with fewer `branches` than the world allows: an avenue holds a direction number that the smaller table has not (`road` null), or a road holds more roads (`road`); `needs` is the least `branches` the world allows | 2 branches would leave the world over: an avenue holds the direction number 2, so the rule needs 3 at least (merge or move roads first) |
+| `house_is_annex` | `house`, `parent`, `form` | `file`, `open_road` or `suggest_file` names an item that stands beside the house `parent` as a `form` (an annex): it has no lot to move, and none to open a road from | 'h0004' is a wing of the house 'h0001' and has no lot of its own |
+| `annex_of_itself` | `house` | `add_item` of an item that exists for itself, or `annex` of a house onto itself | 'h0003' cannot be an annex of itself |
+| `annex_of_annex` | `house`, `parent`, `above` | `add_item` of an item that exists for `parent`, or `annex` onto `parent`, where `parent` is an annex of the house `above`: it stands beside it, or it waits for it as an item that exists for it | 'h0004' cannot be an annex of 'h0003', which is an annex of 'h0001': an item is of a house, not of another annex |
+| `annex_parent_missing` | `house`, `parent` | `annex` onto a house that does not stand on a lot (`add_item` of an item that exists for such a house is no refusal: the item waits for it) | 'h0001' cannot be an annex of 'nobody': there is no house 'nobody' |
+| `annex_has_annexes` | `house`, `count` | `annex` of a house that has `count` annexes of its own: an annex is of a house, never of another annex | 'h0001' has 1 annex of its own, so it cannot be an annex: an item is of a house, not of another annex |
 
 ### An undo is refused
 
@@ -287,7 +311,7 @@ A city that grows beyond the budget is refused when it is drawn (`State.city()`,
 |---|---|---|---|
 | `invalid` | `problems`, `more` | an event or a rule whose shape is wrong, or a world file with such a part: `problems` lists them (at most 20), each `{where, code, params}` with an id of the next table, and `more` counts those not listed | event.payload.item.id: must be a string, got int |
 | `keys_missing` | `keys` | an object lacks keys that it needs | event: missing at, kind, payload |
-| `keys_unknown` | `keys`, `allowed` | an object has keys that it may not have | event.payload.item: unknown colour (allowed: id, title, authors, year, doi, type, openalex) |
+| `keys_unknown` | `keys`, `allowed` | an object has keys that it may not have | event.payload.item: unknown colour (allowed: id, title, authors, year, doi, type, openalex, annex_of, annex_form) |
 | `not_an_object` | `got` | a part that must be an object is not (`got` is the name of its type) | event: must be an object, got list |
 | `not_a_list` | `got` | a part that must be a list is not: `items` and `events` of a world file, `members` of a `merge_roads` | world.items: must be a list, got dict |
 | `not_text` | `got` | a part that must be text is not | event.payload.item.id: must be a string, got int |
@@ -316,7 +340,9 @@ A city that grows beyond the budget is refused when it is drawn (`State.city()`,
 | `member_chosen_twice` | `road` | a road chosen twice in `members` of a `merge_roads` | event.payload.members[1]: 'a' is chosen twice |
 | `event_seq_bad` | `got` | `seq` of an event is not a whole number, 1 or more | event.seq: must be a whole number, 1 or more, got 0 |
 | `date_bad` | `at` | `at` of an event is not an ISO 8601 date or date and time | event.at: 'yesterday' is not an ISO 8601 date or date and time |
-| `kind_unknown` | `kind`, `kinds` | `kind` of an event is not one of `kinds` | event.kind: 'sweep' is not a kind of event (add_item, open_road, file, rename_road, move_road, merge_roads, undo, set_rule) |
+| `kind_unknown` | `kind`, `kinds` | `kind` of an event is not one of `kinds` | event.kind: 'sweep' is not a kind of event (add_item, open_road, file, rename_road, move_road, merge_roads, undo, set_rule, annex) |
+| `annex_keys_unpaired` | `present`, `missing` | an item that has `annex_of` and not `annex_form`, or the other way round: they come together or not at all | event.payload.item: annex_of comes with annex_form: an item that exists for another item has both, and any other has neither; annex_form is missing |
+| `annex_form_bad` | `got`, `forms` | `annex_form` of an item, or `form` of an `annex` event, is not one of `forms` | event.payload.item.annex_form: must be one of wing, mailbox, got 'shed' |
 
 ### A world file or a store is not a world
 
@@ -458,6 +484,12 @@ The TypeScript engine must give the same bytes as this one. What is easy to get 
 - **Depth.** Ring 64 is the last: an `open_road`, `move_road` or `merge_roads` that would put a road in ring 65 is refused with the id `too_deep`, before anything changes. A port must not
   leave that to its stack, which runs out at another depth than Python's: the same log must be taken or refused by every engine.
 - **Rounding.** The `confidence` of `suggest_file` is `round(count / whole, 2)` with Python's `round`, which rounds a half to the even digit on the binary value: 1/8 is 0.12, not 0.13.
+- **Annexes.** An annex has the record `{kind, article, parent, form, rank, seq}` (the keys in that order) at `place:article:<id>`, `parent` being `place:article:<house>`. `rank` is the place of the
+  annex among those of its house and form by `seq` (its own arrival number, also for a house that was absorbed), from 1, and the annexes of the group are ranked again whenever one joins (an annex
+  with a lower `seq` than the ones that stand takes the first rank). `add_item` places the house first, then absorbs the houses that waited for it (items of the state in arrival order whose
+  `annex_of` is the house, unless the house is an annex or waits as one), each by `free_lot` and one entry `absorbed`, and only then looks at the place under the rule `auto`. An entry has
+  `event_id` the `seq` of the event and `seq` the arrivals so far. The refusals are tried in the order that "What the fold does" lists them. The lot of an absorbed house is freed like the lot of a
+  house that is filed away; the lots of every other house, and the numbers of the arrivals, stay. A new radius puts the lots again and carries the annex records over as they are.
 - **Order.** The roads, the items and the houses are kept in the order of the log; "in arrival order" and "in the order the roads were opened" mean that order, and an object is written with its
   keys in the order of this page (the chronicle entries, the events, the world file).
 
@@ -471,6 +503,8 @@ The TypeScript engine must give the same bytes as this one. What is easy to get 
   (with the roads below the road) or a `merge_roads` (which puts every road of the members one ring down) that would pass it is refused by `too_deep` before anything changes;
   `suggest_road` offers nothing below the last ring and `suggest_merge` nothing that would pass it; the rule `auto` leaves such a place crowded.
 - A road for a topic is not split, whatever it holds: the OpenAlex tree has no level below a topic (`crowded` lists it).
+- An annex is of a house, never of another annex: an item whose house stands beside another house, or waits for its own, is refused, and the houses that waited for an item that is an annex
+  itself stay houses. No event takes an item back out of its house: an annex stays one until an `undo` takes the event that made it back.
 - The roads of a hand-built city are never marked over and nothing splits by itself, except under `auto`; `crowded` is computed on demand.
 - A `set_rule` that lowers `min`, or a `max` that gives the ring road the radius it has, changes nothing in the world; it changes what `crowded` lists and what `open_road` takes. A `max` that the first
   lap no longer needs gives the ring road a smaller radius (`max` 200 to 40 with 13 branches: 19.5 to 8.5), and the whole world is laid out again ("A new radius", above).
@@ -490,6 +524,8 @@ The TypeScript engine must give the same bytes as this one. What is easy to get 
 | how deep a road may stand: the limit, the refusal before any change, the stack | `tests/test_depth.py` |
 | the world file, the SQLite file, the home folder | `tests/test_world_file.py` |
 | the golden world files of `examples/` and their index: byte for byte, the pinned cities, the schema | `tests/test_world_examples.py` |
+| items that exist for another item: the event `annex`, an item that stands beside its house at once, the houses that wait and are absorbed, the refusals, undo, a new radius, the random player | `tests/test_annex_hand.py` |
+| a world with no annex gives the bytes of version 0.4.0 (sha256 made from that version) | `tests/test_legacy_bytes.py` |
 | the schema of the world file (`schema/world.schema.json`) | `tests/test_world_schema.py` |
 | the command `world` | `tests/test_world_cli.py` |
 | publishing a file without ever replacing one: the temporary file, the hard link and its refusal where there is none, the syncs, the interleavings | `tests/test_publish.py` |

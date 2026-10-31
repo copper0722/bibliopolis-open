@@ -12,7 +12,8 @@ from test_cityfile import WRONG, at, fuzz
 from bibliopolis import city, inputs, picture
 from bibliopolis import layout as lay
 
-KINDS = ("from", "filed", "renamed", "moved", "merged", "undone", "resized", "rule")  # the entries of a world built by hand: a road opened, and the six that only it writes
+KINDS = ("from", "filed", "renamed", "moved", "merged", "undone", "resized", "rule", "annex", "absorbed")  # the entries of a world built by hand: a road opened, the six that only it writes, an
+# annex placed and a house absorbed (the first of these two is in a built city too)
 
 
 def base_city():
@@ -78,7 +79,7 @@ def test_the_control_a_reader_that_lets_everything_through_is_caught_by_the_same
     failures, tally = break_in(base_city(), lambda doc: doc)
     assert tally["refused"] == 0 and failures
     assert {"KeyError", "TypeError"} <= {f[4].split(":")[0] for f in failures}  # crashes ...
-    assert {f[0] for f in failures} >= {"filed", "renamed", "moved", "merged", "undone", "resized", "rule"}  # ... in the entries that only a world built by hand writes, merges included
+    assert {f[0] for f in failures} >= {"filed", "renamed", "moved", "merged", "undone", "resized", "rule", "annex", "absorbed"}  # ... in the entries that only a world built by hand writes, merges and annexes included
 
 
 def test_a_merge_entry_with_a_wrong_field_is_refused_with_its_place_and_what_it_should_be():

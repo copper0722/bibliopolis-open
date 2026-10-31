@@ -9,7 +9,7 @@
 `append` is the one way an event enters a world. It checks the shape of the event (bibliopolis.events), asks the world to take it (bibliopolis.hand) and only then
 keeps it, so a log made by `append` folds again to the same world. It is all or nothing: a `State.snapshot` is taken before the event is applied, and when anything at all comes out of
 the call (a refusal, a fault of the engine, an interrupt, a log that cannot take the event) the State is put back from it, in place, and the log is as it was. "In place" means: the State, its
-live tree and its dictionaries `nodes`, `items`, `road_of`, `plan`, `held`, `kinds` and `effects` are the same objects afterwards; `rule`, the document and the record of each road in `nodes`
+live tree and its dictionaries `nodes`, `items`, `road_of`, `annexes`, `plan`, `held`, `kinds` and `effects` are the same objects afterwards; `rule`, the document and the record of each road in `nodes`
 are replaced by the copies taken before, so a reference to a road record taken before a failed event is not the journal's and still shows what that event did to it. The copy of the event that
 `append` gives back is made first, before anything changes. (An `undo` folds a new State instead, and the one that is there is not touched until the fold has succeeded.) An `undo` is held to two more rules, so that the player undoes from the end backwards:
 

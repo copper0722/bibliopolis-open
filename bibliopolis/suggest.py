@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from collections import Counter
 
-from .events import LEVELS, MERGE_LEAST, ORDER, RING_LIMIT, Refusal
+from .events import LEVELS, MERGE_LEAST, ORDER, RING_LIMIT, Refusal, house_is_annex
 
 
 def roads_by_node(world) -> dict[tuple[str, str], str]:
@@ -143,6 +143,8 @@ def suggest_file(world, house: str) -> dict | None:
     `level` is the most specific level at which it shares anything, `shared` the count there, and `confidence` that count as a part of the same count over every road that
     could take the house, from 0 to 1 in hundredths: 1 when no other road shares a topic at that level. A house that stands on a road gets a suggestion only for a road that
     scores better than the one it stands on. None when the house has no topic, no road fits, or the road it stands on is as good. `Refusal` for a house that is not there."""
+    if house in world.annexes:
+        raise house_is_annex(house, world.annexes[house]["parent"], world.annexes[house]["form"])
     if house not in world.items:
         raise Refusal(f"{house!r} is not a house", "not_a_house", house=house)
     here = world.road_of[house]

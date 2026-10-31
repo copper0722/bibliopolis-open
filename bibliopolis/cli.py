@@ -154,7 +154,7 @@ def world_command(args: argparse.Namespace) -> int:
     elif args.world_command == "import":
         journal = load_world_file(args.file)
         store.Store.import_journal(path, journal)
-        print(f"read {args.file} into {path}: {len(journal.events)} events, {len(journal.state.items)} houses", file=sys.stderr)
+        print(f"read {args.file} into {path}: {len(journal.events)} events, {len(journal.state.items)} houses{annexes_of({'annexes': len(journal.state.annexes)})}", file=sys.stderr)
     elif args.world_command == "export":
         store.check_output(args.file, path)
         journal = store.Store(path).journal()

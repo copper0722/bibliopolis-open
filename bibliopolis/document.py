@@ -207,7 +207,7 @@ def world_layout(doc: dict, *, with_reserved: bool = False, with_coast: bool = T
     world = {"format": doc["schema_version"], "zoning_version": doc.get("zoning_version"), "mode": doc.get("mode"), "seq": doc.get("seq", 0),
              "houses": n_lots, "unbuilt": sum(1 for p in places.values() if p["kind"] == "reserved"),
              "districts": dict(doc["districts"]), "chronicle": [dict(e) for e in doc["chronicle"]],
-             "notes": {**NOTES, **NOTES_DISTRICTS, **(NOTES_HAND if by_hand else {}), **(lay.ANNEX_NOTES if n_annex else {})}}
+             "notes": {**NOTES, **NOTES_DISTRICTS, **(NOTES_HAND if by_hand else {}), **(lay.ANNEX_NOTES if n_annex else {}), **(lay.ANNEX_NOTES_HAND if n_annex and by_hand else {})}}
     layout = {
         "schema_version": lay.SCHEMA_VERSION, "layout_version": lay.LAYOUT_VERSION,
         "centre": dict(doc["centre"]),

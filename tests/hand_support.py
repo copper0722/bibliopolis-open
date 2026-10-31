@@ -281,8 +281,8 @@ def scripted_branches():
 
 
 def every_entry():
-    """A world whose chronicle has an entry of each kind: a road opened, a house filed, a road renamed, a road moved, avenues merged, a change of rule, a new radius of
-    the ring road (a `max` that the first lap cannot hold) and an undo."""
+    """A world whose chronicle has an entry of each kind: a road opened, a house filed, a road renamed, a road moved, avenues merged, an annex placed, a house absorbed (by the
+    arrival of its house, and by a link learned later), a change of rule, a new radius of the ring road (a `max` that the first lap cannot hold) and an undo."""
     h = Hand()
     h.add(30, topic(1, 1, 1, 1))
     h.open("a", "A", None, houses(1, 12))
@@ -292,6 +292,10 @@ def every_entry():
     h.open("a1", "A one", "a", houses(1, 10))
     h.move("a1", "b")
     h.merge("m", "M", ["a", "b"])
+    h.add(1, annex_of=hid(40), annex_form="mailbox")  # h0031 waits for h0040, which has not arrived: an ordinary house on the ring road
+    h.add(9)  # h0040 arrives: h0031 is absorbed
+    h.add(1, annex_of=hid(40), annex_form="wing")  # h0041 stands beside h0040 at once
+    h.event("annex", {"house": hid(27), "parent": hid(40), "form": "wing"})  # a link learned later: h0027 stands beside h0040 too
     h.rule(30, 5)
     h.rule(200, 5)  # the ring road must hold 200 houses between its gates now: radius 19.5, not 12.5
     h.add(1)
@@ -368,10 +372,59 @@ def play(seed: int, steps: int = 120, *, auto: bool = False, rule: dict | None =
     return hand.journal
 
 
+def play_annexes(seed: int, steps: int = 140, *, auto: bool = False, resizing: bool = False) -> Journal:
+    """A random player of items that exist for other items: houses arrive; an item arrives that exists for a house that stands (an annex at once), for a house that has not arrived (it waits
+    on a lot of its own, and is absorbed when the house arrives with the id it was promised), or for a house that is an annex (refused); a link is learned later (`annex`, between any
+    two items, the refusals included); and the acts of `play`: roads opened, houses filed (an annex among them: refused), roads renamed and moved, a new rule (and, with `resizing`, a ring
+    road of another radius), events undone. Every act goes through `Journal.append`; the refused ones are the player's mistakes and are left out of the log."""
+    rng = random.Random(seed)
+    top = rng.choice([8, 12, 20, 40])
+    hand = Hand({"max": top, "min": min(top, rng.choice([3, 4, 6])), "auto": auto})
+    road_no = 0
+    forms = ["wing", "mailbox"]
+    for step in range(steps):
+        state, r = hand.state, rng.random()
+        everyone = [*state.items, *state.annexes]
+        try:
+            if r < 0.30 or len(state.items) < 4:
+                hand.add_items([random_item(rng, hand.count + 1)])
+            elif r < 0.42:  # for a house that stands (or is an annex: refused)
+                hand.add_items([item(hand.count + 1, annex_of=rng.choice(everyone), annex_form=rng.choice(forms))])
+            elif r < 0.52:  # for a house that has not arrived: it waits (the house is promised an id a few arrivals ahead; it comes if the player gets there, and may be an annex itself)
+                hand.add_items([item(hand.count + 1, annex_of=hid(hand.count + rng.randint(2, 5)), annex_form=rng.choice(forms))])
+            elif r < 0.60:
+                hand.event("annex", {"house": rng.choice(everyone), "parent": rng.choice(everyone), "form": rng.choice(forms)})
+            elif r < 0.72:  # open a road from a place that holds enough, with a random choice of its houses
+                places = [None, *state.nodes]
+                rng.shuffle(places)
+                for parent in places:
+                    held = state.houses_at(parent)
+                    if len(held) >= state.rule["min"]:
+                        road_no += 1
+                        hand.open(f"r{road_no}", f"Road {road_no}", parent, rng.sample(held, rng.randint(state.rule["min"], len(held))))
+                        break
+            elif r < 0.80 and state.nodes:
+                hand.file(rng.choice(everyone), rng.choice(list(state.nodes)))
+            elif r < 0.85 and state.nodes:
+                hand.rename(rng.choice(list(state.nodes)), f"Name {step}")
+            elif r < 0.90 and len(state.nodes) > 1:
+                hand.move(rng.choice(list(state.nodes)), rng.choice(list(state.nodes)))
+            elif r < 0.94:
+                size = rng.choice([8, 12, 20, 40, 150, 300] if resizing else [8, 12, 20, 40])
+                hand.rule(size, min(size, rng.choice([2, 3, 5])), rng.choice([False, auto]))
+            else:
+                keep = sorted(standing(hand.journal.events))
+                if keep:
+                    hand.undo(rng.choice(keep[-8:]))
+        except Refusal:
+            pass
+    return hand.journal
+
+
 def journal_value(journal: Journal):
     """All that an event may change in a journal and its world, as a value (a deep copy) to compare before and after: the log, and every attribute of the State but the live tree."""
     s = journal.state
-    return copy.deepcopy((journal.events, s.rule, s.nodes, s.items, s.road_of, s.held, s.kinds, s.effects, s.plan, s.doc))
+    return copy.deepcopy((journal.events, s.rule, s.nodes, s.items, s.road_of, s.annexes, s.held, s.kinds, s.effects, s.plan, s.doc))
 
 
 # --------------------------------------------------------------------------------------- the checks of a world ----
@@ -403,6 +456,20 @@ def hand_problems(state: State, *, coast: bool = False) -> list:
     lots = {p["article"]: p for p in places.values() if p["kind"] == "lot"}
     if set(lots) != set(state.items):
         bad.append(("houses", "the houses with a lot are not the houses of the world"))
+    standing = {p["article"]: p for p in places.values() if p["kind"] == "annex"}
+    if set(standing) != set(state.annexes):
+        bad.append(("annexes", "the annex records are not the annexes of the world"))
+    for a, rec in state.annexes.items():
+        there = standing.get(a)
+        if a in state.items or a in lots or a in state.road_of:
+            bad.append((a, "an annex that stands on a lot"))
+        if there is None or there["parent"] != lay.article_place(rec["parent"]) or there["form"] != rec["form"]:
+            bad.append((a, "the record of an annex is not the annex of the world"))
+        if rec["parent"] not in lots or rec["parent"] in state.annexes or state.items[rec["parent"]].get("annex_of") is not None:
+            bad.append((a, "an annex stands beside an item that is no house on a lot, or is an annex itself"))
+    for h, it in state.items.items():  # a house whose item says `annex_of` waits for a house that has not arrived (or the house it exists for is an annex itself: then it stays a house)
+        if it.get("annex_of") in state.items and state.items[it["annex_of"]].get("annex_of") is None:
+            bad.append((h, "a house that waits for a house that stands: it should have been absorbed"))
     for h in state.items:
         lot = lots.get(h)
         key = state.road_of[h]
@@ -623,9 +690,22 @@ def where(lot: dict) -> dict:
     return {k: v for k, v in lot.items() if k not in ("position", "facing")}
 
 
+def absorbed_by(event: dict, before: State) -> set[str]:
+    """The houses that the event turns into annexes, read from the event and the world before it: the house of an `annex` event; for an `add_item` of an item that has no `annex_of`, the
+    houses whose item says they exist for that item (an item that is an annex itself, or waits as one, takes none)."""
+    p = event["payload"]
+    if event["kind"] == "annex":
+        return {p["house"]}
+    if event["kind"] == "add_item" and p["item"].get("annex_of") is None:
+        return {h for h, it in before.items.items() if it.get("annex_of") == p["item"]["id"]}
+    return set()
+
+
 def moved_by(event: dict, before: State) -> set[str]:
     """The houses that the event moves, read from the event and the world before it (not from the engine's own account of what it did)."""
     p = event["payload"]
+    if event["kind"] in ("add_item", "annex"):
+        return absorbed_by(event, before)
     if event["kind"] == "open_road":
         return set(p["houses"])
     if event["kind"] == "file":
@@ -653,7 +733,8 @@ def stability_violations(events: list[dict], rule: dict) -> list[str]:
             state = fold(seen, rule)
             continue
         before_lots, before_roads, auto, before_nodes, before_doc = lot_snapshot(state), dict(state.road_of), state.rule["auto"], set(state.nodes), state.doc
-        expected = moved_by(e, state)
+        expected, absorbed = moved_by(e, state), absorbed_by(e, state)
+        before_annexes = {pid: rec for pid, rec in state.doc["places"].items() if rec["kind"] == "annex"}
         kept, was_ring, chron = ring_snapshot(state), ring_of(state), len(state.doc["chronicle"])
         cells_before, laps_before = ring_cells(state), lap_slots(state)
         try:
@@ -667,10 +748,14 @@ def stability_violations(events: list[dict], rule: dict) -> list[str]:
         bad += [f"event {e['seq']} ({e['kind']}) left a world that is not what its log lays: {found}" for found in lay_problems(state.doc, state.plan, state.tree, world=again)[:2]]
         if e["kind"] == "set_rule" and ring_of(state) != was_ring:  # the one event that may put every house again: it keeps the order, the roads and the directions
             bad += [f"event {e['seq']} (set_rule) put the world out again and {why}" for why in expansion_violations(kept, state)]
+            if {pid: rec for pid, rec in state.doc["places"].items() if rec["kind"] == "annex"} != before_annexes:
+                bad.append(f"event {e['seq']} (set_rule) put the world out again and changed an annex")
             bad += [f"event {e['seq']} (set_rule) broke invariant {n} ({what}): {detail}" for n, what, detail in step_problems(before_doc, state.doc, lambda lot, now: True, laid_out_again=True)]
             continue
         after_lots = lot_snapshot(state)
-        changed = {h for h, road in before_roads.items() if state.road_of[h] != road}
+        changed = {h for h, road in before_roads.items() if h in state.road_of and state.road_of[h] != road}
+        if {h for h in before_roads if h not in state.road_of} != absorbed:
+            bad.append(f"event {e['seq']} ({e['kind']}) took other houses off their lots than {sorted(absorbed)}: {sorted({h for h in before_roads if h not in state.road_of} ^ absorbed)}")
         if e["kind"] == "add_item":
             house, cells = e["payload"]["item"]["id"], ring_cells(state)
             if house in cells:  # it stands on the ring: where it was put, on the first free slot in fill order of the lowest lap that has one in the world before the event (a split that
@@ -702,7 +787,7 @@ def stability_violations(events: list[dict], rule: dict) -> list[str]:
         merged_away = e["kind"] in ("move_road", "merge_roads") or (e["kind"] == "add_item" and any("merged" in entry for entry in state.doc["chronicle"][chron:]))
         re_ribbed = {before_doc["places"][lay.article_place(h)]["street"] for h in expected if h in before_lots} if merged_away else set()  # (the roads that moved have a new rib; the old one is a ghost)
         bad += [f"event {e['seq']} ({e['kind']}) broke invariant {n} ({what}): {detail}" for n, what, detail in step_problems(
-            before_doc, state.doc, lambda lot, now: lot["article"] in expected or lot["article"] in arrived, re_ribbed=re_ribbed)]
+            before_doc, state.doc, lambda lot, now: lot["article"] in expected or lot["article"] in arrived, re_ribbed=re_ribbed, annexed=absorbed)]
     return bad
 
 

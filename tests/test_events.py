@@ -21,11 +21,13 @@ def event(kind, payload, seq=1, at="2026-10-26T09:30:00Z"):
 # ------------------------------------------------------------------------------------------------------ items ----
 def test_an_item_keeps_its_metadata_and_gets_every_key_in_the_same_order():
     out, found = checked(ev.check_item, {"id": "a", "title": "", "authors": [], "year": None, "type": "article"})
-    assert found == [] and list(out) == list(ev.ITEM_KEYS)
+    assert found == [] and list(out) == list(ev.ITEM_KEYS[:7])  # (the two keys of an item that exists for another item are there only when it has them)
     assert out == {"id": "a", "title": "", "authors": [], "year": None, "doi": None, "type": "article", "openalex": []}
     full = {"type": "review", "openalex": [topic(1, 1, 1, 1)], "doi": "10.0000/x", "year": 2020, "authors": ["A. B"], "title": "T", "id": "i"}
     out, found = checked(ev.check_item, full)
-    assert found == [] and list(out) == list(ev.ITEM_KEYS) and out["openalex"] == [topic(1, 1, 1, 1)]
+    assert found == [] and list(out) == list(ev.ITEM_KEYS[:7]) and out["openalex"] == [topic(1, 1, 1, 1)]
+    out, found = checked(ev.check_item, {**full, "annex_form": "wing", "annex_of": "j"})
+    assert found == [] and list(out) == list(ev.ITEM_KEYS) and (out["annex_of"], out["annex_form"]) == ("j", "wing")  # (both, in this order, last)
 
 
 def test_an_item_carries_the_primary_topic_and_up_to_two_more_with_all_four_levels():
@@ -135,8 +137,9 @@ def test_the_four_levels_of_a_node_are_the_four_levels_of_a_topic_of_an_item():
         assert found == [] and out["payload"]["topic"]["level"] == level
 
 
-def test_the_kinds_are_the_eight_of_the_page():
-    assert ev.KINDS == ("add_item", "open_road", "file", "rename_road", "move_road", "merge_roads", "undo", "set_rule") and set(ev.PAYLOAD_KEYS) == set(ev.KINDS)
+def test_the_kinds_are_the_nine_of_the_page():
+    assert ev.KINDS == ("add_item", "open_road", "file", "rename_road", "move_road", "merge_roads", "undo", "set_rule", "annex") and set(ev.PAYLOAD_KEYS) == set(ev.KINDS)
+    assert ev.PAYLOAD_KEYS["annex"] == ("house", "parent", "form")
 
 
 def test_the_node_of_a_merge_may_be_left_out_too_and_is_kept_as_null_last():
@@ -292,3 +295,28 @@ def test_a_world_file_with_a_huge_integer_for_its_version_or_format_is_refused_w
         doc = {"format": "bibliopolis.world", "version": 1, "rule": {"max": 40, "min": 10, "auto": False}, "items": [], "events": [], key: value}
         with pytest.raises(WorldFileError, match=rf"world\.{key}: .*an integer of about 5001 digits"):
             read_world(doc)
+
+
+# ------------------------------------------------------------------------------- items that exist for another item ----
+def test_the_two_keys_of_an_item_that_exists_for_another_item_come_together_and_the_form_is_a_wing_or_a_mailbox():
+    base = {"id": "a", "title": "", "authors": [], "year": None, "type": "article"}
+    for form in ("wing", "mailbox"):
+        out, found = checked(ev.check_item, {**base, "annex_of": "b", "annex_form": form})
+        assert found == [] and out["annex_form"] == form
+    for extra, code in (({"annex_of": "b"}, "annex_keys_unpaired"), ({"annex_form": "wing"}, "annex_keys_unpaired"), ({"annex_of": "b", "annex_form": "shed"}, "annex_form_bad"),
+                        ({"annex_of": "b", "annex_form": None}, "annex_form_bad"), ({"annex_of": 5, "annex_form": "wing"}, "not_text"), ({"annex_of": "", "annex_form": "wing"}, "text_empty"),
+                        ({"annex_of": "b\x01", "annex_form": "wing"}, "text_control")):
+        problems = ev.Problems()
+        assert ev.check_item({**base, **extra}, "item", problems) is None and [p["code"] for p in problems.items] == [code], extra
+    problems = ev.Problems()
+    assert ev.check_item({**base, "annex_of": "b", "annex_form": "wing", "colour": "red"}, "item", problems) is None and problems.items[0]["params"]["allowed"][-2:] == ["annex_of", "annex_form"]
+
+
+def test_the_event_annex_has_three_keys_and_its_houses_are_what_a_later_undo_may_not_take_away():
+    out, found = checked(ev.check_event, event("annex", {"house": "a", "parent": "b", "form": "mailbox"}), "event")
+    assert found == [] and out["payload"] == {"house": "a", "parent": "b", "form": "mailbox"}
+    for payload, code in (({"house": "a", "parent": "b", "form": "shed"}, "annex_form_bad"), ({"house": "", "parent": "b", "form": "wing"}, "text_empty"),
+                          ({"house": "a", "form": "wing"}, "keys_missing"), ({"house": "a", "parent": "b", "form": "wing", "x": 1}, "keys_unknown")):
+        problems = ev.Problems()
+        assert ev.check_event(event("annex", payload), "event", problems) is None and code in {p["code"] for p in problems.items}, payload
+    assert ev.references(event("annex", {"house": "a", "parent": "b", "form": "wing"})) == (set(), {"a", "b"})
